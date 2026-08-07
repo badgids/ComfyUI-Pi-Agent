@@ -2,7 +2,7 @@ import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
 
 const CHAT_STATE = {
-  sessionId: null,
+  sessionId: sessionStorage.getItem("ComfyUIPi.ActiveSession") || null,
   busy: false,
   abortRequested: false,
   sessions: [],
@@ -13,7 +13,7 @@ const CHAT_STATE = {
   modelCatalogLoaded: false,
   providerModelMemory: {},
   modelPreparationPromise: null,
-  view: "terminal",
+  view: sessionStorage.getItem("ComfyUIPi.ActiveView") === "chat" ? "chat" : "terminal",
   terminalSupported: false,
   terminal: null,
   terminalSocket: null,
@@ -23,6 +23,13 @@ const CHAT_STATE = {
   showReasoning: localStorage.getItem("ComfyUIPi.ShowReasoning") !== "false",
   showTools: localStorage.getItem("ComfyUIPi.ShowTools") !== "false",
 };
+
+function rememberSessionId(value) {
+  const sessionId = String(value || "").trim();
+  CHAT_STATE.sessionId = sessionId || null;
+  if (sessionId) sessionStorage.setItem("ComfyUIPi.ActiveSession", sessionId);
+  else sessionStorage.removeItem("ComfyUIPi.ActiveSession");
+}
 
 const LOCAL_PROVIDERS = new Set(["llama.cpp", "ollama", "lm-studio", "vllm", "openai-compatible"]);
 const LOCAL_PROVIDER_DEFAULTS = {
@@ -188,6 +195,7 @@ function disposePiInterface() {
   if (term?._comfyPiResizeObserver) {
     try { term._comfyPiResizeObserver.disconnect(); } catch {}
   }
+  try { term?._comfyPiClipboardCleanup?.(); } catch {}
   try { term?._comfyPiDataDisposable?.dispose?.(); } catch {}
   try { term?._comfyPiResizeDisposable?.dispose?.(); } catch {}
   try {
@@ -229,6 +237,34 @@ function ensureTerminalInstance(ui) {
   term._comfyPiResizeDisposable = typeof term.onResize === "function"
     ? term.onResize(sendTerminalResize)
     : term.on("resize", sendTerminalResize);
+
+  // Match normal desktop-terminal clipboard behavior without stealing Pi's Ctrl+C
+  // interrupt. Ctrl/Cmd+C copies only when xterm has a selection; otherwise the
+  // keystroke continues to Pi. Text paste is forwarded directly to the PTY.
+  const copyTerminalSelection = (event) => {
+    const key = String(event.key || "").toLowerCase();
+    if (!(event.ctrlKey || event.metaKey) || event.altKey || key !== "c") return;
+    const selection = typeof term.getSelection === "function" ? term.getSelection() : "";
+    if (!selection) return;
+    event.preventDefault();
+    event.stopPropagation();
+    Promise.resolve(copyText(selection)).catch(() => {});
+  };
+  const pasteTerminalClipboard = (event) => {
+    const text = event.clipboardData?.getData("text/plain") || "";
+    if (!text) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (typeof term.paste === "function") term.paste(text);
+    else sendTerminalInput(text);
+  };
+  ui.terminalHost.addEventListener("keydown", copyTerminalSelection, true);
+  ui.terminalHost.addEventListener("paste", pasteTerminalClipboard, true);
+  term._comfyPiClipboardCleanup = () => {
+    ui.terminalHost.removeEventListener("keydown", copyTerminalSelection, true);
+    ui.terminalHost.removeEventListener("paste", pasteTerminalClipboard, true);
+  };
+
   ui.terminalHost.addEventListener("pointerdown", () => {
     queueMicrotask(() => term.focus());
   });
@@ -343,6 +379,7 @@ async function restartTerminalIfActive(ui) {
 function switchView(ui, view) {
   const target = view === "chat" ? "chat" : "terminal";
   CHAT_STATE.view = target;
+  sessionStorage.setItem("ComfyUIPi.ActiveView", target);
   ui.terminalPane.hidden = target !== "terminal";
   ui.chatPane.hidden = target !== "chat";
   ui.terminalTab.classList.toggle("active", target === "terminal");
@@ -547,7 +584,7 @@ function updateContextPill(ui, guard = {}) {
 
 async function loadSession(ui, sessionId) {
   const data = await fetchJson(`/pi-agent/chat/session/${encodeURIComponent(sessionId)}`);
-  CHAT_STATE.sessionId = data.session.session_id;
+  rememberSessionId(data.session.session_id);
   ui.messages.innerHTML = "";
   const messages = Array.isArray(data.session.messages) ? data.session.messages : [];
   if (!messages.length) {
@@ -591,14 +628,9 @@ async function loadSession(ui, sessionId) {
   ui.sessionSelect.value = CHAT_STATE.sessionId;
   scrollToBottom(ui.messages);
   if (isLocalProvider(providerSelector)) {
-    // The sidebar is already open: refresh the selected host now so stale saved
-    // one-model catalogs do not survive across upgrades/restarts. This is not a
-    // ComfyUI/plugin-startup probe; it occurs only when Pi Agent Chat is rendered.
-    try {
-      await applyProviderSelection(ui, { forceProbe: true, reloadCatalog: false });
-    } catch (error) {
-      ui.statusline.textContent = String(error);
-    }
+    const endpoint = String(local.base_url || defaultEndpoint || "");
+    const savedModelCount = Array.isArray(local.models) ? local.models.length : (sessionModel ? 1 : 0);
+    ui.localStatus.textContent = `Endpoint: ${endpoint}\n${savedModelCount} saved model(s). Use Refresh models / apply endpoint to re-probe the host.`;
   }
 }
 
@@ -613,6 +645,7 @@ async function refreshSessions(ui, preferredSessionId = null) {
     ui.sessionSelect.appendChild(option);
   }
   let target = preferredSessionId || CHAT_STATE.sessionId;
+  if (target && !CHAT_STATE.sessions.some((session) => session.session_id === target)) target = null;
   if (!target && CHAT_STATE.sessions.length) target = CHAT_STATE.sessions[0].session_id;
   if (!target) {
     const created = await createSession(ui);
@@ -632,7 +665,7 @@ async function createSession(ui) {
       scoped_models: ui?.scopedModels?.value || "",
     }),
   });
-  CHAT_STATE.sessionId = data.session.session_id;
+  rememberSessionId(data.session.session_id);
   return data.session;
 }
 
@@ -1279,7 +1312,7 @@ function buildSidebar(el, placement = "sidebar") {
     if (!CHAT_STATE.sessionId || CHAT_STATE.busy) return;
     try { await fetchJson("/pi-agent/terminal/stop", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session_id: CHAT_STATE.sessionId }) }); } catch {}
     await fetchJson(`/pi-agent/chat/session/${encodeURIComponent(CHAT_STATE.sessionId)}`, { method: "DELETE" });
-    CHAT_STATE.sessionId = null;
+    rememberSessionId("");
     await refreshSessions(ui);
     ui.textarea.focus();
   });
@@ -1335,7 +1368,7 @@ async function initializeSidebar(el, placement = "sidebar") {
   } catch (error) {
     ui.messages.innerHTML = `<div class="pi-agent-empty"><strong>Unable to load chats.</strong><br>${escapeHtml(error)}</div>`;
   }
-  switchView(ui, CHAT_STATE.terminalSupported ? "terminal" : "chat");
+  switchView(ui, CHAT_STATE.terminalSupported ? CHAT_STATE.view : "chat");
   if (CHAT_STATE.terminalStatusTimer) {
     clearInterval(CHAT_STATE.terminalStatusTimer);
     CHAT_STATE.terminalStatusTimer = null;

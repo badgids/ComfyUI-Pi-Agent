@@ -54,6 +54,8 @@ ComfyUI settings provide **Pi Agent: Interface placement** with two choices:
 
 The same Terminal/Chat UI and the same supervised Pi session are used in either location. Refresh the ComfyUI browser page after changing placement so the extension registers only the selected location.
 
+Collapsing either panel destroys only the browser renderer and its WebSocket attachment. It does **not** stop the supervised Pi PTY or create a new chat. The active ComfyUI-Pi session ID and selected Terminal/Chat view are retained for the browser tab, and reopening the panel reattaches to the existing terminal scrollback/session when it is still running.
+
 ## Provider and Model controls
 
 The same simple selectors remain directly below the interaction area:
@@ -67,10 +69,14 @@ Provider is always first. Model is always second.
 
 For local providers, ComfyUI-Pi prepares the selected model before starting or restarting Pi. For an existing Terminal session, changing Provider or Model restarts the supervised Pi TUI with `--continue` in the same private terminal-session directory so Pi can continue that session under the new model.
 
+Pi's current built-in `llama.cpp` provider requires a configured router URL even when the model is already loaded and reachable. ComfyUI-Pi passes the selected llama.cpp endpoint to every supervised Pi process as Pi's documented `LLAMA_BASE_URL` runtime setting (and `LLAMA_API_KEY` when a configured environment-variable reference supplies one). This makes the embedded Terminal use the same native provider path as a normal configured Pi CLI without requiring a second interactive `/login llama.cpp` inside ComfyUI.
+
 
 ## Terminal compatibility and focus
 
 The terminal host does not take browser focus itself; clicks are forwarded to xterm's real input textarea so normal typing, Pi shortcuts, slash commands, and paste reach the PTY. The frontend accepts both modern xterm `onData`/`onResize` callbacks and the legacy EventEmitter form used by the bundled renderer.
+
+Clipboard behavior follows a desktop terminal: **Ctrl/Cmd+C copies the current xterm selection**. When there is no selection, Ctrl+C is left untouched and continues to Pi as its normal interrupt key. **Ctrl/Cmd+V pastes text from the system clipboard** into the PTY.
 
 Pi's current TUI wraps redraws in DEC synchronized-output mode. The bundled renderer predates that mode, so ComfyUI-Pi removes only the `2026` begin/end synchronization wrappers before rendering while preserving all visible ANSI content.
 

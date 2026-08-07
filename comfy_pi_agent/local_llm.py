@@ -620,9 +620,32 @@ def configure_local_provider(
 
 
 def runtime_environment(local_config: dict[str, Any] | None) -> dict[str, str]:
-    """Compatibility hook for older sessions. Local servers are catalogued in models.json.
+    """Return explicit runtime configuration required by Pi's native local providers.
 
-    Keeping this function means existing runtime call sites stay stable, but endpoint URLs
-    are no longer smuggled into Pi through provider/env fields.
+    Pi 0.81+ registers llama.cpp as a built-in provider. The provider is considered
+    configured only when its router URL comes from `/login llama.cpp`, stored auth, or
+    ``LLAMA_BASE_URL``. ComfyUI-Pi already owns the selected endpoint, so pass that
+    endpoint directly to the supervised Pi process instead of requiring a second login.
+    Other local providers continue to use the models.json catalog path.
     """
-    return {}
+    local = local_config if isinstance(local_config, dict) else {}
+    if _normalize_kind(str(local.get("kind") or "")) != "llama.cpp":
+        return {}
+
+    root = normalize_base_url("llama.cpp", str(local.get("base_url") or ""))
+    if root.endswith("/v1"):
+        root = root[:-3].rstrip("/")
+    env = {"LLAMA_BASE_URL": root}
+
+    # A raw secret is never persisted in chat/session JSON. If the session names an
+    # environment variable containing a router key, copy only its value into the
+    # official Pi variable for the child process.
+    env_name = "".join(
+        ch for ch in str(local.get("api_key_env") or "").strip()
+        if ch.isalnum() or ch == "_"
+    )
+    if env_name:
+        api_key = os.environ.get(env_name, "").strip()
+        if api_key:
+            env["LLAMA_API_KEY"] = api_key
+    return env

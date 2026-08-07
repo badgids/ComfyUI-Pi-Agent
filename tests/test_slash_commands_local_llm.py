@@ -81,7 +81,21 @@ class LocalLlmTests(unittest.TestCase):
                 self.assertEqual(provider["baseUrl"], "http://127.0.0.1:8080/v1")
                 self.assertEqual(provider["api"], "openai-completions")
                 self.assertEqual(provider["models"][0]["id"], "test-local-model")
-                self.assertEqual(runtime_environment({"kind": "llama.cpp", "base_url": result["base_url"]}), {})
+                self.assertEqual(
+                    runtime_environment({"kind": "llama.cpp", "base_url": result["base_url"]}),
+                    {"LLAMA_BASE_URL": "http://127.0.0.1:8080"},
+                )
+
+    def test_llamacpp_runtime_environment_uses_native_pi_provider_variables(self):
+        with patch.dict(os.environ, {"COMFY_PI_TEST_LLAMA_KEY": "test-secret"}, clear=False):
+            env = runtime_environment({
+                "kind": "llama.cpp",
+                "base_url": "http://127.0.0.1:8080/v1",
+                "api_key_env": "COMFY_PI_TEST_LLAMA_KEY",
+            })
+        self.assertEqual(env["LLAMA_BASE_URL"], "http://127.0.0.1:8080")
+        self.assertEqual(env["LLAMA_API_KEY"], "test-secret")
+        self.assertEqual(runtime_environment({"kind": "ollama", "base_url": "http://127.0.0.1:11434"}), {})
 
     def test_models_json_merge_preserves_existing_providers_and_never_stores_raw_key(self):
         with tempfile.TemporaryDirectory() as temp:
