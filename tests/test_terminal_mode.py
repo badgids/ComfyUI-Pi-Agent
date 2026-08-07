@@ -8,6 +8,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+import comfy_pi_agent.routes as pi_routes
 from comfy_pi_agent.pi_runtime import PiRpcClient
 from comfy_pi_agent.terminal import PiTerminalSession, build_terminal_command
 from comfy_pi_agent.terminal_bridge_cli import build_terminal_guidance
@@ -63,6 +64,11 @@ class RpcRecoveryTests(unittest.TestCase):
 
 
 class TerminalArchitectureTests(unittest.TestCase):
+    def test_terminal_websocket_json_codec_is_available(self):
+        payload = {"type": "output", "data": "Pi ready"}
+        encoded = pi_routes.json.dumps(payload)
+        self.assertEqual(pi_routes.json.loads(encoded), payload)
+
     def test_terminal_command_is_real_interactive_pi_not_rpc(self):
         command = build_terminal_command(
             "pi", provider="llama.cpp", model="test-model", scoped_models="llama.cpp/*",
