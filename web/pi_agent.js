@@ -12,6 +12,7 @@ const CHAT_STATE = {
   models: [],
   modelCatalogLoaded: false,
   providerModelMemory: {},
+  modelPreparationPromise: null,
 };
 
 const LOCAL_PROVIDERS = new Set(["llama.cpp", "ollama", "lm-studio", "vllm", "openai-compatible"]);
@@ -134,6 +135,8 @@ function ensureStyles() {
     .pi-agent-btn { border:1px solid color-mix(in srgb, currentColor 22%, transparent); background:color-mix(in srgb, currentColor 6%, transparent); color:inherit; border-radius:7px; padding:6px 9px; cursor:pointer; font:inherit; }
     .pi-agent-btn:hover { background:color-mix(in srgb, currentColor 11%, transparent); }
     .pi-agent-btn:disabled { opacity:.45; cursor:not-allowed; }
+    .pi-agent-icon-btn { width:32px; height:32px; display:inline-grid; place-items:center; padding:0; line-height:1; font-size:17px; border-radius:7px; }
+    .pi-agent-icon-btn .pi { font-size:16px; pointer-events:none; }
     .pi-agent-sessions { min-width:120px; max-width:210px; border:1px solid color-mix(in srgb, currentColor 22%, transparent); background:var(--comfy-menu-bg, inherit); color:inherit; border-radius:7px; padding:5px 7px; }
     .pi-agent-settings { padding:8px; border-bottom:1px solid color-mix(in srgb, currentColor 15%, transparent); display:grid; gap:7px; }
     .pi-agent-settings[hidden] { display:none; }
@@ -336,6 +339,16 @@ function setBusy(ui, busy) {
 async function sendMessage(ui) {
   const message = ui.textarea.value.trim();
   if (!message || CHAT_STATE.busy) return;
+  if (CHAT_STATE.modelPreparationPromise) {
+    const model = ui.model.value || "selected local model";
+    ui.statusline.textContent = `Waiting for ${model} to finish loading before sending…`;
+    try {
+      await CHAT_STATE.modelPreparationPromise;
+    } catch (error) {
+      ui.statusline.textContent = String(error);
+      return;
+    }
+  }
   if (!CHAT_STATE.sessionId) {
     const session = await createSession(ui);
     await refreshSessions(ui, session.session_id);
@@ -347,6 +360,10 @@ async function sendMessage(ui) {
   scrollToBottom(ui.messages);
   setBusy(ui, true);
   CHAT_STATE.abortRequested = false;
+  if (isLocalProvider(ui.provider.value) && ui.model.value) {
+    const configuredTimeout = Number(ui.timeout.value || 180);
+    ui.statusline.textContent = `Ensuring ${ui.model.value} is ready before Pi starts (timeout: ${configuredTimeout}s)…`;
+  }
 
   const payload = {
     session_id: CHAT_STATE.sessionId,
@@ -668,10 +685,11 @@ async function selectCurrentModel(ui) {
   const model = ui.model.value;
   if (selector === "pi-default" || !model) return;
   const provider = providerIdForSelector(selector);
-  ui.model.disabled = true;
-  try {
+  const prepare = (async () => {
+    ui.model.disabled = true;
     if (isLocalProvider(selector)) {
-      ui.statusline.textContent = `Preparing ${model}… This can take a while for a local model.`;
+      const configuredTimeout = Number(ui.timeout.value || 180);
+      ui.statusline.textContent = `Preparing ${model}… waiting up to ${configuredTimeout}s for the local host to report it ready.`;
     }
     const data = await persistModelSelection(ui, provider, model);
     ui.statusline.textContent = `Using ${data.provider || provider}/${data.model || model}`;
@@ -679,9 +697,15 @@ async function selectCurrentModel(ui) {
       const endpoint = ui.localBaseUrl.value.trim() || LOCAL_PROVIDER_DEFAULTS[selector] || "";
       ui.localStatus.textContent = `Endpoint: ${endpoint}\n${ui.model.options.length} model(s) reported by this host. Selected model is ready.`;
     }
+    return data;
+  })();
+  CHAT_STATE.modelPreparationPromise = prepare;
+  try {
+    await prepare;
   } catch (error) {
     ui.statusline.textContent = String(error);
   } finally {
+    if (CHAT_STATE.modelPreparationPromise === prepare) CHAT_STATE.modelPreparationPromise = null;
     ui.model.disabled = false;
   }
 }
@@ -719,7 +743,7 @@ function buildSidebar(el) {
         <span class="pi-agent-title">Pi Agent Chat</span>
         <span id="pi-agent-runtime-pill" class="pi-agent-pill">Checking Pi…</span>
         <span id="pi-agent-context-pill" class="pi-agent-pill" title="Context pressure and preemptive handoff status">Context --</span>
-        <button id="pi-agent-settings-toggle" class="pi-agent-btn" type="button" title="Chat settings">Settings</button>
+        <button id="pi-agent-settings-toggle" class="pi-agent-btn pi-agent-icon-btn" type="button" title="Chat settings" aria-label="Chat settings"><i class="pi pi-cog" aria-hidden="true"></i></button>
       </div>
       <div class="pi-agent-toolbar">
         <select id="pi-agent-session-select" class="pi-agent-sessions" aria-label="Chat session"></select>

@@ -4,6 +4,15 @@
 **Navigation:** [Project README](README.md) · [Documentation home](docs/index.md) · [Previous: Third-party notices](THIRD_PARTY_NOTICES.md) · [Next: Release notes](RELEASE_NOTES.md)
 <!-- DOC_NAV_END -->
 
+## 0.1.13 — Reliable llama.cpp wake/readiness
+
+- Treat llama.cpp router `sleeping` as not-ready and explicitly wake it before Pi is allowed to send a prompt.
+- Confirm the routed child server through model-specific `/props` after the router reports loaded, preventing stale-state races.
+- Wait through single-model llama-server `/health` 503 loading responses.
+- Pass the user's configured chat timeout through as the model-readiness budget; no personal timeout is hardcoded.
+- Make Send wait for an in-progress model preparation request.
+- Replace the visible Settings text button with a compact ComfyUI-style gear icon.
+
 ## 0.1.12 — llama.cpp router readiness and complete local catalogs
 
 - Read llama.cpp router `/models` as the authoritative full preset catalog, including unloaded entries, before single-model fallback.

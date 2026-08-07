@@ -27,7 +27,7 @@ The Provider dropdown has four groups:
 
 For built-in/cloud providers, ComfyUI-Pi asks Pi for its live `get_available_models` snapshot and shows every returned model for the selected provider. The model names are **not** duplicated in a plugin hardcoded list. A provider can therefore remain visible while its Model dropdown is empty when Pi has no currently authenticated/configured model for it.
 
-### Pi built-in providers covered by v0.1.12
+### Pi built-in providers covered by v0.1.13
 
 The dropdown covers the 38 provider IDs in Pi's current public `KnownProvider` catalog:
 
@@ -110,7 +110,7 @@ When a local host's registered model catalog changes, ComfyUI-Pi closes only tha
 
 ## llama.cpp readiness and startup diagnostics
 
-llama.cpp router `/models/load` is an asynchronous load request. ComfyUI-Pi therefore does not treat the HTTP response as proof that inference is ready. It polls the router catalog until the selected model reports a ready state, a failure is reported, or the configured chat timeout is reached. The normal chat timeout is also the model-readiness budget, so very large local models can be given more time from Settings without changing code.
+llama.cpp router `/models/load` is asynchronous. ComfyUI-Pi does not treat its HTTP response—or a `sleeping` router row—as proof that inference is ready. Unloaded or sleeping models are explicitly loaded/woken, the router catalog is polled, and a routed `/props?model=...&autoload=false` request must succeed before Pi is started or switched. The **user-configured chat timeout** is passed through as the complete model-readiness budget; ComfyUI-Pi does not substitute a machine-specific timeout. Single-model llama-server instances use the documented `/health` endpoint and wait through HTTP 503 while the model is loading.
 
 Only after readiness succeeds does ComfyUI-Pi launch its supervised Pi RPC process. Pi RPC startup is separately probed with `get_state`; if Pi exits during startup, the chat error now includes the recent Pi stderr lines and process exit code instead of only `Pi exited before accepting the command`.
 

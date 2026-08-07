@@ -1,6 +1,6 @@
 [project]
 name = "comfyui-pi-agent"
-version = "0.1.12"
+version = "0.1.13"
 description = "Pi Agent workflow intelligence, production planning, tutorial compilation, and NLE handoff nodes for ComfyUI."
 readme = "README.md"
 requires-python = ">=3.10"

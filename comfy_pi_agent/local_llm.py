@@ -298,21 +298,90 @@ def llama_router_models(base_url: str = "", reload: bool = False, timeout: float
     return {"ok": True, "base_url": root, "models": models}
 
 
+def llama_router_model_props(
+    base_url: str,
+    model: str,
+    timeout: float = 5.0,
+) -> dict[str, Any]:
+    """Ask the router for the selected model's child-server properties without autoloading it."""
+    model_id = str(model or "").strip()
+    if not model_id:
+        raise ValueError("A llama.cpp model id is required.")
+    root = normalize_base_url("llama.cpp", base_url)
+    if root.endswith("/v1"):
+        root = root[:-3].rstrip("/")
+    query = urllib.parse.urlencode({"model": model_id, "autoload": "false"})
+    payload = _json_request(
+        root + "/props?" + query,
+        timeout=max(0.25, float(timeout)),
+        headers=_llama_headers(),
+    )
+    if not isinstance(payload, dict):
+        raise ValueError("llama.cpp returned an invalid /props response.")
+    return payload
+
+
+def wait_for_llama_server_health(
+    base_url: str,
+    timeout: float = 180.0,
+    poll_interval: float = 0.5,
+) -> dict[str, Any]:
+    """Wait for a single-model llama-server's documented /health readiness signal."""
+    root = normalize_base_url("llama.cpp", base_url)
+    if root.endswith("/v1"):
+        root = root[:-3].rstrip("/")
+    budget = max(0.1, float(timeout))
+    deadline = time.monotonic() + budget
+    last_error = "not ready"
+    while time.monotonic() < deadline:
+        remaining = max(0.1, deadline - time.monotonic())
+        try:
+            payload = _json_request(
+                root + "/health",
+                timeout=min(5.0, remaining),
+                headers=_llama_headers(),
+            )
+            if isinstance(payload, dict) and str(payload.get("status") or "").lower() in {"ok", "ready"}:
+                return {"ready": True, "status": str(payload.get("status") or "ok")}
+            last_error = str(payload)
+        except urllib.error.HTTPError as exc:
+            # llama.cpp documents 503 while a single-model server is still loading.
+            if int(getattr(exc, "code", 0) or 0) != 503:
+                last_error = f"HTTP {getattr(exc, 'code', '?')}"
+            else:
+                last_error = "HTTP 503: model is still loading"
+        except (OSError, TimeoutError) as exc:
+            last_error = f"{type(exc).__name__}: {exc}"
+        time.sleep(min(max(0.1, float(poll_interval)), max(0.1, deadline - time.monotonic())))
+    raise TimeoutError(
+        f"Timed out after {budget:.0f}s waiting for llama.cpp to become ready (last result: {last_error})."
+    )
+
+
 def wait_for_llama_router_model(
     base_url: str,
     model: str,
     timeout: float = 180.0,
     poll_interval: float = 0.5,
 ) -> dict[str, Any]:
-    """Wait until a selected router model is actually ready before Pi is launched."""
+    """Wait until the router reports the child loaded *and* its routed /props endpoint answers.
+
+    A router entry in ``sleeping`` state is intentionally not ready: sleeping releases the
+    model weights, so the first real request would otherwise race the wake/reload cycle.
+    The caller-provided timeout is the complete wait budget; ComfyUI-Pi does not replace it
+    with a machine-specific timeout.
+    """
     model_id = str(model or "").strip()
     if not model_id:
         raise ValueError("A llama.cpp model id is required.")
-    deadline = time.monotonic() + max(5.0, float(timeout))
+    budget = max(0.1, float(timeout))
+    deadline = time.monotonic() + budget
     last_status = "unknown"
+    last_probe = "not attempted"
     last_entry: dict[str, Any] = {}
     while time.monotonic() < deadline:
-        catalog = llama_router_models(base_url, timeout=min(5.0, max(2.5, float(timeout))))
+        remaining = max(0.1, deadline - time.monotonic())
+        catalog = llama_router_models(base_url, timeout=min(5.0, remaining))
         entry = next((item for item in catalog.get("models", []) if str(item.get("id") or "") == model_id), None)
         if entry is None:
             raise ValueError(f"llama.cpp router no longer reports model '{model_id}'. Refresh the model list.")
@@ -321,12 +390,35 @@ def wait_for_llama_router_model(
         if bool(entry.get("failed", False)):
             detail = f" exit_code={entry.get('exit_code')}" if entry.get("exit_code") is not None else ""
             raise RuntimeError(f"llama.cpp failed to load '{model_id}'.{detail}")
-        if last_status in {"loaded", "ready", "sleeping"}:
-            return {"ready": True, "model": model_id, "status": last_status, "entry": entry}
-        time.sleep(max(0.1, float(poll_interval)))
+        if last_status in {"loaded", "ready"}:
+            try:
+                props = llama_router_model_props(base_url, model_id, timeout=min(5.0, remaining))
+                if bool(props.get("is_sleeping", False)):
+                    last_status = "sleeping"
+                    last_probe = "/props reports sleeping"
+                else:
+                    return {
+                        "ready": True,
+                        "model": model_id,
+                        "status": last_status,
+                        "entry": entry,
+                        "props": props,
+                    }
+            except urllib.error.HTTPError as exc:
+                code = int(getattr(exc, "code", 0) or 0)
+                if code not in {404, 409, 425, 429, 503}:
+                    raise
+                last_probe = f"/props HTTP {code}"
+            except (OSError, TimeoutError) as exc:
+                last_probe = f"/props {type(exc).__name__}: {exc}"
+        elif last_status == "sleeping":
+            last_probe = "model is sleeping and still needs to wake"
+        else:
+            last_probe = f"router status is {last_status}"
+        time.sleep(min(max(0.1, float(poll_interval)), max(0.1, deadline - time.monotonic())))
     raise TimeoutError(
-        f"Timed out after {float(timeout):.0f}s waiting for llama.cpp model '{model_id}' "
-        f"to become ready (last status: {last_status})."
+        f"Timed out after {budget:.0f}s waiting for llama.cpp model '{model_id}' to become ready "
+        f"(last router status: {last_status}; last readiness probe: {last_probe})."
     )
 
 def llama_router_action(

@@ -1,8 +1,16 @@
-# Release notes — 0.1.12
+# Release notes — 0.1.13
 
 <!-- DOC_NAV_START -->
 **Navigation:** [Project README](README.md) · [Documentation home](docs/index.md) · [Previous: Changelog](CHANGELOG.md) · [Next: Project inventory](PROJECT_INVENTORY.md)
 <!-- DOC_NAV_END -->
+
+## 0.1.13 — llama.cpp load/wake readiness and compact settings control
+
+- A router model in `sleeping` state is no longer considered ready. ComfyUI-Pi explicitly requests load/wake and waits until the router reports loaded and the routed model-specific `/props` endpoint is usable.
+- Single-model llama-server startup waits on `/health`, including HTTP 503 while loading.
+- The existing user-configured chat timeout is the readiness budget. No machine-specific or user-specific timeout value is embedded in the implementation.
+- Sending while a Model dropdown change is still preparing now waits for that preparation instead of racing it.
+- The sidebar Settings text button is replaced by a compact `pi pi-cog` gear icon.
 
 ## 0.1.12 — llama.cpp full catalog, readiness wait, and dark-mode dropdown repair
 

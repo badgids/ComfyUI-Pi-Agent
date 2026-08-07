@@ -341,20 +341,23 @@ class ChatRuntimeManager:
         model: str,
         timeout: float = 180.0,
     ) -> dict[str, Any]:
-        """Load a llama.cpp router model and wait for actual readiness.
+        """Load/wake a llama.cpp router model and wait for its routed child to be usable.
 
-        /models/load is asynchronous in current llama.cpp. Treating its HTTP 200 as
-        "model ready" races Pi startup and the first prompt. This helper waits until
-        the router reports loaded/sleeping, or returns a precise failure/timeout.
+        /models/load is asynchronous. ``sleeping`` is also not considered ready because
+        llama.cpp has released the model weights in that state. The caller's configured
+        timeout is passed through as the model-readiness budget.
         """
         model_id = str(model or "").strip()
         if not model_id:
             return {"attempted": False, "status": "no-model", "ready": False}
         try:
-            catalog = llama_router_models(base_url, timeout=5.0)
-        except Exception:
-            # A single-model llama-server has no router lifecycle to manage.
-            return {"attempted": False, "status": "single-model-or-router-unavailable", "ready": True}
+            catalog = llama_router_models(base_url, timeout=min(5.0, max(0.25, float(timeout))))
+        except ValueError:
+            # A valid non-router llama-server can still be listening while its one model is
+            # loading. Honor the same user-configured wait budget against /health.
+            from .local_llm import wait_for_llama_server_health
+            ready = wait_for_llama_server_health(base_url, timeout=float(timeout))
+            return {"attempted": False, "status": "single-model", **ready}
         entry = next((item for item in catalog.get("models", []) if str(item.get("id") or "") == model_id), None)
         if not entry:
             raise ValueError(f"llama.cpp router does not report model '{model_id}'. Refresh the model list.")
@@ -362,13 +365,14 @@ class ChatRuntimeManager:
         if bool(entry.get("failed", False)):
             raise RuntimeError(f"llama.cpp reports model '{model_id}' as failed. Refresh or repair the router model preset.")
         attempted = False
-        if status == "unloaded":
-            llama_router_action("load", model_id, base_url, timeout=10.0)
+        if status in {"unloaded", "sleeping"}:
+            llama_router_action("load", model_id, base_url, timeout=min(10.0, max(0.25, float(timeout))))
             attempted = True
-        if status not in {"loaded", "ready", "sleeping"}:
-            ready = wait_for_llama_router_model(base_url, model_id, timeout=max(5.0, float(timeout)))
-            return {"attempted": attempted, **ready}
-        return {"attempted": attempted, "ready": True, "status": status, "model": model_id, "entry": entry}
+        # Even a router row that already says loaded gets one routed /props confirmation.
+        # This prevents Pi from starting against a stale catalog row or a child that has not
+        # reached its usable HTTP state yet.
+        ready = wait_for_llama_router_model(base_url, model_id, timeout=float(timeout))
+        return {"attempted": attempted, **ready}
 
     def activate_local_provider(
         self,
@@ -572,7 +576,7 @@ class ChatRuntimeManager:
             and str(local.get("provider") or "") == provider_value
         ):
             self._ensure_llama_router_model(
-                str(local.get("base_url") or ""), model_value, timeout=max(5.0, float(wait_timeout))
+                str(local.get("base_url") or ""), model_value, timeout=float(wait_timeout)
             )
 
         with self._guard:
@@ -1128,7 +1132,7 @@ class ChatRuntimeManager:
                     self._ensure_llama_router_model(
                         str(local_config.get("base_url") or ""),
                         str(model),
-                        timeout=max(30.0, float(timeout)),
+                        timeout=float(timeout),
                     )
                 client = PiRpcClient(
                     resolved_executable,
