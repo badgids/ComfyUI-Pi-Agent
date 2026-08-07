@@ -5,6 +5,7 @@ import asyncio
 from .chat import CHAT_MANAGER
 from .models import inventory_models
 from .pi_runtime import discover_pi
+from .local_llm import configure_local_provider, discover_local_servers, probe_local_server
 from .tutorials import compile_tutorial
 from .version import __version__
 from .workflow import analyze_workflow
@@ -247,6 +248,60 @@ def register_routes() -> bool:
     async def pi_agent_chat_sessions(request):
         return web.json_response({"sessions": CHAT_MANAGER.store.list()})
 
+    @routes.get("/pi-agent/chat/commands")
+    async def pi_agent_chat_commands(request):
+        session_id = str(request.query.get("session_id", "") or "")
+        return web.json_response({"commands": CHAT_MANAGER.command_catalog(session_id)})
+
+    @routes.get("/pi-agent/local-llm/discover")
+    async def pi_agent_local_llm_discover(request):
+        # Explicit route call only: no server probing happens at plugin import/startup.
+        results = await asyncio.to_thread(discover_local_servers)
+        return web.json_response({"servers": results})
+
+    @routes.post("/pi-agent/local-llm/probe")
+    async def pi_agent_local_llm_probe(request):
+        payload = await request.json()
+        result = await asyncio.to_thread(
+            probe_local_server,
+            payload.get("kind", "openai-compatible"),
+            payload.get("base_url", ""),
+        )
+        return web.json_response(result, status=200 if result.get("available") else 404)
+
+    @routes.post("/pi-agent/local-llm/configure")
+    async def pi_agent_local_llm_configure(request):
+        payload = await request.json()
+        try:
+            result = await asyncio.to_thread(
+                configure_local_provider,
+                payload.get("kind", "openai-compatible"),
+                payload.get("base_url", ""),
+                payload.get("models") if isinstance(payload.get("models"), list) else [],
+                payload.get("model", ""),
+                payload.get("provider_id", ""),
+                payload.get("api_key_env", ""),
+            )
+            session_id = str(payload.get("session_id", "") or "").strip()
+            if session_id:
+                document = CHAT_MANAGER.store.load(session_id)
+                document["provider"] = result.get("provider", "")
+                document["model"] = result.get("model", "")
+                document["local_llm"] = {
+                    "enabled": True,
+                    "kind": result.get("kind", ""),
+                    "base_url": result.get("base_url", ""),
+                    "provider": result.get("provider", ""),
+                    "model": result.get("model", ""),
+                    "api_key_env": result.get("api_key_env", ""),
+                }
+                CHAT_MANAGER.store.save(document)
+                CHAT_MANAGER.close(session_id)
+                result["session"] = document
+            return web.json_response(result)
+        except (ValueError, FileNotFoundError) as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+
     @routes.post("/pi-agent/chat/new")
     async def pi_agent_chat_new(request):
         payload = await request.json()
@@ -256,6 +311,10 @@ def register_routes() -> bool:
             payload.get("provider", ""),
             payload.get("model", ""),
         )
+        session["scoped_models"] = str(payload.get("scoped_models", "") or "")
+        local = payload.get("local_llm") if isinstance(payload.get("local_llm"), dict) else {}
+        session["local_llm"] = {k: v for k, v in local.items() if k not in {"api_key", "token", "secret"}} if local.get("enabled") else {}
+        session = CHAT_MANAGER.store.save(session)
         return web.json_response({"session": session})
 
     @routes.get(r"/pi-agent/chat/session/{session_id}")
@@ -300,18 +359,20 @@ def register_routes() -> bool:
         try:
             result = await asyncio.to_thread(
                 CHAT_MANAGER.send,
-                session_id,
-                payload.get("message", ""),
-                payload.get("project_directory", ""),
-                payload.get("provider", ""),
-                payload.get("model", ""),
-                payload.get("pi_executable", ""),
-                int(payload.get("timeout_seconds", 180)),
-                payload.get("workflow"),
-                payload.get("project_context", ""),
-                bool(payload.get("preemptive_handoff", True)),
-                payload.get("handoff_threshold_percent", 82.5),
-                payload.get("handoff_max_chars", 8000),
+                session_id=session_id,
+                message=payload.get("message", ""),
+                project_directory=payload.get("project_directory", ""),
+                provider=payload.get("provider", ""),
+                model=payload.get("model", ""),
+                scoped_models=payload.get("scoped_models", ""),
+                local_llm=payload.get("local_llm") if isinstance(payload.get("local_llm"), dict) else {},
+                executable=payload.get("pi_executable", ""),
+                timeout=int(payload.get("timeout_seconds", 180)),
+                workflow=payload.get("workflow"),
+                project_context=payload.get("project_context", ""),
+                preemptive_handoff=bool(payload.get("preemptive_handoff", True)),
+                handoff_threshold=payload.get("handoff_threshold_percent", 82.5),
+                handoff_max_chars=payload.get("handoff_max_chars", 8000),
             )
             return web.json_response(result, status=200 if result.get("ok") else 503)
         except ValueError as exc:

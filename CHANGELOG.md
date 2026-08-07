@@ -4,6 +4,15 @@
 **Navigation:** [Project README](README.md) · [Documentation home](docs/index.md) · [Previous: Third-party notices](THIRD_PARTY_NOTICES.md) · [Next: Release notes](RELEASE_NOTES.md)
 <!-- DOC_NAV_END -->
 
+## 0.1.9 — Slash commands and local LLM servers
+
+- Added ComfyUI chat bridges for Pi's documented built-in slash commands.
+- Added slash-command discovery/completion UI.
+- Added explicit local-server detection and per-chat configuration for llama.cpp, Ollama, LM Studio, vLLM, and generic OpenAI-compatible servers, including llama.cpp router list/load/unload/refresh/download actions.
+- Added safe Pi `models.json` merging and environment-variable API-key references.
+- Preserved sparse startup context and lazy resource loading.
+
+
 ## 0.1.8 — Documentation navigation
 
 - Added a complete documentation hub and bidirectional navigation across the documentation set.

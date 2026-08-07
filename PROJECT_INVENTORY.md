@@ -7,7 +7,7 @@
 
 ## Release
 
-- Version: 0.1.8
+- Version: 0.1.9
 - Creator: Alan D. Guice (Badgids)
 - License: GPL-3.0-only
 
@@ -15,12 +15,12 @@
 
 - ComfyUI nodes: 55
 - Bundled Pi skills: 34
-- Core documentation guides: 30
-- Total linked Markdown documentation/procedure files: 75
-- Test modules: 13
+- Core documentation guides: 31
+- Total linked Markdown documentation/procedure files: 76
+- Test modules: 14
 - Example workflows: 3
 - First-class lazy node-pack integrations: 4
-- Manifest-tracked source files: 163
+- Manifest-tracked source files: 167
 
 ## Context-efficiency guarantees
 
@@ -35,6 +35,8 @@
 - Pi built-in auto-compaction is disabled over RPC when supported; ComfyUI-Pi performs a bounded continuity handoff/reset at a configurable 80–95% threshold (82.5% default).
 - Current Pi RPC `get_session_stats.contextUsage` is preferred for pressure measurement; assistant usage + model context window remains a compatibility fallback.
 - Handoff generation uses a separate fresh Pi process and references large workflows/assets by path instead of embedding them.
+- Pi built-in slash commands are bridged host-side before LLM routing; the slash-command catalog itself does not consume model context.
+- Local-server discovery/configuration is explicit and on-demand; no llama.cpp/Ollama/LM Studio/vLLM endpoint is probed at startup.
 
 ## First-class integrations
 
@@ -150,6 +152,7 @@
 - [`docs/index.md`](docs/index.md)
 - [`docs/installation.md`](docs/installation.md)
 - [`docs/kdenlive-nle.md`](docs/kdenlive-nle.md)
+- [`docs/local-llm-slash-commands.md`](docs/local-llm-slash-commands.md)
 - [`docs/limitations.md`](docs/limitations.md)
 - [`docs/minimax-h3-director.md`](docs/minimax-h3-director.md)
 - [`docs/minimax-h3-turbo.md`](docs/minimax-h3-turbo.md)
@@ -184,6 +187,7 @@
 - `test_media_plans.py`
 - `test_nodes.py`
 - `test_package_entrypoint.py`
+- `test_slash_commands_local_llm.py`
 - `test_tutorial_nle.py`
 - `test_workflow.py`
 

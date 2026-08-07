@@ -27,7 +27,7 @@
 
 An integration adapter may describe public node IDs, live schemas, component roles, and validated operating rules. It should not copy third-party implementation code. When a third-party pack owns complex serialized frontend state, ComfyUI-Pi prefers that pack's installed example workflows and UI instead of guessing undocumented widget indexes.
 
-MiniMax H3 Director, WhatDreamsCost-ComfyUI, Scene Camera Action, and MiniMax H3 Turbo all use this pattern in release 0.1.8.
+MiniMax H3 Director, WhatDreamsCost-ComfyUI, Scene Camera Action, and MiniMax H3 Turbo all use this pattern in release 0.1.9.
 
 ## Weak-model guidance layer
 

@@ -54,7 +54,9 @@ The client:
 
 ## Model providers
 
-Configure providers and models in Pi. Local OpenAI-compatible services can be registered in Pi's model configuration. Do not paste provider keys into a ComfyUI workflow.
+Configure providers and models in Pi. ComfyUI-Pi also provides an explicit Local LLM panel for llama.cpp, Ollama, LM Studio, vLLM, and other OpenAI-compatible servers. Detection happens only when the user asks for it; no endpoint probing occurs at plugin startup. Do not paste provider keys into a ComfyUI workflow.
+
+See [Local LLM servers and Pi slash commands](local-llm-slash-commands.md) for setup and the embedded slash-command bridge.
 
 ## Missing Pi
 
