@@ -1,0 +1,19 @@
+[project]
+name = "comfyui-pi-agent"
+version = "0.1.8"
+description = "Pi Agent workflow intelligence, production planning, tutorial compilation, and NLE handoff nodes for ComfyUI."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "GPL-3.0-only" }
+authors = [{ name = "Alan D. Guice (Badgids)" }]
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/Badgids/ComfyUI-Pi-Agent"
+Documentation = "https://github.com/Badgids/ComfyUI-Pi-Agent/tree/main/docs"
+Issues = "https://github.com/Badgids/ComfyUI-Pi-Agent/issues"
+
+[tool.comfy]
+PublisherId = "badgids"
+DisplayName = "ComfyUI Pi Agent Production Suite"
+Icon = ""

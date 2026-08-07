@@ -1,0 +1,6 @@
+{
+  "name": "character-reference",
+  "description": "Create character sheets, turnarounds, expressions, poses, and consistency checks.",
+  "entrypoint": "SKILL.md",
+  "license": "GPL-3.0"
+}

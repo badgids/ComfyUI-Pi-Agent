@@ -1,0 +1,6 @@
+{
+  "name": "qwen3-tts",
+  "description": "Create Qwen3-TTS voice, clone, and dialogue workflow plans.",
+  "entrypoint": "SKILL.md",
+  "license": "GPL-3.0"
+}

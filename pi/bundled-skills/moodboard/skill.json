@@ -1,0 +1,6 @@
+{
+  "name": "moodboard",
+  "description": "Create and edit structured mood boards and look-development boards.",
+  "entrypoint": "SKILL.md",
+  "license": "GPL-3.0"
+}

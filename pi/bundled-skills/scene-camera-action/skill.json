@@ -1,0 +1,6 @@
+{
+  "name": "scene-camera-action",
+  "version": "1.0.0",
+  "license": "GPL-3.0",
+  "description": "Lazy procedure for ComfyUI-scene-camera-action staging, acting, directing, SceneState creation/editing, and previz workflow repair."
+}

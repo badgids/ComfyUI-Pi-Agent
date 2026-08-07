@@ -1,0 +1,6 @@
+{
+  "name": "complete-production",
+  "description": "Compile a user request into a dependency-aware media production project.",
+  "entrypoint": "SKILL.md",
+  "license": "GPL-3.0"
+}

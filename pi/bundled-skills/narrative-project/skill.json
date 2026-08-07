@@ -1,0 +1,6 @@
+{
+  "name": "narrative-project",
+  "description": "Create complete stories, books, outlines, chapters, and long-form revisions.",
+  "entrypoint": "SKILL.md",
+  "license": "GPL-3.0"
+}

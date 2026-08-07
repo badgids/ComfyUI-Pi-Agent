@@ -1,0 +1,45 @@
+{
+  "last_node_id": 2,
+  "last_link_id": 1,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "PiProjectPlan",
+      "pos": [40, 40],
+      "size": [460, 260],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {"name": "production_plan", "type": "PRODUCTION_PLAN", "links": null, "slot_index": 0},
+        {"name": "plan_json", "type": "STRING", "links": [1], "slot_index": 1}
+      ],
+      "properties": {},
+      "widgets_values": [
+        "Create a three-minute animated short about a young pony learning to cross a flooded creek.",
+        "Creek Crossing",
+        "short_film",
+        "kdenlive"
+      ]
+    },
+    {
+      "id": 2,
+      "type": "PiShowText",
+      "pos": [560, 40],
+      "size": [500, 260],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [{"name": "text", "type": "STRING", "link": 1}],
+      "outputs": [{"name": "text", "type": "STRING", "links": null, "slot_index": 0}],
+      "properties": {},
+      "widgets_values": []
+    }
+  ],
+  "links": [[1, 1, 1, 2, 0, "STRING"]],
+  "groups": [{"title": "Create and inspect a production plan", "bounding": [20, 20, 1060, 300]}],
+  "config": {},
+  "extra": {},
+  "version": 0.4
+}

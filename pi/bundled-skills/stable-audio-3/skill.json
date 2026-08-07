@@ -1,0 +1,6 @@
+{
+  "name": "stable-audio-3",
+  "description": "Create Stable Audio 3 music and sound workflow plans.",
+  "entrypoint": "SKILL.md",
+  "license": "GPL-3.0"
+}

@@ -1,0 +1,6 @@
+{
+  "name": "document-export",
+  "description": "Export project text safely as Markdown, DOCX, Fountain, and JSON.",
+  "entrypoint": "SKILL.md",
+  "license": "GPL-3.0"
+}

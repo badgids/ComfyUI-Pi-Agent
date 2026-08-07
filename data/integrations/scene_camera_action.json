@@ -1,0 +1,73 @@
+{
+  "integration_id": "scene-camera-action",
+  "display_name": "ComfyUI Scene Camera Action",
+  "source_repository": "https://github.com/arturitu/ComfyUI-scene-camera-action",
+  "source_license": "MIT",
+  "upstream_skill_license": "Apache-2.0",
+  "integration_license": "GPL-3.0",
+  "integration_policy": "Original compatibility metadata and adapter logic. Use the installed pack's live node schemas and frontend-managed recording state as runtime authority. Do not copy or synthesize opaque frontend state.",
+  "node_ids": [
+    "SceneNode",
+    "ActingNode",
+    "DirectingNode"
+  ],
+  "workflow_chain": [
+    "SceneNode",
+    "ActingNode",
+    "DirectingNode"
+  ],
+  "major_capabilities": [
+    "interactive 3D scene staging and graybox/blockout previz",
+    "human and car actor movement recording",
+    "actor-aware spawn points",
+    "multi-camera directing and camera-cut timelines",
+    "captured previz video",
+    "captured stage reference image",
+    "natural-language SceneState preset generation through the scene-staging-builder skill",
+    "iterative SceneState JSON editing"
+  ],
+  "scene_state_rules": [
+    "SceneState root type is cube_scene with a nodes array.",
+    "The upstream scene-staging-builder skill uses block and group nodes for generated staging geometry.",
+    "The viewport already has a floor at Y=0; do not create a floor block merely to represent ground.",
+    "X is left/right, Y is vertical, Z is depth; generated scenes should remain inside the documented 100x100m world bounds unless the live pack proves otherwise.",
+    "A non-rotated box resting on Y=0 normally has py=sy/2 because position is the box center.",
+    "Use spawn_point {px, py, pz, ry} when actor placement matters and place elevated spawn points on the supporting top surface.",
+    "Preserve stable ids and logical groups when editing existing SceneState JSON."
+  ],
+  "actor_profiles": {
+    "human": {
+      "documented_door_width": 1.2,
+      "documented_door_height": 2.2,
+      "documented_stair_height": 0.25,
+      "documented_stair_depth": 0.5
+    },
+    "car": {
+      "documented_min_road_width": 4.0,
+      "documented_ramp_pitch_radians": [0.17, 0.43],
+      "documented_overpass_clearance": 3.5
+    }
+  },
+  "acting": {
+    "actor_types": ["human", "car"],
+    "actor_speed_ui_range": [1.0, 20.0],
+    "duration_ui_seconds": [4.0, 15.0],
+    "motion_data_policy": "frontend-managed recording state; do not fabricate by guessed serialization"
+  },
+  "directing": {
+    "documented_camera_modes": ["TPV", "FPV", "Wide", "Side"],
+    "outputs": ["Captured Video", "Captured Stage"],
+    "directing_data_policy": "frontend-managed camera timeline state; do not fabricate by guessed serialization"
+  },
+  "workflow_rules": [
+    "Use live /object_info schemas before changing sockets/widgets.",
+    "Use SceneNode for staging, ActingNode for movement recording, and DirectingNode for camera-cut previz.",
+    "Treat motion_data and directing_data as frontend-managed unless a validated structured edit path exists.",
+    "Use captured stage/video outputs as reference/previz assets for downstream image/video generation when useful.",
+    "Preserve original workflow and preset files before nontrivial edits."
+  ],
+  "reviewed_upstream_commit": "9d572b46262ec2b90fa1116380c11d16de7e6d5d",
+  "reviewed_upstream_version": "0.3.0",
+  "reviewed_date": "2026-08-07",
+  "runtime_authority": "Live ComfyUI node schemas, installed presets, and the installed upstream frontend override this static knowledge when versions differ."
+}

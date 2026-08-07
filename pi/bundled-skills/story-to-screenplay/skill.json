@@ -1,0 +1,6 @@
+{
+  "name": "story-to-screenplay",
+  "description": "Adapt stories and books into visual Fountain screenplays.",
+  "entrypoint": "SKILL.md",
+  "license": "GPL-3.0"
+}

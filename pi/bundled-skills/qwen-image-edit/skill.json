@@ -1,0 +1,6 @@
+{
+  "name": "qwen-image-edit",
+  "description": "Create and repair Qwen Image Edit workflows and preservation-aware edit prompts.",
+  "entrypoint": "SKILL.md",
+  "license": "GPL-3.0"
+}

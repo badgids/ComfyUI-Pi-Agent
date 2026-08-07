@@ -1,0 +1,20 @@
+{
+  "name": "minimax-h3-director",
+  "version": "1.0.0",
+  "license": "GPL-3.0",
+  "description": "Original interoperability skill for understanding, planning, creating, editing, validating, and repairing workflows that use ComfyUI-MiniMaxH3-Director.",
+  "source_node_pack": {
+    "repository": "https://github.com/seesee75-commits/ComfyUI-MiniMaxH3-Director",
+    "license": "GPL-3.0",
+    "bundled": false
+  },
+  "triggers": [
+    "MiniMax H3 Director",
+    "MiniMaxH3DirectorCS",
+    "MiniMaxH3PreviewOverrideCS",
+    "MiniMaxH3RetakeStitchCS",
+    "MiniMaxH3EnhancePromptCS",
+    "fl2va",
+    "ref2va"
+  ]
+}

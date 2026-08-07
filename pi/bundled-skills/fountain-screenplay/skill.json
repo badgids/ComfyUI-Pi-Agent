@@ -1,0 +1,6 @@
+{
+  "name": "fountain-screenplay",
+  "description": "Create, parse, validate, repair, and edit Fountain screenplays.",
+  "entrypoint": "SKILL.md",
+  "license": "GPL-3.0"
+}

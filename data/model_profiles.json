@@ -1,0 +1,264 @@
+{
+  "qwen-image": {
+    "modality": "image",
+    "modes": [
+      "text_to_image"
+    ],
+    "formats": [
+      "safetensors",
+      "gguf"
+    ],
+    "components": [
+      "diffusion_model",
+      "qwen_text_encoder",
+      "vae"
+    ],
+    "notes": "Use live ComfyUI schemas and installed templates. Do not assume edit and generation variants are interchangeable."
+  },
+  "qwen-image-edit": {
+    "modality": "image_edit",
+    "modes": [
+      "single_reference",
+      "multi_reference",
+      "text_edit",
+      "inpaint",
+      "outpaint"
+    ],
+    "formats": [
+      "safetensors",
+      "gguf"
+    ],
+    "components": [
+      "edit_diffusion_model",
+      "vision_language_encoder",
+      "vae",
+      "optional_multimodal_projector"
+    ],
+    "acceleration": [
+      "validated_lightning_lora"
+    ],
+    "notes": "Requires image-aware semantic and appearance conditioning. Never substitute a text-to-image model solely by filename similarity."
+  },
+  "krea-2": {
+    "modality": "image",
+    "variants": [
+      "raw",
+      "turbo"
+    ],
+    "formats": [
+      "safetensors",
+      "gguf"
+    ],
+    "components": [
+      "diffusion_model",
+      "qwen3_vl_text_encoder",
+      "vae"
+    ],
+    "notes": "Raw and Turbo use different sampling profiles."
+  },
+  "krea-2-edit": {
+    "modality": "image_edit",
+    "variants": [
+      "raw",
+      "turbo",
+      "identity_edit"
+    ],
+    "formats": [
+      "safetensors",
+      "gguf"
+    ],
+    "components": [
+      "krea2_model",
+      "qwen3_vl_text_encoder",
+      "vae",
+      "required_edit_lora",
+      "edit_patch_nodes"
+    ],
+    "notes": "The edit LoRA is a functional component, not an optional style LoRA. Validate GGUF LoRA compatibility before execution."
+  },
+  "flux-2-klein": {
+    "modality": "image_and_edit",
+    "variants": [
+      "4b_base",
+      "4b_distilled",
+      "9b_base",
+      "9b_distilled"
+    ],
+    "formats": [
+      "safetensors",
+      "gguf"
+    ],
+    "components": [
+      "diffusion_model",
+      "qwen_text_encoder",
+      "flux2_vae"
+    ],
+    "notes": "Base and distilled checkpoints are not acceleration LoRAs. Licensing differs by variant."
+  },
+  "z-image": {
+    "modality": "image",
+    "variants": [
+      "base",
+      "turbo",
+      "omni_base",
+      "edit"
+    ],
+    "formats": [
+      "safetensors",
+      "gguf"
+    ],
+    "components": [
+      "diffusion_model",
+      "qwen_text_encoder",
+      "vae"
+    ],
+    "notes": "Base and Turbo use different guidance and step profiles."
+  },
+  "ace-step-1.5": {
+    "modality": "music",
+    "variants": [
+      "2b_base",
+      "2b_sft",
+      "2b_turbo",
+      "xl_base",
+      "xl_sft",
+      "xl_turbo"
+    ],
+    "formats": [
+      "safetensors",
+      "gguf_component_when_validated",
+      "sidecar"
+    ],
+    "components": [
+      "dit",
+      "optional_language_model_planner",
+      "audio_vae_or_codec"
+    ],
+    "modes": [
+      "song",
+      "instrumental",
+      "cover",
+      "repaint",
+      "reference",
+      "vocal_to_bgm"
+    ],
+    "notes": "Do not mix Base, SFT, and Turbo sampling profiles."
+  },
+  "qwen3-tts": {
+    "modality": "speech",
+    "variants": [
+      "base",
+      "custom_voice",
+      "voice_design"
+    ],
+    "formats": [
+      "safetensors",
+      "gguf_component_when_validated",
+      "sidecar"
+    ],
+    "components": [
+      "language_model",
+      "speech_tokenizer_or_codec",
+      "adapter_nodes"
+    ],
+    "modes": [
+      "voice_clone",
+      "custom_voice",
+      "voice_design",
+      "dialogue",
+      "batch"
+    ],
+    "notes": "Adapters are schema-driven because third-party node packs expose different node classes and dependency requirements."
+  },
+  "stable-audio-3": {
+    "modality": "audio",
+    "variants": [
+      "small_music",
+      "small_sfx",
+      "medium",
+      "large_api"
+    ],
+    "formats": [
+      "safetensors",
+      "gguf_component_when_validated",
+      "api"
+    ],
+    "components": [
+      "audio_diffusion_model",
+      "same_autoencoder",
+      "conditioning"
+    ],
+    "modes": [
+      "text_to_audio",
+      "audio_to_audio",
+      "inpaint",
+      "continue",
+      "lora"
+    ],
+    "notes": "Use Stable Audio 3 latent and autoencoder profiles, not older Stable Audio 1 assumptions."
+  },
+  "minimax-h3-director": {
+    "modality": "video_and_audio",
+    "variants": [
+      "fl2va",
+      "ref2va"
+    ],
+    "formats": [
+      "safetensors",
+      "other_installed_quantizations_when_supported"
+    ],
+    "components": [
+      "fl2va_or_ref2va_diffusion_model",
+      "qwen3_vl_minimax_text_encoder",
+      "minimax_h3_video_vae",
+      "minimax_h3_audio_vae",
+      "MiniMaxH3DirectorCS"
+    ],
+    "modes": [
+      "text_to_video",
+      "first_frame",
+      "last_frame",
+      "first_last_frame",
+      "reference_image",
+      "reference_video",
+      "reference_audio",
+      "retake"
+    ],
+    "notes": "Use the dedicated MiniMax H3 Director integration. FL2VA and ref2VA are different checkpoints; CLIPLoader type must be minimax; prefer the installed node pack's own example workflows and live schemas."
+  },
+  "whatdreamscost-ltx-director": {
+    "modality": "video_and_audio",
+    "variants": [
+      "ltx-director",
+      "prompt-relay",
+      "fflf",
+      "custom-audio",
+      "ic-lora",
+      "retake"
+    ],
+    "formats": [
+      "safetensors",
+      "gguf_when_upstream_example_and_live_loaders_validate"
+    ],
+    "components": [
+      "ltx_video_model",
+      "ltx_text_encoder",
+      "video_vae",
+      "optional_audio_vae",
+      "LTXDirector",
+      "optional_ltxvideo_kjnodes_gguf_components"
+    ],
+    "modes": [
+      "text_to_video",
+      "image_to_video",
+      "first_middle_last_frames",
+      "video_extension",
+      "prompt_relay",
+      "custom_audio",
+      "audio_inpainting",
+      "ic_lora",
+      "retake"
+    ],
+    "notes": "Use the dedicated WhatDreamsCost integration. Prefer the installed pack's own current example workflow; use its GGUF example for GGUF instead of swapping filename extensions. Treat LTXDirector timeline_data/local_prompts/segment_lengths/guide_strength as frontend-managed state and validate live schemas."
+  }
+}

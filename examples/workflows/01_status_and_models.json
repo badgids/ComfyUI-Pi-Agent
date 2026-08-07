@@ -1,0 +1,59 @@
+{
+  "last_node_id": 3,
+  "last_link_id": 1,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "PiAgentStatus",
+      "pos": [40, 40],
+      "size": [360, 120],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {"name": "status_json", "type": "STRING", "links": [1], "slot_index": 0},
+        {"name": "message", "type": "STRING", "links": null, "slot_index": 1}
+      ],
+      "properties": {},
+      "widgets_values": [""]
+    },
+    {
+      "id": 2,
+      "type": "PiModelInventory",
+      "pos": [40, 230],
+      "size": [360, 110],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {"name": "inventory", "type": "MODEL_INVENTORY", "links": null, "slot_index": 0},
+        {"name": "inventory_json", "type": "STRING", "links": null, "slot_index": 1}
+      ],
+      "properties": {},
+      "widgets_values": [500]
+    },
+    {
+      "id": 3,
+      "type": "PiShowText",
+      "pos": [460, 40],
+      "size": [440, 190],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [{"name": "text", "type": "STRING", "link": 1}],
+      "outputs": [{"name": "text", "type": "STRING", "links": null, "slot_index": 0}],
+      "properties": {},
+      "widgets_values": []
+    }
+  ],
+  "links": [[1, 1, 0, 3, 0, "STRING"]],
+  "groups": [
+    {"title": "1 — Check Pi and plugin status", "bounding": [20, 20, 900, 230]},
+    {"title": "2 — Inventory registered models", "bounding": [20, 210, 400, 150]}
+  ],
+  "config": {},
+  "extra": {},
+  "version": 0.4
+}

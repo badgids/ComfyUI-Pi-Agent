@@ -1,0 +1,127 @@
+{
+  "integration_id": "minimax-h3-director",
+  "display_name": "ComfyUI MiniMax H3 Director",
+  "source_repository": "https://github.com/seesee75-commits/ComfyUI-MiniMaxH3-Director",
+  "source_license": "GPL-3.0",
+  "integration_license": "GPL-3.0",
+  "integration_policy": "Original compatibility metadata and adapter logic. Prefer the installed upstream pack's own example workflows and live ComfyUI schemas; do not duplicate frontend-managed state.",
+  "minimum_comfyui": "0.30.0",
+  "node_ids": [
+    "MiniMaxH3DirectorCS",
+    "MiniMaxH3PreviewOverrideCS",
+    "MiniMaxH3RetakeStitchCS",
+    "MiniMaxH3EnhancePromptCS"
+  ],
+  "conditioning_paths": {
+    "fl2va": {
+      "toolbar": "Refs OFF",
+      "checkpoint_pattern": "minimax_h3_fl2va_*",
+      "uses": [
+        "text_to_video",
+        "first_frame",
+        "last_frame"
+      ],
+      "does_not_use": [
+        "middle_reference_images",
+        "reference_video",
+        "reference_audio"
+      ]
+    },
+    "ref2va": {
+      "toolbar": "Refs ON",
+      "checkpoint_pattern": "minimax_h3_ref2va_*",
+      "uses": [
+        "character_slots",
+        "reference_images",
+        "reference_video",
+        "reference_audio"
+      ]
+    }
+  },
+  "model_components": {
+    "diffusion_models": [
+      "minimax_h3_fl2va_*",
+      "minimax_h3_ref2va_*"
+    ],
+    "text_encoder": "qwen3vl_32b_minimax_h3_*",
+    "clip_loader_type": "minimax",
+    "video_vae": "minimax_h3_video_vae_*",
+    "audio_vae": "minimax_h3_audio_vae_*"
+  },
+  "reference_limits": {
+    "images": 9,
+    "videos": 3,
+    "video_each_seconds": [
+      2,
+      15
+    ],
+    "video_total_seconds": 15,
+    "audio": 3,
+    "all_files_total": 12
+  },
+  "output": {
+    "fps": 24,
+    "trained_seconds": [
+      4,
+      15
+    ],
+    "frame_alignment": "17k+5",
+    "native_short_edge": 768,
+    "native_area_cap": "768x1344"
+  },
+  "sampling_starting_profile": {
+    "sampler": "res_multistep",
+    "scheduler": "simple",
+    "steps": 20,
+    "guider": "BasicGuider",
+    "cfg": false,
+    "reference_heavy_note": "beta or normal scheduler may outperform simple for reference-heavy ref2VA prompts"
+  },
+  "prompt_rules": {
+    "minimax_format": [
+      "Use subject_definitions when reusable subjects are bound to Picture references.",
+      "Use retention_analysis for identity/appearance consistency when needed.",
+      "Use detailed_description/integrated_multimodal_description for the storyboard body.",
+      "Shot 1 has no timestamp.",
+      "Later shots use strictly increasing MM:SS.mmm cut timestamps.",
+      "overall_soundscape and non_diegetic_music are separate sections when non-empty."
+    ],
+    "comfyui_format": [
+      "Use the ComfyUI H3 timeline-style [0s-1.5s] notation."
+    ],
+    "character_tags": [
+      "@char1",
+      "@char2",
+      "@char3"
+    ],
+    "reference_tokens": [
+      "<Subject N>",
+      "<Picture N>",
+      "<Video N>",
+      "<Audio N>"
+    ]
+  },
+  "workflow_rules": [
+    "Use separate FL2VA and ref2VA loaders; they are different checkpoints and are not interchangeable.",
+    "Only the selected Director model input should need to load because the node uses lazy model inputs.",
+    "Use CLIPLoader type minimax.",
+    "Decode the joint latent with the MiniMax H3 video VAE and audio VAE on separate branches.",
+    "CreateVideo muxes decoded video and audio; Director.combined_audio can replace generated audio when desired.",
+    "First/last keyframes belong at the beginning/end of the render window; middle images are ref2VA references.",
+    "Prefer the node pack's installed example workflows and live schemas as the creation baseline.",
+    "Do not modify the Director's timeline_data or widgets_values by guessed index.",
+    "The Director Chain node is not registered in the public node pack; split longer productions into shots instead."
+  ],
+  "common_failures": {
+    "nodes_missing": "Requires ComfyUI >= 0.30.0 and a full restart plus browser hard reload after installation/update.",
+    "blank_timeline": "Usually stale frontend JavaScript cache; hard reload the browser.",
+    "clip_invalid": "CLIPLoader type must be minimax.",
+    "video_noise_audio_ok": "Check that video latent is decoded with the video VAE and audio with the audio VAE.",
+    "wrong_reference_behavior": "Check Refs OFF/FL2VA versus Refs ON/ref2VA and the matching checkpoint.",
+    "long_video": "The current pack does not register Director Chain; keep individual H3 generations within approximately 4-15 seconds."
+  },
+  "reviewed_upstream_commit": "ac5c389aac1e2db6ca567457f3d3217a77ee3c61",
+  "reviewed_date": "2026-08-06",
+  "runtime_authority": "Live ComfyUI node schemas and the installed upstream pack override this static knowledge when versions differ.",
+  "reviewed_upstream_version": "0.1.5"
+}

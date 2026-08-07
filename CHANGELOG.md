@@ -1,0 +1,115 @@
+# Changelog
+
+<!-- DOC_NAV_START -->
+**Navigation:** [Project README](README.md) · [Documentation home](docs/index.md) · [Previous: Third-party notices](THIRD_PARTY_NOTICES.md) · [Next: Release notes](RELEASE_NOTES.md)
+<!-- DOC_NAV_END -->
+
+## 0.1.8 — Documentation navigation
+
+- Added a complete documentation hub and bidirectional navigation across the documentation set.
+- Added reachability and broken-link tests for all Markdown documentation.
+- Linked every bundled Pi skill from the skills index and gave each skill a path back to its parent documentation.
+
+
+
+## 0.1.7 — Scene Camera Action and MiniMax H3 Turbo integrations
+
+- Added first-class lazy integration for `arturitu/ComfyUI-scene-camera-action` v0.3.0.
+- Added recognition, planning, workflow creation, workflow inspection, API routes, documentation, profiles, and an original bundled procedure for `SceneNode`, `ActingNode`, and `DirectingNode`.
+- Added SceneState validation for block/group staging JSON, spawn points, transforms, actor-aware layout rules, and conservative editing boundaries.
+- Added first-class lazy integration for `Larryvrh/ComfyUI-MiniMax-H3-Turbo` v1.2.2.
+- Added recognition, planning, installed-example workflow creation, workflow inspection, API routes, documentation, profiles, and an original bundled procedure for `MiniMaxH3TurboLoRA` and `MiniMaxH3TurboSampler`.
+- Added Turbo guidance for the four-step `simple` scheduler baseline, separate video/audio sampling schedules, LoRA strength, `low_vram`, pruned/full bases, H3 frame-grid constraints, and joint AV preservation.
+- Kept both integrations out of startup context and out of unrelated turns; adapters import only after explicit message/workflow matches.
+- Tightened MiniMax H3 Director matching so generic H3 Turbo requests do not load Director knowledge.
+- Added eight independently usable ComfyUI-Pi integration nodes and backend API parity.
+- Preserved the 80%–95% preemptive handoff range and 82.5% default unchanged.
+
+## 0.1.6 — Weak-model guidance and wider handoff range
+
+- Expanded configurable preemptive handoff threshold range to 80%–95%; default remains 82.5%.
+- Added a compact always-applicable ComfyUI-Pi operating contract for weak local models.
+- Added deterministic host-side task classification and lazy bundled-procedure routing.
+- Added explicit current-job envelopes and task-specific completion rules.
+- Added procedure IDs to scope signatures and continuity handoffs so stale hidden guidance is cleared instead of accumulating.
+- Updated the dynamic-context diagnostic node to show selected task procedures as well as third-party integrations.
+- Added handoff structural validation and host-side fresh-context ingestion for weak models.
+- Added small-model reliability documentation and automated routing tests.
+
+
+## 0.1.5 — Preemptive context handoff
+
+- Added a ComfyUI-Pi-owned context lifecycle for long sidebar sessions.
+- Disables Pi's built-in auto-compaction over RPC when supported.
+- Prefers Pi RPC `get_session_stats.contextUsage` for the current context estimate; falls back to assistant usage + model `contextWindow` on older compatible builds.
+- Default preemptive handoff threshold is 82.5%, configurable from 80% through 85%.
+- Creates a bounded Markdown continuity handoff with a separate fresh Pi process so the near-full session never summarizes itself.
+- Falls back to a deterministic bounded handoff if the summarizer process fails.
+- Resets the active Pi conversation with `new_session` and silently ingests the handoff once.
+- Keeps complete workflow JSON out of the handoff; workflows remain available by on-demand context path and compact digest.
+- Removes the temporary summarizer source copy after the durable handoff is created.
+- Adds a sidebar context meter, threshold setting, handoff-size setting, and handoff count/status.
+- Added context-handoff documentation and lifecycle tests.
+
+## 0.1.4 — GPL-3.0, lazy context, and dual Director integrations
+
+- Relicensed ComfyUI-Pi and its original bundled skills to GPL-3.0.
+- Added a lazy integration registry/router so detailed node-pack knowledge is injected only for matching requests/workflows.
+- Removed eager MiniMax H3 Director context from general Pi prompts and sidebar messages.
+- Added first-class WhatDreamsCost-ComfyUI knowledge for LTX Director and its public utility nodes.
+- Added WhatDreamsCost status, plan, workflow, and inspection nodes.
+- Added `Pi Dynamic Integration Context` diagnostics.
+- Added workflow-analyzer reports for WhatDreamsCost graphs.
+- Added installed-upstream-example selection for LTX Director distilled, GGUF, custom-audio, and FFLF workflows.
+- Added detailed integration and context-management documentation.
+- Started supervised Pi RPC with context/resource discovery disabled (`--no-context-files`, `--no-skills`, `--no-extensions`, `--no-prompt-templates`, `--no-themes`, `--no-session`, `--no-approve`).
+- Changed normal matched integration requests to compact, task-targeted context; full bundled skills are reserved for explicit comprehensive guide/tutorial/deep-dive requests.
+- Added scope-aware RPC session resets so hidden integration context does not linger after the relevant node-pack/project/workflow scope changes.
+- Replaced repeated full active-workflow injection in sidebar chat with a compact digest plus an on-demand local workflow context file.
+- Added utility-node-specific lazy context for WhatDreamsCost nodes.
+- Added lazy-import, context-size, Pi launch, and integration routing tests.
+
+## 0.1.3 — MiniMax H3 Director interoperability
+
+- Added MiniMax H3 Director detection, planning, inspection, and installed-example workflow creation.
+- Added FL2VA/ref2VA, prompt, reference, frame-grid, VAE, preview, retake, and Enhance Prompt knowledge.
+- Added MiniMax H3 Director documentation and bundled skill.
+
+## 0.1.2 — Native Pi Agent sidebar chat
+
+- Replaced the status-only optional sidebar with a standard ComfyUI-native AI chat interface.
+- Added persistent chat sessions stored under ComfyUI user data.
+- Added normal selectable text, per-message Copy controls, whole-chat copy, multiline paste support, Enter-to-send, and Shift+Enter for new lines.
+- Added New chat, Clear, Delete, and Stop controls.
+- Added optional current-workflow JSON context, project notes, project directory, provider, model, executable, and timeout overrides.
+- Added backend chat session routes and persistent per-chat Pi RPC clients.
+- Added chat documentation and automated tests.
+
+## 0.1.1 — Explicit project asset directories
+
+- Replaced broad project folders with explicit top-level directories for stories, screenplays, production bibles, mood boards, reference sheets, storyboards, scene and shot plans, prompts, ComfyUI workflows, generated media, editorial media, NLE projects, tutorials, quality control, delivery, and archives.
+- Added `START_HERE.md`, Markdown and DOCX directory guides, `asset-catalog.json`, and `directory-map.json` to every generated project.
+- Added a plain-language `README.md` to every generated directory and subdirectory.
+- Added starter story, screenplay, mood-board, reference-sheet, storyboard, prompt, workflow, scene-list, and shot-list files in their permanent labeled locations.
+- Added tests that verify every generated directory is labeled and every major asset category has an obvious location.
+
+## 0.1.0 — First release
+
+- Added safe ComfyUI custom-node entrypoint with no required third-party Python packages.
+- Added Pi executable discovery and strict JSONL RPC client.
+- Added workflow analysis, validation, and conservative structural repair.
+- Added ComfyUI model inventory, family profiles, and safetensors/GGUF-aware resolver.
+- Added prompt packages and multimodal reference manifests.
+- Added Fountain creation, parsing, validation, screenplay breakdown, and shot-list planning.
+- Added complete project directory and documentation compiler.
+- Added ComfyUI-native tutorial compiler for one or more workflows.
+- Added Markdown, DOCX, and JSON export.
+- Added Kdenlive-first NLE handoff package.
+- Added optional ComfyUI sidebar, disabled by default.
+- Added original bundled Pi skills, examples, documentation, and tests.
+
+---
+
+<!-- DOC_NAV_FOOTER_START -->
+**Navigate:** [Project README](README.md) · [Documentation home](docs/index.md) · [Previous: Third-party notices](THIRD_PARTY_NOTICES.md) · [Next: Release notes](RELEASE_NOTES.md)
+<!-- DOC_NAV_FOOTER_END -->

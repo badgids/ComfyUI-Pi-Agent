@@ -1,0 +1,6 @@
+{
+  "name": "comfyui-tutorial-compile",
+  "description": "Compile one or more workflows into a complete ComfyUI-native tutorial.",
+  "entrypoint": "SKILL.md",
+  "license": "GPL-3.0"
+}

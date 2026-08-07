@@ -1,0 +1,6 @@
+{
+  "name": "gguf-model-resolution",
+  "description": "Resolve validated GGUF alternatives when exact safetensors components are unavailable.",
+  "entrypoint": "SKILL.md",
+  "license": "GPL-3.0"
+}

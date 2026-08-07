@@ -1,0 +1,6 @@
+{
+  "name": "flux-2-klein-image",
+  "description": "Plan FLUX.2 Klein generation and editing.",
+  "entrypoint": "SKILL.md",
+  "license": "GPL-3.0"
+}

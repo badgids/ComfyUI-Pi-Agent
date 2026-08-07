@@ -1,0 +1,6 @@
+{
+  "name": "music-audio-reference",
+  "description": "Analyze and prepare music, ambience, and sound references.",
+  "entrypoint": "SKILL.md",
+  "license": "GPL-3.0"
+}

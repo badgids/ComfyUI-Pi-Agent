@@ -1,0 +1,6 @@
+{
+  "name": "workflow-intelligence",
+  "description": "Analyze, validate, repair, explain, and safely modify ComfyUI workflows.",
+  "entrypoint": "SKILL.md",
+  "license": "GPL-3.0"
+}

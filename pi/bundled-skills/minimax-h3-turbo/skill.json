@@ -1,0 +1,6 @@
+{
+  "name": "minimax-h3-turbo",
+  "version": "1.0.0",
+  "license": "GPL-3.0",
+  "description": "Lazy procedure for MiniMax H3 Turbo LoRA/sampler workflow creation, editing, repair, validation, and low-VRAM handling."
+}

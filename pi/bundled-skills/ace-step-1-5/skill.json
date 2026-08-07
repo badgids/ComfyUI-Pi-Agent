@@ -1,0 +1,6 @@
+{
+  "name": "ace-step-1-5",
+  "description": "Create ACE-Step 1.5 and XL music plans and workflows.",
+  "entrypoint": "SKILL.md",
+  "license": "GPL-3.0"
+}

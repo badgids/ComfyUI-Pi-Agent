@@ -1,0 +1,6 @@
+{
+  "name": "z-image",
+  "description": "Plan Z-Image Base, Turbo, Omni, and Edit workflows.",
+  "entrypoint": "SKILL.md",
+  "license": "GPL-3.0"
+}

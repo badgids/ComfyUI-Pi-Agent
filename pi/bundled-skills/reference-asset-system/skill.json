@@ -1,0 +1,6 @@
+{
+  "name": "reference-asset-system",
+  "description": "Create, edit, version, approve, and apply multimodal reference assets.",
+  "entrypoint": "SKILL.md",
+  "license": "GPL-3.0"
+}

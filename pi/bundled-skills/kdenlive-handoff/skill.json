@@ -1,0 +1,6 @@
+{
+  "name": "kdenlive-handoff",
+  "description": "Prepare a Kdenlive-first editorial package and assembly guide.",
+  "entrypoint": "SKILL.md",
+  "license": "GPL-3.0"
+}

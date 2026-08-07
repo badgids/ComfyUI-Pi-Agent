@@ -1,0 +1,6 @@
+{
+  "name": "image-generation-router",
+  "description": "Select an installed image model and workflow profile for a visual request.",
+  "entrypoint": "SKILL.md",
+  "license": "GPL-3.0"
+}

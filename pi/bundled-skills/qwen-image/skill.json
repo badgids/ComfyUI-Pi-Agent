@@ -1,0 +1,6 @@
+{
+  "name": "qwen-image",
+  "description": "Create and explain Qwen Image text-to-image prompts and workflows.",
+  "entrypoint": "SKILL.md",
+  "license": "GPL-3.0"
+}

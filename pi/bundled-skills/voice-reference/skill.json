@@ -1,0 +1,6 @@
+{
+  "name": "voice-reference",
+  "description": "Create and manage voice references and reusable speaker profiles.",
+  "entrypoint": "SKILL.md",
+  "license": "GPL-3.0"
+}

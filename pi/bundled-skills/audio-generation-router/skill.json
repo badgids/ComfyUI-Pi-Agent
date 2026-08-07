@@ -1,0 +1,6 @@
+{
+  "name": "audio-generation-router",
+  "description": "Route music, speech, ambience, and sound requests to compatible audio models.",
+  "entrypoint": "SKILL.md",
+  "license": "GPL-3.0"
+}

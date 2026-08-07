@@ -1,0 +1,6 @@
+{
+  "name": "comfyui-tutorial-update",
+  "description": "Update an existing tutorial after workflows change.",
+  "entrypoint": "SKILL.md",
+  "license": "GPL-3.0"
+}

@@ -1,0 +1,6 @@
+{
+  "name": "incremental-production-compiler",
+  "description": "Compile a whole project or only selected stages, scenes, shots, missing, or stale assets.",
+  "entrypoint": "SKILL.md",
+  "license": "GPL-3.0"
+}

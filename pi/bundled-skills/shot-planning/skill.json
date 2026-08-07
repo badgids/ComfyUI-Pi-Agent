@@ -1,0 +1,6 @@
+{
+  "name": "shot-planning",
+  "description": "Create and edit production shot lists.",
+  "entrypoint": "SKILL.md",
+  "license": "GPL-3.0"
+}

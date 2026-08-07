@@ -1,0 +1,21 @@
+{
+  "name": "whatdreamscost-comfyui",
+  "version": "1.0.0",
+  "license": "GPL-3.0",
+  "description": "Operating knowledge for understanding, creating, editing, validating, and repairing workflows using WhatDreamsCost-ComfyUI.",
+  "source": {
+    "repository": "https://github.com/WhatDreamsCost/WhatDreamsCost-ComfyUI",
+    "license": "GPL-3.0"
+  },
+  "node_ids": [
+    "LTXDirector",
+    "LTXDirectorGuide",
+    "LTXDirectorCropGuides",
+    "LTXKeyframer",
+    "MultiImageLoader",
+    "LTXSequencer",
+    "SpeechLengthCalculator",
+    "LoadAudioUI",
+    "LoadVideoUI"
+  ]
+}

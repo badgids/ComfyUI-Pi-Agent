@@ -1,0 +1,46 @@
+{
+  "last_node_id": 2,
+  "last_link_id": 1,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "PiTutorialCompile",
+      "pos": [40, 40],
+      "size": [540, 320],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {"name": "tutorial_project", "type": "TUTORIAL_PROJECT", "links": null, "slot_index": 0},
+        {"name": "tutorial_directory", "type": "STRING", "links": [1], "slot_index": 1},
+        {"name": "result_json", "type": "STRING", "links": null, "slot_index": 2}
+      ],
+      "properties": {},
+      "widgets_values": [
+        "[\"/replace/with/first_workflow.json\", \"/replace/with/second_workflow.json\"]",
+        "Complete ComfyUI Project Tutorial",
+        "",
+        "complete"
+      ]
+    },
+    {
+      "id": 2,
+      "type": "PiShowText",
+      "pos": [640, 40],
+      "size": [500, 220],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [{"name": "text", "type": "STRING", "link": 1}],
+      "outputs": [{"name": "text", "type": "STRING", "links": null, "slot_index": 0}],
+      "properties": {},
+      "widgets_values": []
+    }
+  ],
+  "links": [[1, 1, 1, 2, 0, "STRING"]],
+  "groups": [{"title": "Compile one or more workflows into a ComfyUI-native tutorial", "bounding": [20, 20, 1140, 360]}],
+  "config": {},
+  "extra": {},
+  "version": 0.4
+}

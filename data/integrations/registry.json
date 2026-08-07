@@ -1,0 +1,121 @@
+{
+  "schema_version": "1.0",
+  "context_policy": {
+    "load_on_startup": false,
+    "inject_only_when_matched": true,
+    "max_total_context_chars": 24000,
+    "max_context_chars_per_integration": 14000
+  },
+  "integrations": [
+    {
+      "id": "minimax-h3-director",
+      "display_name": "ComfyUI MiniMax H3 Director",
+      "module": "comfy_pi_agent.integrations.minimax_h3_director",
+      "context_function": "build_minimax_h3_director_context",
+      "skill_path": "pi/bundled-skills/minimax-h3-director/SKILL.md",
+      "node_ids": [
+        "MiniMaxH3DirectorCS",
+        "MiniMaxH3PreviewOverrideCS",
+        "MiniMaxH3RetakeStitchCS",
+        "MiniMaxH3EnhancePromptCS"
+      ],
+      "match_terms": [
+        "minimax h3 director",
+        "minimaxh3director",
+        "h3 director",
+        "minimaxh3-director",
+        "fl2va",
+        "ref2va"
+      ],
+      "inspect_function": "inspect_minimax_h3_director_workflow"
+    },
+    {
+      "id": "whatdreamscost-comfyui",
+      "display_name": "WhatDreamsCost ComfyUI",
+      "module": "comfy_pi_agent.integrations.whatdreamscost",
+      "context_function": "build_whatdreamscost_context",
+      "skill_path": "pi/bundled-skills/whatdreamscost-comfyui/SKILL.md",
+      "node_ids": [
+        "LTXDirector",
+        "LTXDirectorGuide",
+        "LTXDirectorCropGuides",
+        "LTXKeyframer",
+        "MultiImageLoader",
+        "LTXSequencer",
+        "SpeechLengthCalculator",
+        "LoadAudioUI",
+        "LoadVideoUI"
+      ],
+      "match_terms": [
+        "whatdreamscost",
+        "what dreams cost",
+        "ltx director",
+        "ltxdirector",
+        "ltx sequencer",
+        "ltx keyframer",
+        "multi image loader",
+        "speech length calculator",
+        "load audio ui",
+        "load video ui",
+        "prompt relay",
+        "ic-lora",
+        "ic lora"
+      ],
+      "inspect_function": "inspect_whatdreamscost_workflow"
+    },
+    {
+      "id": "scene-camera-action",
+      "display_name": "ComfyUI Scene Camera Action",
+      "module": "comfy_pi_agent.integrations.scene_camera_action",
+      "context_function": "build_scene_camera_action_context",
+      "skill_path": "pi/bundled-skills/scene-camera-action/SKILL.md",
+      "node_ids": [
+        "SceneNode",
+        "ActingNode",
+        "DirectingNode"
+      ],
+      "match_terms": [
+        "scene camera action",
+        "scene-camera-action",
+        "comfyui-scene-camera-action",
+        "staging 3d",
+        "staging 3d node",
+        "acting 3d",
+        "acting 3d node",
+        "directing 3d",
+        "directing 3d node",
+        "scenenode",
+        "actingnode",
+        "directingnode",
+        "scene staging builder",
+        "3d previz",
+        "3d pre-viz",
+        "previz scene"
+      ],
+      "inspect_function": "inspect_scene_camera_action_workflow"
+    },
+    {
+      "id": "minimax-h3-turbo",
+      "display_name": "ComfyUI MiniMax H3 Turbo",
+      "module": "comfy_pi_agent.integrations.minimax_h3_turbo",
+      "context_function": "build_minimax_h3_turbo_context",
+      "skill_path": "pi/bundled-skills/minimax-h3-turbo/SKILL.md",
+      "node_ids": [
+        "MiniMaxH3TurboLoRA",
+        "MiniMaxH3TurboSampler"
+      ],
+      "match_terms": [
+        "minimax h3 turbo",
+        "minimax-h3 turbo",
+        "minimax-h3-turbo",
+        "h3 turbo",
+        "h3turbo",
+        "minimaxh3turbo",
+        "minimaxh3turbolora",
+        "minimaxh3turbosampler",
+        "turbo sampler (4-step)"
+      ],
+      "inspect_function": "inspect_minimax_h3_turbo_workflow"
+    }
+  ]
+}

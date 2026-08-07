@@ -1,0 +1,6 @@
+{
+  "name": "storyboard",
+  "description": "Create and edit structured storyboards and shot metadata.",
+  "entrypoint": "SKILL.md",
+  "license": "GPL-3.0"
+}

@@ -1,0 +1,6 @@
+{
+  "name": "krea-2-image",
+  "description": "Plan Krea 2 Raw and Turbo image workflows.",
+  "entrypoint": "SKILL.md",
+  "license": "GPL-3.0"
+}

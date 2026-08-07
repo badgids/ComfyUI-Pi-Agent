@@ -1,0 +1,6 @@
+{
+  "name": "screenplay-breakdown",
+  "description": "Break a screenplay into production requirements.",
+  "entrypoint": "SKILL.md",
+  "license": "GPL-3.0"
+}

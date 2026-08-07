@@ -1,0 +1,71 @@
+{
+  "integration_id": "minimax-h3-turbo",
+  "display_name": "ComfyUI MiniMax H3 Turbo",
+  "source_repository": "https://github.com/Larryvrh/ComfyUI-MiniMax-H3-Turbo",
+  "source_license": "Apache-2.0",
+  "integration_license": "GPL-3.0",
+  "integration_policy": "Original compatibility metadata and adapter logic. Prefer the installed upstream example workflow and live ComfyUI schemas. Do not bundle or relicense upstream code, LoRA weights, or model components.",
+  "node_ids": [
+    "MiniMaxH3TurboLoRA",
+    "MiniMaxH3TurboSampler"
+  ],
+  "major_capabilities": [
+    "MiniMax H3 joint video+audio generation in a 4-step starting profile",
+    "runtime-bypass Turbo LoRA application",
+    "low-VRAM merge mode",
+    "separate video/audio flow schedules in the custom sampler",
+    "full and pruned/curve MiniMax H3 base support",
+    "text-to-video and image-to-video compatibility with the official H3 graph structure"
+  ],
+  "turbo_lora": {
+    "node_id": "MiniMaxH3TurboLoRA",
+    "inputs": ["model", "lora_name", "strength", "low_vram"],
+    "default_strength": 1.0,
+    "strength_range": [-10.0, 10.0],
+    "default_low_vram": false,
+    "low_vram_off": "runtime bypass; sharper; more peak VRAM",
+    "low_vram_on": "merge into weights; lower peak VRAM; can be softer on quantized bases"
+  },
+  "turbo_sampler": {
+    "node_id": "MiniMaxH3TurboSampler",
+    "video_shift": 12.0,
+    "audio_shift": 3.0,
+    "starting_steps": 4,
+    "minimum_documented_steps": 4,
+    "scheduler": "simple",
+    "consumer": "SamplerCustomAdvanced"
+  },
+  "base_compatibility": [
+    "bf16",
+    "int8_convrot",
+    "pruned_int8",
+    "pruned_fp8"
+  ],
+  "h3_constraints": {
+    "fps": 24,
+    "dimension_multiple": 32,
+    "frame_alignment": "17k+5",
+    "example_five_second_frames": 124,
+    "validated_upstream_frame_range": [124, 362]
+  },
+  "workflow_rules": [
+    "Start from the current official H3 T2V/I2V workflow or the installed Turbo example workflow.",
+    "Insert MiniMaxH3TurboLoRA in the MODEL path after the H3 diffusion loader and before the guider/sampling path.",
+    "Feed MiniMaxH3TurboSampler into SamplerCustomAdvanced.",
+    "Use BasicScheduler scheduler=simple with 4 steps as the starting profile; upstream documents values >=4 as valid.",
+    "Preserve H3 conditioning, joint AV latent handling, video/audio VAE decode, and CreateVideo muxing unless the task explicitly changes them.",
+    "Do not substitute a stock single-schedule sampler at 4 steps and claim audio is validated.",
+    "Use live /object_info schemas and the installed example workflow before editing node widgets or connections."
+  ],
+  "common_failures": {
+    "broken_audio_at_4_steps": "Check that MiniMaxH3TurboSampler, not a stock sampler, feeds SamplerCustomAdvanced.",
+    "smear_or_ghosting": "Consider increasing LoRA strength slightly from 1.0 and validate the result.",
+    "oversharp_grain": "Consider reducing LoRA strength below 1.0 and validate the result.",
+    "oom": "Enable low_vram and/or lower resolution or frame count; low_vram may soften quantized-base output.",
+    "wrong_latent": "The Turbo sampler expects the MiniMax H3 joint video+audio latent from EmptyMiniMaxH3LatentAV or MiniMaxH3ImageToVideo."
+  },
+  "reviewed_upstream_commit": "a7624b4c00626a8ae7e78860769389d706565190",
+  "reviewed_upstream_version": "1.2.2",
+  "reviewed_date": "2026-08-07",
+  "runtime_authority": "Live ComfyUI node schemas and the installed upstream example workflow override this static knowledge when versions differ."
+}

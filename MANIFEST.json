@@ -1,0 +1,825 @@
+{
+  "schema_version": "1.0",
+  "project": "ComfyUI Pi Agent Production Suite",
+  "version": "0.1.8",
+  "creator": "Alan D. Guice (Badgids)",
+  "license": "GPL-3.0-only",
+  "file_count": 163,
+  "files": [
+    {
+      "path": ".gitattributes",
+      "size": 100,
+      "sha256": "5c010faa1746fa282ec8cf414bb8785868d36a17956b501d2a81cdfb740b0d72"
+    },
+    {
+      "path": ".github/workflows/tests.yml",
+      "size": 365,
+      "sha256": "416bec8a0968a08119d7a9428bcf8cdfe05aa8fccfbc7f8bdde8ad8dae4514d0"
+    },
+    {
+      "path": ".gitignore",
+      "size": 129,
+      "sha256": "e084d010a6c30be6e3aa3261d5c2eb337c6de8bc4615013380d89537f2afb5d0"
+    },
+    {
+      "path": "AGENTS.md",
+      "size": 1689,
+      "sha256": "8afc6adff4b547e9e31c89cf2eda2b5184b17534c5cb039f84482935a18c6ae2"
+    },
+    {
+      "path": "CHANGELOG.md",
+      "size": 8456,
+      "sha256": "3f32134327d7e3f79e1b813b90bb4b787bc9ebe9dafbeed099a2211a3e727bdd"
+    },
+    {
+      "path": "CODE_OF_CONDUCT.md",
+      "size": 1015,
+      "sha256": "c334631a4c904c0ab3984b4c1fbcc0a3c1ee0afa99b563bc26231365fabb8b02"
+    },
+    {
+      "path": "CONTRIBUTING.md",
+      "size": 1314,
+      "sha256": "9ed9e642a8e3dae9592f3005b7217a6889bcd53551c663ee71bfe9791ff4584b"
+    },
+    {
+      "path": "LICENSE",
+      "size": 35149,
+      "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986"
+    },
+    {
+      "path": "PROJECT_INVENTORY.md",
+      "size": 6990,
+      "sha256": "18e8c53571a0f5269d983afe2b1e0801ca9cb4cd3fc838ac847bd4f639eac478"
+    },
+    {
+      "path": "README.md",
+      "size": 26950,
+      "sha256": "9125e66ac43e86fc59ffeaa1a0d49012e5169b3781813fabf35361461ee6eab5"
+    },
+    {
+      "path": "RELEASE_NOTES.md",
+      "size": 11274,
+      "sha256": "4eb78843fbd57600d7d36d2ad424807edbbbcccc59e29ab366eeb3b216be2ef0"
+    },
+    {
+      "path": "SECURITY.md",
+      "size": 1299,
+      "sha256": "07571cc6ed71a73ff7040f6939e541fd3c16bb169210c7d7c8b1e0772c1f011c"
+    },
+    {
+      "path": "THIRD_PARTY_NOTICES.md",
+      "size": 3878,
+      "sha256": "1cf1f43800a691b65c1768eacce2a2b25c37b1bbd80403eff6de733207c08345"
+    },
+    {
+      "path": "__init__.py",
+      "size": 1063,
+      "sha256": "147ea682e95079985ce5bac4a0554f8d118158bdf2c50b056f18b40dbe6eb9d7"
+    },
+    {
+      "path": "comfy_pi_agent/__init__.py",
+      "size": 60,
+      "sha256": "bf7c79a01931c0a24464bbfad90a9298fde2a8d28bb5982b5997c7f1e1739508"
+    },
+    {
+      "path": "comfy_pi_agent/agent_guidance.py",
+      "size": 14058,
+      "sha256": "1d0120f9ffd1c35b38a22b56abbfa45c9036ffd1ed43858453c85c69ff9ccdd5"
+    },
+    {
+      "path": "comfy_pi_agent/chat.py",
+      "size": 28128,
+      "sha256": "0ec44f14e39d4a796d8494d3869c4a8704bcaf839012a51dbbfa55b72d6c178d"
+    },
+    {
+      "path": "comfy_pi_agent/compat.py",
+      "size": 1394,
+      "sha256": "224df87b298f344d940461e3de28931f8c50cd5f8fa615f000eda6e72dc1be1e"
+    },
+    {
+      "path": "comfy_pi_agent/context_handoff.py",
+      "size": 16773,
+      "sha256": "d5a6aeaa9c4a6d4c6ae6492148e1adae3a3b0c4c5ad1af7e1ef63244c1dfc0fb"
+    },
+    {
+      "path": "comfy_pi_agent/docx_writer.py",
+      "size": 5072,
+      "sha256": "db24d90814edfcd52aacb84efdb0407c856f7edb9d15d69ed3ad8ffc36467288"
+    },
+    {
+      "path": "comfy_pi_agent/fountain.py",
+      "size": 8152,
+      "sha256": "843358efdaf11959e084e2d638786e74a13d0dbc32cffc6d4d05bda37495774a"
+    },
+    {
+      "path": "comfy_pi_agent/integrations/__init__.py",
+      "size": 673,
+      "sha256": "5a19c133a5a8022f626967e911a9fdfe3e1fccc47e286bb24a09c0476c8b4a39"
+    },
+    {
+      "path": "comfy_pi_agent/integrations/minimax_h3_director.py",
+      "size": 25451,
+      "sha256": "2693f9964f2d46c6877cd25dcdedfe561970586e515e1a24e0f57b0182fb5702"
+    },
+    {
+      "path": "comfy_pi_agent/integrations/minimax_h3_turbo.py",
+      "size": 24046,
+      "sha256": "af7d89873d6ed0d94fbb47412491347293c21e8d3599ab69c7a7dedc89ac9ad3"
+    },
+    {
+      "path": "comfy_pi_agent/integrations/router.py",
+      "size": 8542,
+      "sha256": "ba6f4805b37e388565309786e87872afb7df7c054a3836aaad46fb527710a1b5"
+    },
+    {
+      "path": "comfy_pi_agent/integrations/scene_camera_action.py",
+      "size": 24566,
+      "sha256": "7b3e5082eaa3550e2fb805977b166bd5789e3e337bf0131038e461e7fa69672c"
+    },
+    {
+      "path": "comfy_pi_agent/integrations/whatdreamscost.py",
+      "size": 22755,
+      "sha256": "4bd18561737c79931e987f1b8a6b4a1d56755c1e4a1ed6a944b3b4da029e9ce9"
+    },
+    {
+      "path": "comfy_pi_agent/io_utils.py",
+      "size": 2553,
+      "sha256": "36d1222c6e2fd1de6c5418e83256673701ac259e9a5105329d38bca409b092ec"
+    },
+    {
+      "path": "comfy_pi_agent/media_plans.py",
+      "size": 9867,
+      "sha256": "965ef2c7754f2d39fee6b64e43e6b897c25707a1cacd7c541cb7f6856a649e3e"
+    },
+    {
+      "path": "comfy_pi_agent/models.py",
+      "size": 2549,
+      "sha256": "a6d2f495e247a71d0cfaf9a9742e5d5c966dbebd4bbb247367cf85b1d33bb476"
+    },
+    {
+      "path": "comfy_pi_agent/nle.py",
+      "size": 5944,
+      "sha256": "5e2c64225e135a6b75366ba492c6a9e2a3df63946607538b40abd644220f85ed"
+    },
+    {
+      "path": "comfy_pi_agent/nodes.py",
+      "size": 52761,
+      "sha256": "f1ccb99f7d64388dfb30ac4082c34abc1430983e0bb2f4b312d055e1d0cfaf9d"
+    },
+    {
+      "path": "comfy_pi_agent/pi_runtime.py",
+      "size": 16733,
+      "sha256": "4ab7feb7c972aecee31a7ab0610e10b19577f0a0223d39fe8137b8bf8d480323"
+    },
+    {
+      "path": "comfy_pi_agent/projects.py",
+      "size": 37564,
+      "sha256": "2b304ae7959f18aabefde10ebbe7e2ab2dbbb81421a048bb112f6e465623ddcd"
+    },
+    {
+      "path": "comfy_pi_agent/routes.py",
+      "size": 14558,
+      "sha256": "4bd29001c78233d96688a5fa244f2ef19bed6296d78b753ec208b09b4097209e"
+    },
+    {
+      "path": "comfy_pi_agent/tutorials.py",
+      "size": 18888,
+      "sha256": "107464295bde0f0a4511ea412f5b22f8698da2e45d83a39b0225cef53c9ab31d"
+    },
+    {
+      "path": "comfy_pi_agent/version.py",
+      "size": 22,
+      "sha256": "0baf400e56d0444425475e6dae77b2036b24f31d3ea07e2b0c05f97ecbf5f7f5"
+    },
+    {
+      "path": "comfy_pi_agent/workflow.py",
+      "size": 11272,
+      "sha256": "98ac0aec8df3eb1448442fe7ee3d887b2133bb2ce715b8ac7d8cb40d4dd9521b"
+    },
+    {
+      "path": "data/integrations/minimax_h3_director.json",
+      "size": 4780,
+      "sha256": "5b0579cb83c5c35c5560e4d3cb585ec1fa3b857e99d890610215b74c7693b0e7"
+    },
+    {
+      "path": "data/integrations/minimax_h3_turbo.json",
+      "size": 3517,
+      "sha256": "aa172a43b8d8bc491b6a6899205b09e3140ffcb87130d25c8c090178a04a4d88"
+    },
+    {
+      "path": "data/integrations/registry.json",
+      "size": 3554,
+      "sha256": "cafb7f227bfab3c3799b5db62d06321af2d3d0f5333d69d54fde4a3c5516e9b8"
+    },
+    {
+      "path": "data/integrations/scene_camera_action.json",
+      "size": 3542,
+      "sha256": "e19f8074fad45d3fd4a402db369fb77ed43836d23c301966d3af192c13139bb4"
+    },
+    {
+      "path": "data/integrations/whatdreamscost_comfyui.json",
+      "size": 4967,
+      "sha256": "8b6298cee44c5b499ff332c43d57a1fee9b3056111cf0bc3146f2dbd475fb8df"
+    },
+    {
+      "path": "data/model_profiles.json",
+      "size": 6152,
+      "sha256": "49a97e7805ff45b0cf3a57e0c6d34693468762604642671bae5a1a69d088349c"
+    },
+    {
+      "path": "docs/architecture.md",
+      "size": 4251,
+      "sha256": "88bc18cd802b6093fc0058c92c55aa847e1b6ed4c6b08702e341bb2a9664d619"
+    },
+    {
+      "path": "docs/audio-music-voice.md",
+      "size": 1264,
+      "sha256": "cd03d19a89c2547304a189fc2818661a4ca81d3a452e7f854995193574295853"
+    },
+    {
+      "path": "docs/compatibility.md",
+      "size": 3741,
+      "sha256": "49bb97921b0a7e4c33666a0875cd1fc535c2db260f28518f0a903ea69ad3af18"
+    },
+    {
+      "path": "docs/context-handoff.md",
+      "size": 7438,
+      "sha256": "daa4d6fc2ac6799c394a95944ea09cbb3455f9c3b163f7a6452b0f6e2779921f"
+    },
+    {
+      "path": "docs/development.md",
+      "size": 849,
+      "sha256": "9ed42418f5c770bda72d3e4769cbc93f72418e2bb2a79798cf4339de363a3f39"
+    },
+    {
+      "path": "docs/dynamic-integration-context.md",
+      "size": 8613,
+      "sha256": "1fe5aea1cffd17d2055e2dbb7e7c24a967d0c90e7cdf13a1b997b09c07fcefa7"
+    },
+    {
+      "path": "docs/image-generation-editing.md",
+      "size": 1562,
+      "sha256": "54d6dcb3306315d73e4ea7746cc0e43e6a2a89ed9071fd8bd55f77c61c87ceff"
+    },
+    {
+      "path": "docs/index.md",
+      "size": 3532,
+      "sha256": "7fd74930592da49f634203ec0f2e9836ce4529b3dde7dda2d3c33b88ee7d6c9b"
+    },
+    {
+      "path": "docs/installation.md",
+      "size": 2210,
+      "sha256": "75d9b56bfb979ec21e9d60daad7bff48ab4f56e0a378c532449c61368635e792"
+    },
+    {
+      "path": "docs/kdenlive-nle.md",
+      "size": 1301,
+      "sha256": "9048ab87c534e1ccc8561f7dc1409c2519ccc854cd2304f8808e8e9c97a6d82c"
+    },
+    {
+      "path": "docs/limitations.md",
+      "size": 1263,
+      "sha256": "b5cd41ab3ba6f15a7b16c80884a449c407289f248a75bf88a357bfe214c06862"
+    },
+    {
+      "path": "docs/minimax-h3-director.md",
+      "size": 19016,
+      "sha256": "3b311b39b7ada93f97a7f02d5452e919d0811337e756329619506daaa6063c1e"
+    },
+    {
+      "path": "docs/minimax-h3-turbo.md",
+      "size": 6662,
+      "sha256": "d91870537f772031815f22254d55ea13e04d7bb844b1efcc6ccc724e31707547"
+    },
+    {
+      "path": "docs/model-formats-gguf.md",
+      "size": 2088,
+      "sha256": "aedd5b54d7042a9baeec168167f0491d4a8a505c36a62ebb7112fdae19e2cde5"
+    },
+    {
+      "path": "docs/node-reference.md",
+      "size": 11815,
+      "sha256": "918d3c7d9d306fe8899c9d1dba4e26802c293372177853f459dfceb568e020d1"
+    },
+    {
+      "path": "docs/pi-runtime.md",
+      "size": 5752,
+      "sha256": "96200191d5e502e0d76bfc944abd57c72d994d2659d5e5fff90e3920aff3542e"
+    },
+    {
+      "path": "docs/production-compiler.md",
+      "size": 2504,
+      "sha256": "0e0671ec2ccae434a43f1ec0bb2fb0405bf0acbed6e0e61cb4cfd0e78d8bd601"
+    },
+    {
+      "path": "docs/project-directory-layout.md",
+      "size": 5826,
+      "sha256": "1c978ae75296a0bece7ec9baec829d38150ae10fcabd3d64650b974bbf2ccda0"
+    },
+    {
+      "path": "docs/quick-start.md",
+      "size": 3163,
+      "sha256": "5884a9c58abf4f1e213677bd6e5110ecef2b80a4cfc702b12924a58c6a2458db"
+    },
+    {
+      "path": "docs/references-bibles.md",
+      "size": 1858,
+      "sha256": "1c0b783dbaf9da497c0092e4974b21ec705eb689bbdd7534587ce2265d770293"
+    },
+    {
+      "path": "docs/roadmap.md",
+      "size": 1081,
+      "sha256": "37f0e9a68068c1e8bea0c603441cd36997aa35144b9ce5cca4947dd45af31681"
+    },
+    {
+      "path": "docs/scene-camera-action.md",
+      "size": 7325,
+      "sha256": "68b3cd63a8b000e7edab659b209ba0334c9ba08c0eeb911d72988c16987e224d"
+    },
+    {
+      "path": "docs/security.md",
+      "size": 1797,
+      "sha256": "438f37c85d9a29e8766a715c7e608e9fad4b0f66179b5f4477f289ca55329658"
+    },
+    {
+      "path": "docs/sidebar-chat.md",
+      "size": 5260,
+      "sha256": "93ab4f94a25823a912cb8f85c542e7f4776af517f0243c2ef4f2e426512f63f7"
+    },
+    {
+      "path": "docs/small-model-reliability.md",
+      "size": 6372,
+      "sha256": "40890e2885380308c4b7f3aa8cad5bfc832f1a4b6e3d5eaaf75e9a33a9eaed33"
+    },
+    {
+      "path": "docs/troubleshooting.md",
+      "size": 1640,
+      "sha256": "d5e749fb36d7690f65ce1d3a096b4bf52f5cbc3e0966691079589f2f623c8be5"
+    },
+    {
+      "path": "docs/tutorials.md",
+      "size": 1676,
+      "sha256": "e9d415df4b53c622782a991fbebb4d16c2cfc36ee198c0136b3de7cd8fdc56e9"
+    },
+    {
+      "path": "docs/whatdreamscost-comfyui.md",
+      "size": 8536,
+      "sha256": "2733011b3daddfa81414f322b0e85943f8e3be3d0e1a517d6d051a7b12fb2e1b"
+    },
+    {
+      "path": "docs/workflow-intelligence.md",
+      "size": 2687,
+      "sha256": "180a7a52c4007480fa4ca76771673daea5b16d6085f4346dcc8baa6e98181992"
+    },
+    {
+      "path": "docs/writing-screenplay.md",
+      "size": 1559,
+      "sha256": "4fbbbf8120377aae03a6e3885679b38fa33530774430c3edc5b0bff347c9b599"
+    },
+    {
+      "path": "examples/workflows/01_status_and_models.json",
+      "size": 1566,
+      "sha256": "15cc84e10e860d69c8bf864a40591ae0896c19748ba1d528076c60e30347f32e"
+    },
+    {
+      "path": "examples/workflows/02_project_plan.json",
+      "size": 1224,
+      "sha256": "b1f34fb8173b6100e21514f3c8f58f61e470816bf45fa49a111ba2d980583785"
+    },
+    {
+      "path": "examples/workflows/03_tutorial_controller_builder.json",
+      "size": 1344,
+      "sha256": "b27063bb0d84d4dd6df68d66baa6b535a77c3dd1e7ae07c26eb240e2ee9c9697"
+    },
+    {
+      "path": "examples/workflows/README.md",
+      "size": 1132,
+      "sha256": "176824f111aa34cb5b7bd91dc659f5742ae51f67569b02214a3e682064690522"
+    },
+    {
+      "path": "pi/bundled-skills/README.md",
+      "size": 4400,
+      "sha256": "b3bf45638fa5cdceb22bd736c02b9bd52c739aadc9ac7b1b1d62bec2e41e8401"
+    },
+    {
+      "path": "pi/bundled-skills/ace-step-1-5/SKILL.md",
+      "size": 1135,
+      "sha256": "45e941153eb42dc747e747a2aff745b863ca07c669e18a2614ace53b6308d233"
+    },
+    {
+      "path": "pi/bundled-skills/ace-step-1-5/skill.json",
+      "size": 155,
+      "sha256": "8214eb9506c04bfd8d32d82b48d6049d78873fb110f4721a6a091d4433a9ea1e"
+    },
+    {
+      "path": "pi/bundled-skills/audio-generation-router/SKILL.md",
+      "size": 1286,
+      "sha256": "282aa2487584a3c3701abe9534947530cd29badc61d81e3f30fd9b87235ce2e0"
+    },
+    {
+      "path": "pi/bundled-skills/audio-generation-router/skill.json",
+      "size": 190,
+      "sha256": "09ec474397b9b7d51e757b9d73a41cf8f96a7bd9f261f05599f6a9bd627ed3e0"
+    },
+    {
+      "path": "pi/bundled-skills/character-reference/SKILL.md",
+      "size": 1345,
+      "sha256": "408d440c179ec9971d1daa96125acb53ca350322123273e6299d25b60d1854a0"
+    },
+    {
+      "path": "pi/bundled-skills/character-reference/skill.json",
+      "size": 190,
+      "sha256": "a0c6ed2332e2c81598f90078e104163d495994f52d54b3f48a5e591095432719"
+    },
+    {
+      "path": "pi/bundled-skills/comfyui-tutorial-compile/SKILL.md",
+      "size": 1327,
+      "sha256": "56a8766f969818823c43c67cd0d9bddea53ed5bc35fa5876e70dadb3dfe0053b"
+    },
+    {
+      "path": "pi/bundled-skills/comfyui-tutorial-compile/skill.json",
+      "size": 184,
+      "sha256": "7f5e56405f685667184194806b01a496eb3879755aea78069859136899bf92c5"
+    },
+    {
+      "path": "pi/bundled-skills/comfyui-tutorial-update/SKILL.md",
+      "size": 1281,
+      "sha256": "f808c15d966b3f5d2caab25349f49a964c75e5f597d4edceb198e4a6dcdb39fb"
+    },
+    {
+      "path": "pi/bundled-skills/comfyui-tutorial-update/skill.json",
+      "size": 164,
+      "sha256": "2be1aa4a60002fdb366e64717306af93eda64356f86f41884ea4291fbf5cd36d"
+    },
+    {
+      "path": "pi/bundled-skills/complete-production/SKILL.md",
+      "size": 1275,
+      "sha256": "ac56c991e8dcbbe79d3cec37edbd7b7c193baa14b1e357821bffa59fcbdffff2"
+    },
+    {
+      "path": "pi/bundled-skills/complete-production/skill.json",
+      "size": 181,
+      "sha256": "1940fa8caaa43ff9b4a37df806c79c00780e356933500a58883e1f8da6e7c4a2"
+    },
+    {
+      "path": "pi/bundled-skills/document-export/SKILL.md",
+      "size": 1237,
+      "sha256": "3cc86ca37aa6d1d78c84f977e16d143ae72641e83898702ca5b5ba97b5c16084"
+    },
+    {
+      "path": "pi/bundled-skills/document-export/skill.json",
+      "size": 170,
+      "sha256": "7deafa77e30f61a782e262f00887f2c14e02203fcf642cf306da95189af49198"
+    },
+    {
+      "path": "pi/bundled-skills/flux-2-klein-image/SKILL.md",
+      "size": 1254,
+      "sha256": "40581831ad95bb1a966c2755590d97bb1bf828fc46b4b0f5a13449d7cc6942d8"
+    },
+    {
+      "path": "pi/bundled-skills/flux-2-klein-image/skill.json",
+      "size": 149,
+      "sha256": "ceed65b0b3c940c9d90e06298effb035ec153e9126093a982c2181d5986324e6"
+    },
+    {
+      "path": "pi/bundled-skills/fountain-screenplay/SKILL.md",
+      "size": 1275,
+      "sha256": "f78c35e94a0848b15c1c40aafff457191e744747f4d51404b1c0649891a5309f"
+    },
+    {
+      "path": "pi/bundled-skills/fountain-screenplay/skill.json",
+      "size": 172,
+      "sha256": "138d8eee2a356eab630d4005af78e1c1bdb8dc18de7de068f49d03e3b92301c3"
+    },
+    {
+      "path": "pi/bundled-skills/gguf-model-resolution/SKILL.md",
+      "size": 1376,
+      "sha256": "79465b96fb8bb5a4b6b6b334625824ce096215439976aeb11932237b28147d14"
+    },
+    {
+      "path": "pi/bundled-skills/gguf-model-resolution/skill.json",
+      "size": 197,
+      "sha256": "98a8d27370b346ffe21b962db97a35850ea78f122a0576a87f71ab5fe8830b01"
+    },
+    {
+      "path": "pi/bundled-skills/image-generation-router/SKILL.md",
+      "size": 1394,
+      "sha256": "afd40c8806c8d6c6c66f2c68e6ea927dd4c6f639b40be3e6b65a2e9755403c3d"
+    },
+    {
+      "path": "pi/bundled-skills/image-generation-router/skill.json",
+      "size": 187,
+      "sha256": "18b42899a26d847e5ec448e142d85c215a2372091667ec5fe5e7059ff18bfbf7"
+    },
+    {
+      "path": "pi/bundled-skills/incremental-production-compiler/SKILL.md",
+      "size": 1279,
+      "sha256": "64cbd2df129f02f9a0778cb57df631e288501296c22cabd9a4d4c7c2c06c74fd"
+    },
+    {
+      "path": "pi/bundled-skills/incremental-production-compiler/skill.json",
+      "size": 210,
+      "sha256": "beffc75e0a93dfda1c6a9c25ea0e08c3f4acd2ac3ec2351d60ecf33455da00d6"
+    },
+    {
+      "path": "pi/bundled-skills/kdenlive-handoff/SKILL.md",
+      "size": 1339,
+      "sha256": "e1c5f8bc4038c73f59d4f5ead1d234c47f6d17843cb265fbe46b14163f0b67a6"
+    },
+    {
+      "path": "pi/bundled-skills/kdenlive-handoff/skill.json",
+      "size": 168,
+      "sha256": "89ec364de8a74f59995b1a3ee71aa020b038f3e6056a08754e6a28944b9ff1e2"
+    },
+    {
+      "path": "pi/bundled-skills/krea-2-edit/SKILL.md",
+      "size": 1299,
+      "sha256": "95750f1adb8e5dafe92b588902431918f2f3514cbe3dcdfa57f4197d59322756"
+    },
+    {
+      "path": "pi/bundled-skills/krea-2-edit/skill.json",
+      "size": 176,
+      "sha256": "ceb96e14a13ddd7021acd17bd1480c5f59fd870d68ffc1b5e236a33924d7f38e"
+    },
+    {
+      "path": "pi/bundled-skills/krea-2-image/SKILL.md",
+      "size": 1256,
+      "sha256": "4a96f75dd71905ea74d2443264fe3f0028c08c18997dc2814e760aefc4853ef4"
+    },
+    {
+      "path": "pi/bundled-skills/krea-2-image/skill.json",
+      "size": 144,
+      "sha256": "2fc86cd654b186f2df0ff86b9aa23783b5cef404a16ae850f73ed4d43c1ab9f8"
+    },
+    {
+      "path": "pi/bundled-skills/minimax-h3-director/SKILL.md",
+      "size": 7343,
+      "sha256": "04c4b8feb8e113e4431e7a08916fa0b119b478fa01862b7d64a958c1b4836cf3"
+    },
+    {
+      "path": "pi/bundled-skills/minimax-h3-director/skill.json",
+      "size": 613,
+      "sha256": "ee2a0a945c34beeab38454ca1ec7521332b8ba0292193573c1f0305531715c01"
+    },
+    {
+      "path": "pi/bundled-skills/minimax-h3-turbo/SKILL.md",
+      "size": 3930,
+      "sha256": "b58c33332a28aa31f577d08626064783e347d5105542e50c7ad8f1c5bf4dcc89"
+    },
+    {
+      "path": "pi/bundled-skills/minimax-h3-turbo/skill.json",
+      "size": 219,
+      "sha256": "70cf123a20741fa2426c2b132b094a51237cf5b715c6db08205e45d748292dd2"
+    },
+    {
+      "path": "pi/bundled-skills/moodboard/SKILL.md",
+      "size": 1260,
+      "sha256": "5fed86650eab9fe99b9d0347b6a894cf6513ced019996a504f86a9285f97e32b"
+    },
+    {
+      "path": "pi/bundled-skills/moodboard/skill.json",
+      "size": 166,
+      "sha256": "e862a8918abc2a85f0b6c3ced9d1f79acb907e611278b2c5dddaa32b2601bc04"
+    },
+    {
+      "path": "pi/bundled-skills/music-audio-reference/SKILL.md",
+      "size": 1279,
+      "sha256": "48450743593e571ce4495151c35450ebf82867987592eeee2421eb693543adbe"
+    },
+    {
+      "path": "pi/bundled-skills/music-audio-reference/skill.json",
+      "size": 169,
+      "sha256": "ad2dc4fc66307316256983008d9057f18fc020a0f054320e6537e6387ae64c9b"
+    },
+    {
+      "path": "pi/bundled-skills/narrative-project/SKILL.md",
+      "size": 1247,
+      "sha256": "55f50f2aba690259b612db26269727632090ffad03ea11a363eb71de935756df"
+    },
+    {
+      "path": "pi/bundled-skills/narrative-project/skill.json",
+      "size": 183,
+      "sha256": "4d36fb7ca399fa159cc7cfc8b1788bb6760a4968a65edd1fa3cebcec5a7db343"
+    },
+    {
+      "path": "pi/bundled-skills/qwen-image/SKILL.md",
+      "size": 1248,
+      "sha256": "fca9ee26bc0202a5a04565270f16ad21a21f0febd452b214ac9d054ffd5ae0b4"
+    },
+    {
+      "path": "pi/bundled-skills/qwen-image/skill.json",
+      "size": 166,
+      "sha256": "552700df3a8189f419da8e6de33c12c9387067668d46c760b1d58c8bd4bdce99"
+    },
+    {
+      "path": "pi/bundled-skills/qwen-image-edit/SKILL.md",
+      "size": 1257,
+      "sha256": "b148e91fb497737a26682c4352661a26ba6eba7f129c298ea7a001454281acc5"
+    },
+    {
+      "path": "pi/bundled-skills/qwen-image-edit/skill.json",
+      "size": 185,
+      "sha256": "80fd84bd121a7c1c5fcc0b761e4a1916446f9a7e4fde478bacd0b6617f59802f"
+    },
+    {
+      "path": "pi/bundled-skills/qwen3-tts/SKILL.md",
+      "size": 1302,
+      "sha256": "2ca208c57e4462613d711fd5c13d0ceeab43817b9ea53fe931541c2b2517a9dd"
+    },
+    {
+      "path": "pi/bundled-skills/qwen3-tts/skill.json",
+      "size": 158,
+      "sha256": "044ee1ba2c286dbe3333dc2f5d982c708c9218ad99be7064bcbe7e24655308b0"
+    },
+    {
+      "path": "pi/bundled-skills/reference-asset-system/SKILL.md",
+      "size": 1252,
+      "sha256": "1663263ed82cfb913a2772334160aa7a67220351ea18cbbec457104aa381cc63"
+    },
+    {
+      "path": "pi/bundled-skills/reference-asset-system/skill.json",
+      "size": 182,
+      "sha256": "273df326e17bd538848dba42cc0520ccac91a48aa5276904c72fb1f4c0c6d2d7"
+    },
+    {
+      "path": "pi/bundled-skills/scene-camera-action/SKILL.md",
+      "size": 4447,
+      "sha256": "ccd0524364ec32214d30eb891a0b324da8f5fb7811d82900a5cf8ca7e5b35f07"
+    },
+    {
+      "path": "pi/bundled-skills/scene-camera-action/skill.json",
+      "size": 234,
+      "sha256": "6c7ffe390d1ea658dce145bc876b409c948d935a3a15c5f35398c017e76d5cf5"
+    },
+    {
+      "path": "pi/bundled-skills/screenplay-breakdown/SKILL.md",
+      "size": 1252,
+      "sha256": "f1594d3ea115746a0ff9b62561fea21e5211cf8dacdb7f9186f9ba7fd97a43c5"
+    },
+    {
+      "path": "pi/bundled-skills/screenplay-breakdown/skill.json",
+      "size": 158,
+      "sha256": "aee469d1dbf49d3f62ae5c526f0142435c79c28cbab4dcd5d293d20df0309264"
+    },
+    {
+      "path": "pi/bundled-skills/shot-planning/SKILL.md",
+      "size": 1277,
+      "sha256": "195f78f0a102c549ef70645d3035d0ac1be460513dae4d1f456c15e931eed96a"
+    },
+    {
+      "path": "pi/bundled-skills/shot-planning/skill.json",
+      "size": 141,
+      "sha256": "b3d71c7184a1a395c34fb89fce20ee2f66a1621862c363a9f486cf82427cccd3"
+    },
+    {
+      "path": "pi/bundled-skills/stable-audio-3/SKILL.md",
+      "size": 1300,
+      "sha256": "3343a120db8063ab620bc106f4eefbea4d365b45ddbd69e1293e61a9b35c2586"
+    },
+    {
+      "path": "pi/bundled-skills/stable-audio-3/skill.json",
+      "size": 157,
+      "sha256": "de953adeef4fac0248c343042d5ed66e3d4ee9bfdcb894cbed6ba5ae135051bb"
+    },
+    {
+      "path": "pi/bundled-skills/story-to-screenplay/SKILL.md",
+      "size": 1253,
+      "sha256": "b065a5fd53e22fa5e77a7d7883150ec1dfa3c918c7f742e803727e8820e8f159"
+    },
+    {
+      "path": "pi/bundled-skills/story-to-screenplay/skill.json",
+      "size": 166,
+      "sha256": "1528758b6915ccaf44a9060957acf712c4edbd5bfb15269ca78346c1a7360130"
+    },
+    {
+      "path": "pi/bundled-skills/storyboard/SKILL.md",
+      "size": 1309,
+      "sha256": "335e69d2b67a1024601a619c37e0a7a3fd89d01100ddc53c21061ee57e2a74c5"
+    },
+    {
+      "path": "pi/bundled-skills/storyboard/skill.json",
+      "size": 157,
+      "sha256": "2a841e38b4d9a464823d679145a89342519b2a4332eb40233c54ab4d3d9d2de0"
+    },
+    {
+      "path": "pi/bundled-skills/voice-reference/SKILL.md",
+      "size": 1250,
+      "sha256": "47d6e5012c2c6810775c068355f258bffd428d5823678660b991bd6178b0d1a7"
+    },
+    {
+      "path": "pi/bundled-skills/voice-reference/skill.json",
+      "size": 170,
+      "sha256": "8d8849e7c1e81e9f9eb726d0d8217bc8e27f509c669c9e8e1a641674d2f26316"
+    },
+    {
+      "path": "pi/bundled-skills/whatdreamscost-comfyui/SKILL.md",
+      "size": 9645,
+      "sha256": "674f745db76bd71a1067ebb425518a7d744086b3a059851b89b1d8bdb2fb53ac"
+    },
+    {
+      "path": "pi/bundled-skills/whatdreamscost-comfyui/skill.json",
+      "size": 575,
+      "sha256": "5fd1e7141c6f4dfbb7f4442e3487675f21024f89504c5c00a1926efbbdb57679"
+    },
+    {
+      "path": "pi/bundled-skills/workflow-intelligence/SKILL.md",
+      "size": 1246,
+      "sha256": "544e40dd55197e81a7d0cbd5046565fc3d6663c2622a6e4c95c596de9324459d"
+    },
+    {
+      "path": "pi/bundled-skills/workflow-intelligence/skill.json",
+      "size": 183,
+      "sha256": "0f6a694b2885d120fa751669cd397fed5a321a812ee6f5ef788bba1966e9baf6"
+    },
+    {
+      "path": "pi/bundled-skills/z-image/SKILL.md",
+      "size": 1105,
+      "sha256": "89a9f2a9cdd622cb420eb1559822ff88878d0c9b99510bc35b3f10f77dacc7c7"
+    },
+    {
+      "path": "pi/bundled-skills/z-image/skill.json",
+      "size": 148,
+      "sha256": "838c22cc7a16e7d3eb024e3e3ac26b1b6d8e72b1676f26b9dd79eab511e254ed"
+    },
+    {
+      "path": "pyproject.toml",
+      "size": 641,
+      "sha256": "763d70257cbe167650d09c152b60b708bf0f59190f9d70c92e1c477eba1e9622"
+    },
+    {
+      "path": "requirements.txt",
+      "size": 194,
+      "sha256": "cb57da9a0a36365d872c3f85c71fabcc56fa8d46a0a92cb98b2fcfaa6a899055"
+    },
+    {
+      "path": "tests/test_agent_guidance.py",
+      "size": 2010,
+      "sha256": "b2b21c72abddcde8f15b740fd7f43710456ebefc4fdf2fbed7aa70714ed7341a"
+    },
+    {
+      "path": "tests/test_chat.py",
+      "size": 4649,
+      "sha256": "631f49173bc50d4739d834eb26c4645d592f31276ad0f0576e6c7be930200507"
+    },
+    {
+      "path": "tests/test_context_handoff.py",
+      "size": 8233,
+      "sha256": "e77bf2dceb7c8eda9558036d76635edbece8ebca744df1ce2f5d071e0c0dad69"
+    },
+    {
+      "path": "tests/test_documentation_navigation.py",
+      "size": 3397,
+      "sha256": "504a35a12e47a6d8e4f788a7f7e059487a7397dce5da446cc341ddc682b2ac01"
+    },
+    {
+      "path": "tests/test_documents_projects.py",
+      "size": 4059,
+      "sha256": "181114c9c1abf9786ecd3af5466badb66ab51fa98c38ed238d5f32ec2b9f2c9d"
+    },
+    {
+      "path": "tests/test_fountain.py",
+      "size": 1096,
+      "sha256": "86d7935e7f2de7c4e159f63cbdee349c033aea8a97adf5af827f30a49105768e"
+    },
+    {
+      "path": "tests/test_integrations.py",
+      "size": 18664,
+      "sha256": "daffe8e56f3493aaeff26f047fccc0818585429243c9bc3edc88125596eb9842"
+    },
+    {
+      "path": "tests/test_license_and_release.py",
+      "size": 1054,
+      "sha256": "591ef2b54454af6b302d28bcc179d575d1289ce867ac1c58aa691da119c32ce1"
+    },
+    {
+      "path": "tests/test_media_plans.py",
+      "size": 1598,
+      "sha256": "81f762c82161f8cf90f72da283b6543a566ebc183258719bb1241a9928cb676b"
+    },
+    {
+      "path": "tests/test_nodes.py",
+      "size": 1298,
+      "sha256": "0c8cd41e016a784b0230d0d1736f9f9a58dd37a9ac4297376ad1167830cc0716"
+    },
+    {
+      "path": "tests/test_package_entrypoint.py",
+      "size": 779,
+      "sha256": "95a75c046e1a003135ddd5cd975540bc5285ee6c7b3ab349dd0a767e5140f9e5"
+    },
+    {
+      "path": "tests/test_tutorial_nle.py",
+      "size": 2000,
+      "sha256": "aa46ebe1377f8d08687341e70d2e820273ae420fd5866d2ee0207709d3ffbb60"
+    },
+    {
+      "path": "tests/test_workflow.py",
+      "size": 1094,
+      "sha256": "75b2dc067edce478a233d7f4f98581e4f49c789cf6489fe81c4183916451d9db"
+    },
+    {
+      "path": "web/pi_agent.js",
+      "size": 23675,
+      "sha256": "6974dceecee639f65ba1e9347002e01446f7c31e2ff10e7d0d7d10171cc8eebc"
+    }
+  ]
+}
