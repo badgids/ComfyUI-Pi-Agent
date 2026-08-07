@@ -4,7 +4,7 @@ A ComfyUI custom-node package that connects **Pi Agent** reasoning with practica
 
 **Creator:** Alan D. Guice (**Badgids**)  
 **License:** GPL-3.0  
-**Release:** 0.1.15
+**Release:** 0.1.16
 
 > This project is designed to be powerful without being confusing. The documentation uses plain language, short steps, and concrete examples. Technical details are kept intact instead of being hidden or oversimplified.
 
@@ -28,8 +28,9 @@ ComfyUI Pi Agent helps organize that work. It can:
 - compile one or more workflows into a thorough **ComfyUI-native tutorial**;
 - export Markdown, DOCX, Fountain, and JSON files;
 - prepare a Kdenlive-first editorial package with a portable timeline fallback;
-- call Pi through its JSONL RPC mode when Pi is installed and configured;
-- chat with Pi directly from a standard ComfyUI left-sidebar chat interface without adding a node;
+- call Pi through its JSONL RPC mode for structured/headless features when Pi is installed and configured;
+- run the **real interactive Pi CLI** in the ComfyUI left sidebar through a native PTY, with Pi reasoning, tools, slash commands, menus, and errors rendered directly;
+- keep a structured Chat view as a secondary/fallback interface, with reasoning and tool activity visible by default and independently hideable;
 - recognize, explain, inspect, plan, create, and safely edit workflows for **ComfyUI-MiniMaxH3-Director** when that pack is installed;
 - recognize, explain, inspect, plan, create, and safely edit workflows for **WhatDreamsCost-ComfyUI**, including LTX Director, Prompt Relay, keyframes, IC-LoRA, audio, and its utility nodes;
 - understand and operate **ComfyUI-scene-camera-action**, including SceneState staging presets, human/car acting, camera directing, and captured previz reference output;
@@ -44,7 +45,7 @@ Every major tool is available as a normal ComfyUI node. The optional sidebar is 
 
 ## Important first-release boundary
 
-Version 0.1.15 provides the working foundation, project compilers, tutorial compiler, document tools, workflow intelligence, Pi RPC connection, manifests, profiles, examples, and tests.
+Version 0.1.16 provides the working foundation, project compilers, tutorial compiler, document tools, workflow intelligence, Pi RPC connection, manifests, profiles, examples, and tests.
 
 It does **not** bundle large AI model weights, third-party custom-node packs, Pi itself, Node.js, FFmpeg, or Kdenlive. It detects those tools when they are installed. Missing optional tools do not stop ComfyUI from starting.
 
@@ -70,23 +71,24 @@ The plugin never downloads anything during import.
 
 6. [Pi runtime and model-provider setup](docs/pi-runtime.md)
 7. [Small local model reliability](docs/small-model-reliability.md)
-8. [Pi Agent sidebar chat](docs/sidebar-chat.md)
-9. [Local LLM servers and Pi slash commands](docs/local-llm-slash-commands.md)
-10. [Workflow intelligence](docs/workflow-intelligence.md)
-11. [Model discovery, safetensors, and GGUF](docs/model-formats-gguf.md)
-12. [Dynamic integration context](docs/dynamic-integration-context.md)
-13. [Preemptive context handoff](docs/context-handoff.md)
+8. [Pi Agent sidebar](docs/sidebar-chat.md)
+9. [Real Pi terminal](docs/pi-terminal.md)
+10. [Local LLM servers and Pi slash commands](docs/local-llm-slash-commands.md)
+11. [Workflow intelligence](docs/workflow-intelligence.md)
+12. [Model discovery, safetensors, and GGUF](docs/model-formats-gguf.md)
+13. [Dynamic integration context](docs/dynamic-integration-context.md)
+14. [Preemptive context handoff](docs/context-handoff.md)
 
 ## Media and production guides
 
-14. [Image generation and editing profiles](docs/image-generation-editing.md)
-15. [Music, speech, and audio profiles](docs/audio-music-voice.md)
-16. [Project directory layout and asset organization](docs/project-directory-layout.md)
-17. [References, mood boards, storyboards, and bibles](docs/references-bibles.md)
-18. [Stories, books, Fountain, and screenplays](docs/writing-screenplay.md)
-19. [Complete and incremental production compiler](docs/production-compiler.md)
-20. [ComfyUI-native tutorial compiler](docs/tutorials.md)
-21. [Kdenlive and NLE handoff](docs/kdenlive-nle.md)
+15. [Image generation and editing profiles](docs/image-generation-editing.md)
+16. [Music, speech, and audio profiles](docs/audio-music-voice.md)
+17. [Project directory layout and asset organization](docs/project-directory-layout.md)
+18. [References, mood boards, storyboards, and bibles](docs/references-bibles.md)
+19. [Stories, books, Fountain, and screenplays](docs/writing-screenplay.md)
+20. [Complete and incremental production compiler](docs/production-compiler.md)
+21. [ComfyUI-native tutorial compiler](docs/tutorials.md)
+22. [Kdenlive and NLE handoff](docs/kdenlive-nle.md)
 
 ## First-class node-pack integrations
 
@@ -547,33 +549,28 @@ Read [docs/kdenlive-nle.md](docs/kdenlive-nle.md).
 
 ---
 
-# Optional ComfyUI sidebar chat
+# Optional ComfyUI Pi sidebar
 
-The sidebar accepts Pi's documented built-in slash-command names through a host-side RPC bridge. Provider/model switching is intentionally simple: directly beneath the chat box choose **Provider** first, then **Model**. Pi built-in providers use Pi's live available-model catalog; local hosts such as **llama.cpp**, **Ollama**, **LM Studio**, and **vLLM** populate the models their own server reports. llama.cpp router entries include unloaded presets. When a selected router model is unloaded or sleeping, ComfyUI-Pi explicitly wakes it and waits for the routed model endpoint to become usable before Pi can send the first prompt; the wait budget is the user's configured chat timeout. The dropdowns include explicit dark-mode option styling. Common local endpoints are automatic; open the advanced local-host settings only when your server uses a different address. The chat settings control is a compact gear icon instead of a text button. Type `/` in the composer for the command picker. See [Local LLM servers and Pi slash commands](docs/local-llm-slash-commands.md).
+The optional **Pi Agent** sidebar now has two views:
 
-The optional sidebar is disabled by default. Enable it in ComfyUI settings:
+- **Terminal** — the default when native PTY support is available. This is the real interactive `pi` CLI rendered inside ComfyUI, so Pi itself owns reasoning display, tool calls/results, slash commands, interactive menus, keyboard behavior, and streaming output.
+- **Chat** — the structured ComfyUI chat retained as a secondary/fallback view. It recovers final answers with Pi's authoritative RPC text command when necessary and shows reasoning/tool activity by default, with settings to hide either.
+
+Directly below the active view are **Provider** then **Model** selectors. Local hosts are discovered only when selected; model IDs come from the live host rather than hardcoded model lists. Common endpoints are automatic and endpoint editing remains advanced/optional.
+
+Terminal mode still uses ComfyUI-Pi's sparse context router. Pi starts with unrelated context/skill/extension discovery disabled and loads one explicit bridge extension that adds only the task procedure or node-pack knowledge needed for the current user request. The user's terminal input is not replaced by a giant generated prompt.
+
+The preemptive handoff system also remains active. Terminal mode watches Pi's real context usage, writes a bounded durable handoff at the configured 80–95% threshold (82.5% default), starts a fresh Pi session with native `/new`, and injects the handoff exactly once on the next real task. Pi's normal threshold-triggered auto-compaction is cancelled by the bridge; manual `/compact` and emergency overflow recovery remain available.
+
+Enable the optional sidebar in ComfyUI settings:
 
 ```text
 Pi Agent: Show optional sidebar after restart
 ```
 
-Reload or restart the ComfyUI frontend after changing it.
+There is no separate user-facing WebUI or second browser application. The real terminal is a PTY supervised by the ComfyUI backend and rendered in the existing ComfyUI sidebar.
 
-The **Pi Agent** sidebar now opens as a standard AI chat interface. You can talk to and instruct Pi directly without placing a Pi node on the canvas. It includes persistent chat sessions, normal selectable message text, per-message **Copy** buttons, **Copy chat**, a multiline paste-friendly composer, Enter-to-send, Shift+Enter for a new line, a Stop button, and optional current-workflow/project context.
-
-Normal text selection is intentionally enabled throughout the conversation, so you can drag-select any portion of a response and use Ctrl/Cmd+C and Ctrl/Cmd+V as expected.
-
-The chat also auto-recognizes MiniMax H3 Director workflows. For example:
-
-```text
-Explain this MiniMax H3 Director workflow.
-Create an H3 Director workflow for a 7-second shot with two character references.
-Check whether this Director timeline exceeds the ref2VA limits.
-```
-
-The sidebar remains optional. Every major plugin capability is still available through ComfyUI nodes, and this is not a separate WebUI.
-
-Read [docs/sidebar-chat.md](docs/sidebar-chat.md).
+Read [Pi Agent sidebar](docs/sidebar-chat.md), [Real Pi terminal](docs/pi-terminal.md), and [Local LLM servers and Pi slash commands](docs/local-llm-slash-commands.md).
 
 ---
 

@@ -1,10 +1,10 @@
 {
   "schema_version": "1.0",
   "project": "ComfyUI Pi Agent Production Suite",
-  "version": "0.1.15",
+  "version": "0.1.16",
   "creator": "Alan D. Guice (Badgids)",
   "license": "GPL-3.0-only",
-  "file_count": 168,
+  "file_count": 177,
   "files": [
     {
       "path": ".gitattributes",
@@ -28,8 +28,8 @@
     },
     {
       "path": "CHANGELOG.md",
-      "size": 13260,
-      "sha256": "ae90c5fbe9ddd139be5f9a311d2548fc5a4075d68ad04deb4887c69f39617853"
+      "size": 15078,
+      "sha256": "10ef0a74ea64679f26f7cf0ee54b30e2934f288f145cd7fb859779b8e4989d2e"
     },
     {
       "path": "CODE_OF_CONDUCT.md",
@@ -48,18 +48,18 @@
     },
     {
       "path": "PROJECT_INVENTORY.md",
-      "size": 7609,
-      "sha256": "dac8dbd95785cdd99cf31acde80c79805865183b83d93f4e85620f68b5335398"
+      "size": 7914,
+      "sha256": "9edbea25a5b9aba20945d03c6b4dababdfe05b428e57aa7a375ed5e5e6190b35"
     },
     {
       "path": "README.md",
-      "size": 28997,
-      "sha256": "f9ea8a5c29d79601308123bf1f4f49b3a437640d52c5af7e0a05e0e60fbb5bfd"
+      "size": 29022,
+      "sha256": "1e4843501b64d8492912391ba1d800e2db8c492c55a916a3a97fd7e2f896c2cd"
     },
     {
       "path": "RELEASE_NOTES.md",
-      "size": 19932,
-      "sha256": "f80c051825d722ee004ecabba24f7f28de8e2bcd4a9f5cc1d3d69cd7473a4c7c"
+      "size": 22503,
+      "sha256": "533f0223513a5d5ede934eaae838beb374cfb094b3c7a9a60b60e35618a21f6d"
     },
     {
       "path": "SECURITY.md",
@@ -68,8 +68,8 @@
     },
     {
       "path": "THIRD_PARTY_NOTICES.md",
-      "size": 3878,
-      "sha256": "1cf1f43800a691b65c1768eacce2a2b25c37b1bbd80403eff6de733207c08345"
+      "size": 4300,
+      "sha256": "c79ab0a2b0be2664d7f2a2749adad343372e2457f00d4829f45e5a3547c3a821"
     },
     {
       "path": "__init__.py",
@@ -88,8 +88,8 @@
     },
     {
       "path": "comfy_pi_agent/chat.py",
-      "size": 75306,
-      "sha256": "32e2a043583763e14730e3dbdfbf8dcbed2ed5eda188dee29ab88a5f6b30e451"
+      "size": 76075,
+      "sha256": "365e132554be922c8c30ecb8b3d25675a97199dcad270e03fba9bd5c4a2d7988"
     },
     {
       "path": "comfy_pi_agent/compat.py",
@@ -98,8 +98,8 @@
     },
     {
       "path": "comfy_pi_agent/context_handoff.py",
-      "size": 16773,
-      "sha256": "d5a6aeaa9c4a6d4c6ae6492148e1adae3a3b0c4c5ad1af7e1ef63244c1dfc0fb"
+      "size": 17019,
+      "sha256": "a3abafac9713a1bcab10fbaaa67db23458fea8069d4e97690fc2050142a85cd0"
     },
     {
       "path": "comfy_pi_agent/docx_writer.py",
@@ -178,8 +178,8 @@
     },
     {
       "path": "comfy_pi_agent/pi_runtime.py",
-      "size": 22928,
-      "sha256": "ca02bfd9e637c8327efe56b3173b22c12fb95a2b0ac83b071e7e10ec64f78946"
+      "size": 26085,
+      "sha256": "2c3703210d1239ae69d1b66a2928306d9ae0a2fdc67bba0554eacfff30291482"
     },
     {
       "path": "comfy_pi_agent/projects.py",
@@ -188,13 +188,23 @@
     },
     {
       "path": "comfy_pi_agent/provider_catalog.py",
-      "size": 6634,
-      "sha256": "852c3fc508dc0d4dd6812bd456f42bcdc611a344506970c7b506d9dff2da60c0"
+      "size": 6730,
+      "sha256": "3a3a409c069413d9bf3e4418782d4645b3893287f39f6a43b309be7f951a7c23"
     },
     {
       "path": "comfy_pi_agent/routes.py",
-      "size": 19794,
-      "sha256": "1fbc508117d60e741cf5e857e3736e355cb894c20eda76ae0ea91890d47ffb5b"
+      "size": 28107,
+      "sha256": "d8ca0a939b4144506b61b8ec442cc87349eea8f2f03bb37436798d27f13af0be"
+    },
+    {
+      "path": "comfy_pi_agent/terminal.py",
+      "size": 26661,
+      "sha256": "deafaa0b35f0dc9a7af182956264833ee90f7fbd92c4e75d228f3aca85e20fc4"
+    },
+    {
+      "path": "comfy_pi_agent/terminal_bridge_cli.py",
+      "size": 2222,
+      "sha256": "95339b5a1ca26fc65987fce860a001094882fc589c2d7e7fa12200420ef88889"
     },
     {
       "path": "comfy_pi_agent/tutorials.py",
@@ -204,7 +214,7 @@
     {
       "path": "comfy_pi_agent/version.py",
       "size": 23,
-      "sha256": "a9bd136a5a52b7509ba6b9c5c9e2d42aa82ba8db669e4f48a1043bba60285d56"
+      "sha256": "c85f3cfbcbcbf2478b7ba8024ee9b29b0d14a0c916912ac99f32ebbb8cc108b4"
     },
     {
       "path": "comfy_pi_agent/workflow.py",
@@ -243,8 +253,8 @@
     },
     {
       "path": "docs/architecture.md",
-      "size": 4251,
-      "sha256": "405ca996f027b52c098e94f9bbed293f549839b60501a0d4cc22f2ff6c647341"
+      "size": 4940,
+      "sha256": "2c9e56e8becde616038e31bca4a5110290250632edd5648c065120b1eb43a32a"
     },
     {
       "path": "docs/audio-music-voice.md",
@@ -258,8 +268,8 @@
     },
     {
       "path": "docs/context-handoff.md",
-      "size": 7438,
-      "sha256": "daa4d6fc2ac6799c394a95944ea09cbb3455f9c3b163f7a6452b0f6e2779921f"
+      "size": 8534,
+      "sha256": "94dc9dd45278ca2adcd9aabcf032261c92c3a3688cf44ac9315facfcc7d5595d"
     },
     {
       "path": "docs/development.md",
@@ -268,8 +278,8 @@
     },
     {
       "path": "docs/dynamic-integration-context.md",
-      "size": 8613,
-      "sha256": "1fe5aea1cffd17d2055e2dbb7e7c24a967d0c90e7cdf13a1b997b09c07fcefa7"
+      "size": 9095,
+      "sha256": "ca9aa06dc7adba429c0881b06ae830d88e9ff3149c0f4be78249835414be5b66"
     },
     {
       "path": "docs/image-generation-editing.md",
@@ -278,8 +288,8 @@
     },
     {
       "path": "docs/index.md",
-      "size": 3679,
-      "sha256": "0d05aac069d569876b94cc28bf2feaca255963556410c7f8304852fea1fef442"
+      "size": 3744,
+      "sha256": "5b1e1a1de788f47c4a35394a46fa4faa455335e10214e315f433898d313d72af"
     },
     {
       "path": "docs/installation.md",
@@ -298,8 +308,8 @@
     },
     {
       "path": "docs/local-llm-slash-commands.md",
-      "size": 15002,
-      "sha256": "e775e72a7535cdb657c4146480262987bfa685ff04a1c86be4c3abb3cc2fa713"
+      "size": 15465,
+      "sha256": "4b278f59ee898b11d0a2da0b57be1963224b327e457a1e0e8fd064699b6c77be"
     },
     {
       "path": "docs/minimax-h3-director.md",
@@ -323,8 +333,13 @@
     },
     {
       "path": "docs/pi-runtime.md",
-      "size": 8515,
-      "sha256": "7b31dcabbff1c0150e908b0d70e903ffb5ea9a608e1e9639ceb6736cf36fe15b"
+      "size": 9723,
+      "sha256": "68e3029dd7de19fdd7f85743e3e9f3858351ffe8e4d882b17b095e7045d71fbc"
+    },
+    {
+      "path": "docs/pi-terminal.md",
+      "size": 5682,
+      "sha256": "ea345e487434e5de5fc6a455835d7c74de5afe6a4e4725b22b24d635f4d0212b"
     },
     {
       "path": "docs/production-compiler.md",
@@ -363,8 +378,8 @@
     },
     {
       "path": "docs/sidebar-chat.md",
-      "size": 8673,
-      "sha256": "9ed4e01288f8b511418ad80d5ac3bd43e09ba2da451f14502bf8e58b45c8039b"
+      "size": 8997,
+      "sha256": "131381598fe7b43d16db5b27d29d75e1c23d0978746c960ca78dec467372fbb8"
     },
     {
       "path": "docs/small-model-reliability.md",
@@ -622,16 +637,6 @@
       "sha256": "4d36fb7ca399fa159cc7cfc8b1788bb6760a4968a65edd1fa3cebcec5a7db343"
     },
     {
-      "path": "pi/bundled-skills/qwen-image/SKILL.md",
-      "size": 1248,
-      "sha256": "fca9ee26bc0202a5a04565270f16ad21a21f0febd452b214ac9d054ffd5ae0b4"
-    },
-    {
-      "path": "pi/bundled-skills/qwen-image/skill.json",
-      "size": 166,
-      "sha256": "552700df3a8189f419da8e6de33c12c9387067668d46c760b1d58c8bd4bdce99"
-    },
-    {
       "path": "pi/bundled-skills/qwen-image-edit/SKILL.md",
       "size": 1257,
       "sha256": "b148e91fb497737a26682c4352661a26ba6eba7f129c298ea7a001454281acc5"
@@ -640,6 +645,16 @@
       "path": "pi/bundled-skills/qwen-image-edit/skill.json",
       "size": 185,
       "sha256": "80fd84bd121a7c1c5fcc0b761e4a1916446f9a7e4fde478bacd0b6617f59802f"
+    },
+    {
+      "path": "pi/bundled-skills/qwen-image/SKILL.md",
+      "size": 1248,
+      "sha256": "fca9ee26bc0202a5a04565270f16ad21a21f0febd452b214ac9d054ffd5ae0b4"
+    },
+    {
+      "path": "pi/bundled-skills/qwen-image/skill.json",
+      "size": 166,
+      "sha256": "552700df3a8189f419da8e6de33c12c9387067668d46c760b1d58c8bd4bdce99"
     },
     {
       "path": "pi/bundled-skills/qwen3-tts/SKILL.md",
@@ -762,9 +777,14 @@
       "sha256": "838c22cc7a16e7d3eb024e3e3ac26b1b6d8e72b1676f26b9dd79eab511e254ed"
     },
     {
+      "path": "pi/terminal-bridge.ts",
+      "size": 5019,
+      "sha256": "8eb27322be6651e7c7b328bf9660ed3e6dd4ac6110c1f401ad297595ff23a7c5"
+    },
+    {
       "path": "pyproject.toml",
       "size": 642,
-      "sha256": "31caa318bd06729f40857b6afebd28c57d0e7a50c535a1a7ba2125c8f7537076"
+      "sha256": "c913ddbcc79d35dcf2e648c3bf85ba01379baf8c308d5ca60526b73b7f99a355"
     },
     {
       "path": "requirements.txt",
@@ -809,7 +829,7 @@
     {
       "path": "tests/test_license_and_release.py",
       "size": 1055,
-      "sha256": "d17e4377b9552624e2c53f32dc76ad597b88511504d60b4cbefab1107d2a6c88"
+      "sha256": "9559d9b61f81bd77ada61459979e56e6dc5cf3e09db8e8f20391418115ad191b"
     },
     {
       "path": "tests/test_media_plans.py",
@@ -828,8 +848,13 @@
     },
     {
       "path": "tests/test_slash_commands_local_llm.py",
-      "size": 27714,
-      "sha256": "6b018cde4eb3f565ed3f04cfda3677375f24e62be25f1e49553ec0ba20ae9c82"
+      "size": 27438,
+      "sha256": "a368e2d07a6d513084e897e9a4855b396bb4081573b311542d399adad23f8306"
+    },
+    {
+      "path": "tests/test_terminal_mode.py",
+      "size": 8787,
+      "sha256": "aea825ea7dc1afaeec0324a59816054ddab89a660b34480bf4269b80a03515e8"
     },
     {
       "path": "tests/test_tutorial_nle.py",
@@ -843,8 +868,28 @@
     },
     {
       "path": "web/pi_agent.js",
-      "size": 47661,
-      "sha256": "d7e1e6fcfb51e820874f6b627283110e4ac21f463d67e08e3024bd34c85487d1"
+      "size": 64761,
+      "sha256": "5b67a670e093bee15692a920f27a8c30eb73f884226faf6e941272f4b46d29ab"
+    },
+    {
+      "path": "web/vendor/XTERM_LICENSE.txt",
+      "size": 1134,
+      "sha256": "b49a9ea244b37b4a8dfc98c66b12090d03aa08b24aba9525f599487886c5f1b7"
+    },
+    {
+      "path": "web/vendor/xterm-fit.js",
+      "size": 2837,
+      "sha256": "f2152966992dc838fd69bc90756ebfdeec58f55b60edab194f916d35282e9419"
+    },
+    {
+      "path": "web/vendor/xterm.css",
+      "size": 3595,
+      "sha256": "8baa5877506c5bebaeb458dbcce84e415211fad588410df31529d41b7f505eb1"
+    },
+    {
+      "path": "web/vendor/xterm.js",
+      "size": 261532,
+      "sha256": "995359e3f9f0aac026cb9930cd9a312f48deeb982ccdcc880a7693a32616e5b9"
     }
   ]
 }

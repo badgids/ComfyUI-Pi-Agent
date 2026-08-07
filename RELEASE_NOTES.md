@@ -1,8 +1,24 @@
-# Release notes — 0.1.15
+# Release notes — 0.1.16
 
 <!-- DOC_NAV_START -->
 **Navigation:** [Project README](README.md) · [Documentation home](docs/index.md) · [Previous: Changelog](CHANGELOG.md) · [Next: Project inventory](PROJECT_INVENTORY.md)
 <!-- DOC_NAV_END -->
+
+## 0.1.16 — real Pi interactive terminal inside ComfyUI
+
+The Pi Agent sidebar now defaults to a **real interactive Pi TUI** when the ComfyUI server has POSIX PTY support. ComfyUI-Pi launches `pi` in normal interactive mode, attaches it to a pseudo-terminal, and renders the terminal through the bundled xterm.js frontend. Pi itself therefore owns streamed assistant output, thinking blocks, tool calls/results, slash commands, selectors, errors, and native terminal behavior.
+
+A **Terminal / Chat** switch remains at the top of the sidebar. Structured Chat is still available as a fallback and for users who prefer message bubbles. Chat now recovers successful responses with Pi's `get_last_assistant_text` RPC when provider event streams do not contain visible text, then falls back to the last assistant message. Thinking/reasoning and tool activity are captured independently; both are displayed by default and each has a settings checkbox to hide it.
+
+Provider and Model selectors remain directly beneath the active interaction area, Provider first. Local model preparation is still handled by ComfyUI-Pi before the Pi process is started/restarted. Changing provider/model in Terminal mode keeps the per-sidebar Pi session directory and restarts with `--continue`.
+
+Terminal mode preserves the sparse-context architecture. Pi starts with discovered context files, extensions, skills, and prompt templates disabled, while one explicit ComfyUI-Pi bridge extension is loaded. For each real user prompt, the bridge asks the deterministic local router for only the matching task procedure/node-pack guidance and appends it to that turn's system prompt.
+
+The preemptive handoff system also works in Terminal mode. The bridge records Pi's actual `getContextUsage()` after completed agent work. At the configured 80–95% threshold (82.5% default), the host creates the bounded durable handoff, sends native Pi `/new`, and marks that handoff for one-time injection on the next real task. Pi's normal threshold-triggered auto-compaction is cancelled by the bridge; manual `/compact` and emergency overflow recovery are not disabled.
+
+The initial native terminal backend is POSIX PTY (Linux, WSL, macOS). On platforms without that backend, the Terminal tab is disabled and the existing structured Chat is used automatically. A missing terminal backend never prevents ComfyUI-Pi from loading.
+
+The Provider catalog is also resynchronized with Pi's current 40-ID `KnownProvider` union; runtime/custom providers are still unioned dynamically, and no model names are hardcoded.
 
 ## 0.1.15 — sleeping llama.cpp models now wake correctly
 

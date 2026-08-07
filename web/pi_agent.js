@@ -13,6 +13,14 @@ const CHAT_STATE = {
   modelCatalogLoaded: false,
   providerModelMemory: {},
   modelPreparationPromise: null,
+  view: "terminal",
+  terminalSupported: false,
+  terminal: null,
+  terminalSocket: null,
+  terminalAssetsPromise: null,
+  terminalStarting: false,
+  showReasoning: localStorage.getItem("ComfyUIPi.ShowReasoning") !== "false",
+  showTools: localStorage.getItem("ComfyUIPi.ShowTools") !== "false",
 };
 
 const LOCAL_PROVIDERS = new Set(["llama.cpp", "ollama", "lm-studio", "vllm", "openai-compatible"]);
@@ -103,6 +111,213 @@ function currentWorkflow() {
   }
 }
 
+function extensionAssetUrl(relativePath) {
+  return new URL(relativePath, import.meta.url).href;
+}
+
+function loadExternalScript(src, id) {
+  if (id && document.getElementById(id)) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    if (id) script.id = id;
+    script.src = src;
+    script.async = true;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error(`Unable to load terminal asset: ${src}`));
+    document.head.appendChild(script);
+  });
+}
+
+async function ensureTerminalAssets() {
+  if (window.Terminal && window.fit) return;
+  if (CHAT_STATE.terminalAssetsPromise) return CHAT_STATE.terminalAssetsPromise;
+  CHAT_STATE.terminalAssetsPromise = (async () => {
+    if (!document.getElementById("pi-agent-xterm-css")) {
+      const link = document.createElement("link");
+      link.id = "pi-agent-xterm-css";
+      link.rel = "stylesheet";
+      link.href = extensionAssetUrl("./vendor/xterm.css");
+      document.head.appendChild(link);
+    }
+    await loadExternalScript(extensionAssetUrl("./vendor/xterm.js"), "pi-agent-xterm-js");
+    await loadExternalScript(extensionAssetUrl("./vendor/xterm-fit.js"), "pi-agent-xterm-fit-js");
+    if (!window.Terminal) throw new Error("xterm.js did not initialize.");
+    if (window.fit?.apply) window.fit.apply(window.Terminal);
+  })();
+  return CHAT_STATE.terminalAssetsPromise;
+}
+
+function terminalWebSocketUrl(sessionId) {
+  const basePath = `/pi-agent/terminal/ws/${encodeURIComponent(sessionId)}`;
+  let httpUrl;
+  try {
+    httpUrl = typeof api.apiURL === "function" ? api.apiURL(basePath) : basePath;
+  } catch {
+    httpUrl = basePath;
+  }
+  const url = new URL(httpUrl, window.location.href);
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  return url.toString();
+}
+
+function closeTerminalSocket() {
+  const ws = CHAT_STATE.terminalSocket;
+  CHAT_STATE.terminalSocket = null;
+  if (ws) {
+    try { ws.close(); } catch {}
+  }
+}
+
+function ensureTerminalInstance(ui) {
+  if (CHAT_STATE.terminal) return CHAT_STATE.terminal;
+  const term = new window.Terminal({
+    cursorBlink: true,
+    scrollback: 8000,
+    convertEol: false,
+    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace',
+    fontSize: 13,
+    theme: {
+      background: "#0f1115",
+      foreground: "#e6e8ec",
+      cursor: "#f2f2f2",
+      selection: "rgba(90,140,255,0.35)",
+    },
+  });
+  term.open(ui.terminalHost);
+  if (typeof term.fit === "function") term.fit();
+  term.on("data", (data) => {
+    const ws = CHAT_STATE.terminalSocket;
+    if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "input", data }));
+  });
+  term.on("resize", ({ cols, rows }) => {
+    const ws = CHAT_STATE.terminalSocket;
+    if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "resize", cols, rows }));
+  });
+  if (typeof ResizeObserver !== "undefined") {
+    const observer = new ResizeObserver(() => {
+      if (typeof term.fit === "function") term.fit();
+    });
+    observer.observe(ui.terminalHost);
+    term._comfyPiResizeObserver = observer;
+  }
+  CHAT_STATE.terminal = term;
+  return term;
+}
+
+function terminalDimensions(ui) {
+  const term = CHAT_STATE.terminal;
+  if (term) return { cols: term.cols || 100, rows: term.rows || 32 };
+  return { cols: 100, rows: 32 };
+}
+
+async function connectTerminalSocket(ui) {
+  if (!CHAT_STATE.sessionId) return;
+  closeTerminalSocket();
+  const ws = new WebSocket(terminalWebSocketUrl(CHAT_STATE.sessionId));
+  CHAT_STATE.terminalSocket = ws;
+  ws.addEventListener("open", () => {
+    ui.terminalStatus.textContent = "Connected to real Pi terminal.";
+    const term = CHAT_STATE.terminal;
+    if (term) {
+      if (typeof term.fit === "function") term.fit();
+      ws.send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }));
+      if (ui.includeWorkflow.checked) ws.send(JSON.stringify({ type: "workflow", workflow: currentWorkflow() }));
+      term.focus();
+    }
+  });
+  ws.addEventListener("message", (event) => {
+    let payload;
+    try { payload = JSON.parse(event.data); } catch { payload = { type: "output", data: String(event.data || "") }; }
+    if (payload.type === "output") CHAT_STATE.terminal?.write(String(payload.data || ""));
+    if (payload.type === "exit") {
+      const code = payload.status?.exit_code;
+      ui.terminalStatus.textContent = `Pi terminal exited${code == null ? "" : ` with code ${code}`}.`;
+    }
+  });
+  ws.addEventListener("close", () => {
+    if (CHAT_STATE.terminalSocket === ws) CHAT_STATE.terminalSocket = null;
+  });
+  ws.addEventListener("error", () => { ui.terminalStatus.textContent = "Pi terminal connection error."; });
+}
+
+function terminalStartPayload(ui, { resume = false } = {}) {
+  const dims = terminalDimensions(ui);
+  return {
+    session_id: CHAT_STATE.sessionId,
+    project_directory: ui.project.value.trim(),
+    ...selectedProviderPayload(ui),
+    scoped_models: ui.scopedModels.value.trim(),
+    pi_executable: ui.executable.value.trim(),
+    timeout_seconds: Number(ui.timeout.value || 180),
+    cols: dims.cols,
+    rows: dims.rows,
+    resume,
+    workflow: ui.includeWorkflow.checked ? currentWorkflow() : null,
+    project_context: ui.projectContext.value.trim(),
+    preemptive_handoff: ui.preemptiveHandoff.checked,
+    handoff_threshold_percent: Number(ui.handoffThreshold.value || 82.5),
+    handoff_max_chars: Number(ui.handoffMaxChars.value || 8000),
+  };
+}
+
+async function startTerminal(ui, { restart = false } = {}) {
+  if (!CHAT_STATE.terminalSupported || CHAT_STATE.terminalStarting) return;
+  if (!CHAT_STATE.sessionId) {
+    const session = await createSession(ui);
+    await refreshSessions(ui, session.session_id);
+  }
+  if (CHAT_STATE.modelPreparationPromise) await CHAT_STATE.modelPreparationPromise;
+  CHAT_STATE.terminalStarting = true;
+  ui.terminalStatus.textContent = restart ? "Restarting Pi terminal with selected model…" : "Starting real Pi terminal…";
+  try {
+    await ensureTerminalAssets();
+    ensureTerminalInstance(ui);
+    const endpoint = restart ? "/pi-agent/terminal/restart" : "/pi-agent/terminal/start";
+    await fetchJson(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(terminalStartPayload(ui, { resume: restart })),
+    });
+    CHAT_STATE.terminal?.reset();
+    await connectTerminalSocket(ui);
+  } catch (error) {
+    ui.terminalStatus.textContent = String(error);
+    if (!restart) switchView(ui, "chat");
+  } finally {
+    CHAT_STATE.terminalStarting = false;
+  }
+}
+
+async function restartTerminalIfActive(ui) {
+  if (CHAT_STATE.view !== "terminal" || !CHAT_STATE.terminalSupported || !CHAT_STATE.sessionId) return;
+  try {
+    const status = await fetchJson(`/pi-agent/terminal/status/${encodeURIComponent(CHAT_STATE.sessionId)}`);
+    await startTerminal(ui, { restart: Boolean(status.running) });
+  } catch (error) {
+    ui.terminalStatus.textContent = String(error);
+  }
+}
+
+function switchView(ui, view) {
+  const target = view === "chat" ? "chat" : "terminal";
+  CHAT_STATE.view = target;
+  ui.terminalPane.hidden = target !== "terminal";
+  ui.chatPane.hidden = target !== "chat";
+  ui.terminalTab.classList.toggle("active", target === "terminal");
+  ui.chatTab.classList.toggle("active", target === "chat");
+  ui.terminalTab.setAttribute("aria-selected", String(target === "terminal"));
+  ui.chatTab.setAttribute("aria-selected", String(target === "chat"));
+  ui.chatActions.hidden = target !== "chat";
+  if (target === "terminal") {
+    startTerminal(ui).then(() => {
+      if (CHAT_STATE.terminal && typeof CHAT_STATE.terminal.fit === "function") CHAT_STATE.terminal.fit();
+      CHAT_STATE.terminal?.focus();
+    });
+  } else {
+    ui.textarea.focus();
+  }
+}
+
 function copyText(text) {
   const value = String(text ?? "");
   if (navigator.clipboard?.writeText) {
@@ -176,6 +391,18 @@ function ensureStyles() {
     .pi-agent-local-box { border:1px solid color-mix(in srgb, currentColor 16%, transparent); border-radius:8px; padding:8px; display:grid; gap:7px; }
     .pi-agent-local-actions { display:flex; gap:6px; flex-wrap:wrap; }
     .pi-agent-local-status { font-size:10px; opacity:.72; white-space:pre-wrap; }
+    .pi-agent-view-tabs { display:flex; gap:6px; padding:7px 8px; border-bottom:1px solid color-mix(in srgb, currentColor 15%, transparent); }
+    .pi-agent-view-tab.active { background:color-mix(in srgb, #4f8cff 18%, transparent); border-color:color-mix(in srgb, #4f8cff 45%, currentColor 15%); }
+    .pi-agent-terminal-pane { flex:1 1 auto; min-height:260px; display:flex; flex-direction:column; overflow:hidden; background:#0f1115; }
+    .pi-agent-terminal-pane[hidden], .pi-agent-chat-pane[hidden] { display:none !important; }
+    .pi-agent-terminal-host { flex:1 1 auto; min-height:260px; width:100%; overflow:hidden; padding:4px; box-sizing:border-box; background:#0f1115; }
+    .pi-agent-terminal-host .terminal { height:100%; }
+    .pi-agent-terminal-status { font-size:10px; padding:4px 8px; min-height:16px; border-top:1px solid #2a2d34; color:#c8ccd4; background:#15181e; }
+    .pi-agent-chat-pane { flex:1 1 auto; min-height:0; display:flex; flex-direction:column; }
+    .pi-agent-shared-controls { border-top:1px solid color-mix(in srgb, currentColor 15%, transparent); padding:8px; display:grid; gap:7px; }
+    .pi-agent-activity-block { margin-top:8px; border-top:1px solid color-mix(in srgb, currentColor 14%, transparent); padding-top:6px; font-size:11px; }
+    .pi-agent-activity-block summary { cursor:pointer; font-weight:600; opacity:.8; }
+    .pi-agent-activity-block pre { max-height:280px; overflow:auto; white-space:pre-wrap; margin:6px 0 0; padding:7px; border-radius:6px; background:color-mix(in srgb, currentColor 7%, transparent); }
     .pi-agent-hidden { display:none !important; }
   `;
   document.head.appendChild(style);
@@ -209,7 +436,44 @@ function renderMessage(container, message) {
   });
   meta.appendChild(copy);
 
-  row.append(content, meta);
+  row.appendChild(content);
+
+  const reasoning = String(message.reasoning || "").trim();
+  if (reasoning && CHAT_STATE.showReasoning) {
+    const details = document.createElement("details");
+    details.className = "pi-agent-activity-block pi-agent-reasoning-block";
+    details.open = true;
+    const summary = document.createElement("summary");
+    summary.textContent = "Reasoning";
+    const body = document.createElement("pre");
+    body.textContent = reasoning;
+    details.append(summary, body);
+    row.appendChild(details);
+  }
+
+  const activity = Array.isArray(message.activity) ? message.activity : [];
+  if (activity.length && CHAT_STATE.showTools) {
+    const details = document.createElement("details");
+    details.className = "pi-agent-activity-block pi-agent-tools-block";
+    details.open = true;
+    const summary = document.createElement("summary");
+    summary.textContent = `Tools / activity (${activity.length})`;
+    const body = document.createElement("pre");
+    body.textContent = activity.map((item) => {
+      const type = String(item?.type || "tool");
+      const name = String(item?.name || "tool");
+      const payload = item?.result ?? item?.arguments ?? "";
+      let suffix = "";
+      if (payload !== "" && payload != null) {
+        try { suffix = `\n${JSON.stringify(payload, null, 2)}`; } catch { suffix = `\n${String(payload)}`; }
+      }
+      return `${type}: ${name}${suffix}`;
+    }).join("\n\n").slice(0, 30000);
+    details.append(summary, body);
+    row.appendChild(details);
+  }
+
+  row.appendChild(meta);
   container.appendChild(row);
 }
 
@@ -600,6 +864,7 @@ async function applyProviderSelection(ui, { forceProbe = false, reloadCatalog = 
     try {
       await persistModelSelection(ui, "", "");
       ui.statusline.textContent = "Using Pi's default configured model.";
+      await restartTerminalIfActive(ui);
     } finally {
       ui.provider.disabled = false;
       ui.model.disabled = true;
@@ -636,6 +901,7 @@ async function applyProviderSelection(ui, { forceProbe = false, reloadCatalog = 
       ui.localStatus.textContent = `Endpoint: ${endpoint}\n${(data.models || []).length} model(s) reported by this host. The selected model is loaded only when needed.`;
       const defaultEndpoint = LOCAL_PROVIDER_DEFAULTS[selector] || "";
       ui.localBaseUrl.value = endpoint && endpoint !== defaultEndpoint ? endpoint : "";
+      await restartTerminalIfActive(ui);
     } catch (error) {
       populateModels(ui, [], "", "No models detected");
       ui.statusline.textContent = String(error);
@@ -671,6 +937,7 @@ async function applyProviderSelection(ui, { forceProbe = false, reloadCatalog = 
     ui.model.value = model;
     await persistModelSelection(ui, provider, model);
     ui.statusline.textContent = `Using ${provider}/${model}`;
+    await restartTerminalIfActive(ui);
   } catch (error) {
     populateModels(ui, [], "", "Unable to load Pi models");
     ui.statusline.textContent = String(error);
@@ -697,6 +964,7 @@ async function selectCurrentModel(ui) {
       const endpoint = ui.localBaseUrl.value.trim() || LOCAL_PROVIDER_DEFAULTS[selector] || "";
       ui.localStatus.textContent = `Endpoint: ${endpoint}\n${ui.model.options.length} model(s) reported by this host. Selected model is ready.`;
     }
+    await restartTerminalIfActive(ui);
     return data;
   })();
   CHAT_STATE.modelPreparationPromise = prepare;
@@ -740,17 +1008,21 @@ function buildSidebar(el) {
   el.innerHTML = `
     <div class="pi-agent-shell">
       <div class="pi-agent-toolbar">
-        <span class="pi-agent-title">Pi Agent Chat</span>
+        <span class="pi-agent-title">Pi Agent</span>
         <span id="pi-agent-runtime-pill" class="pi-agent-pill">Checking Pi…</span>
         <span id="pi-agent-context-pill" class="pi-agent-pill" title="Context pressure and preemptive handoff status">Context --</span>
-        <button id="pi-agent-settings-toggle" class="pi-agent-btn pi-agent-icon-btn" type="button" title="Chat settings" aria-label="Chat settings"><i class="pi pi-cog" aria-hidden="true"></i></button>
+        <button id="pi-agent-settings-toggle" class="pi-agent-btn pi-agent-icon-btn" type="button" title="Pi Agent settings" aria-label="Chat settings"><i class="pi pi-cog" aria-hidden="true"></i></button>
       </div>
       <div class="pi-agent-toolbar">
-        <select id="pi-agent-session-select" class="pi-agent-sessions" aria-label="Chat session"></select>
-        <button id="pi-agent-new-chat" class="pi-agent-btn" type="button">New chat</button>
+        <select id="pi-agent-session-select" class="pi-agent-sessions" aria-label="Pi session"></select>
+        <button id="pi-agent-new-chat" class="pi-agent-btn" type="button">New session</button>
         <button id="pi-agent-copy-chat" class="pi-agent-btn" type="button">Copy chat</button>
         <button id="pi-agent-clear-chat" class="pi-agent-btn" type="button">Clear</button>
         <button id="pi-agent-delete-chat" class="pi-agent-btn" type="button">Delete</button>
+      </div>
+      <div class="pi-agent-view-tabs" role="tablist" aria-label="Pi Agent view">
+        <button id="pi-agent-terminal-tab" class="pi-agent-btn pi-agent-view-tab active" type="button" role="tab" aria-selected="true">Terminal</button>
+        <button id="pi-agent-chat-tab" class="pi-agent-btn pi-agent-view-tab" type="button" role="tab" aria-selected="false">Chat</button>
       </div>
       <div id="pi-agent-chat-settings" class="pi-agent-settings" hidden>
         <div class="pi-agent-field">
@@ -763,6 +1035,10 @@ function buildSidebar(el) {
         </div>
         <label class="pi-agent-check"><input id="pi-agent-include-workflow" type="checkbox" checked /> Include the current ComfyUI workflow with each message</label>
         <div class="pi-agent-help">Node-pack knowledge is loaded only when your message or attached workflow matches that integration.</div>
+        <strong>Structured Chat display</strong>
+        <label class="pi-agent-check"><input id="pi-agent-show-reasoning" type="checkbox" checked /> Show reasoning</label>
+        <label class="pi-agent-check"><input id="pi-agent-show-tools" type="checkbox" checked /> Show tool calls and tool activity</label>
+        <div class="pi-agent-help">Both are visible by default. Terminal view is the real Pi TUI and follows Pi's own display/settings directly.</div>
         <div id="pi-agent-local-box" class="pi-agent-local-box" hidden>
           <strong>Local model host — advanced</strong>
           <div class="pi-agent-help">Provider and Model are selected directly beneath the chat box. Normally you do not need anything here.</div>
@@ -782,17 +1058,25 @@ function buildSidebar(el) {
         <div class="pi-agent-field"><label for="pi-agent-handoff-max-chars">Maximum handoff size (characters)</label><input id="pi-agent-handoff-max-chars" class="pi-agent-input" type="number" min="4000" max="16000" step="500" value="8000" /></div>
         <div class="pi-agent-field"><label for="pi-agent-timeout">Timeout in seconds</label><input id="pi-agent-timeout" class="pi-agent-input" type="number" min="10" max="3600" value="180" /></div>
       </div>
-      <div id="pi-agent-messages" class="pi-agent-messages" aria-live="polite"></div>
-      <div class="pi-agent-composer">
-        <textarea id="pi-agent-chat-input" class="pi-agent-textarea" placeholder="Message Pi Agent… Type / for Pi commands. Paste text normally. Enter sends; Shift+Enter adds a new line."></textarea>
-        <div id="pi-agent-command-menu" class="pi-agent-command-menu" role="listbox" aria-label="Pi slash commands"></div>
+      <div id="pi-agent-terminal-pane" class="pi-agent-terminal-pane" role="tabpanel">
+        <div id="pi-agent-terminal-host" class="pi-agent-terminal-host" tabindex="0" aria-label="Real Pi interactive terminal"></div>
+        <div id="pi-agent-terminal-status" class="pi-agent-terminal-status">Terminal starts when this view opens.</div>
+      </div>
+      <div id="pi-agent-chat-pane" class="pi-agent-chat-pane" role="tabpanel" hidden>
+        <div id="pi-agent-messages" class="pi-agent-messages" aria-live="polite"></div>
+        <div class="pi-agent-composer">
+          <textarea id="pi-agent-chat-input" class="pi-agent-textarea" placeholder="Message Pi Agent… Type / for Pi commands. Paste text normally. Enter sends; Shift+Enter adds a new line."></textarea>
+          <div id="pi-agent-command-menu" class="pi-agent-command-menu" role="listbox" aria-label="Pi slash commands"></div>
+        </div>
+      </div>
+      <div class="pi-agent-shared-controls">
         <div class="pi-agent-model-switcher" aria-label="Pi provider and model selection">
           <div class="pi-agent-field"><label for="pi-agent-provider">Provider</label><select id="pi-agent-provider" class="pi-agent-input"><option value="pi-default">Pi default / current configured model</option></select></div>
           <div class="pi-agent-field"><label for="pi-agent-model">Model</label><select id="pi-agent-model" class="pi-agent-input"><option value="">Pi default model</option></select></div>
         </div>
         <div id="pi-agent-statusline" class="pi-agent-statusline"></div>
-        <div class="pi-agent-composer-actions">
-          <span class="pi-agent-help">Text in the conversation is selectable and copyable.</span>
+        <div id="pi-agent-chat-actions" class="pi-agent-composer-actions" hidden>
+          <span class="pi-agent-help">Text, reasoning, and tool activity are selectable and copyable.</span>
           <button id="pi-agent-stop" class="pi-agent-btn pi-agent-hidden" type="button">Stop</button>
           <button id="pi-agent-send" class="pi-agent-btn pi-agent-send" type="button">Send</button>
         </div>
@@ -807,9 +1091,18 @@ function buildSidebar(el) {
     deleteChat: el.querySelector("#pi-agent-delete-chat"),
     settingsToggle: el.querySelector("#pi-agent-settings-toggle"),
     settings: el.querySelector("#pi-agent-chat-settings"),
+    terminalTab: el.querySelector("#pi-agent-terminal-tab"),
+    chatTab: el.querySelector("#pi-agent-chat-tab"),
+    terminalPane: el.querySelector("#pi-agent-terminal-pane"),
+    terminalHost: el.querySelector("#pi-agent-terminal-host"),
+    terminalStatus: el.querySelector("#pi-agent-terminal-status"),
+    chatPane: el.querySelector("#pi-agent-chat-pane"),
+    chatActions: el.querySelector("#pi-agent-chat-actions"),
     project: el.querySelector("#pi-agent-project"),
     projectContext: el.querySelector("#pi-agent-project-context"),
     includeWorkflow: el.querySelector("#pi-agent-include-workflow"),
+    showReasoning: el.querySelector("#pi-agent-show-reasoning"),
+    showTools: el.querySelector("#pi-agent-show-tools"),
     provider: el.querySelector("#pi-agent-provider"),
     model: el.querySelector("#pi-agent-model"),
     scopedModels: el.querySelector("#pi-agent-scoped-models"),
@@ -835,7 +1128,23 @@ function buildSidebar(el) {
     contextPill: el.querySelector("#pi-agent-context-pill"),
   };
 
+  ui.showReasoning.checked = CHAT_STATE.showReasoning;
+  ui.showTools.checked = CHAT_STATE.showTools;
+  ui.terminalHost.addEventListener("keydown", (event) => event.stopPropagation());
+  ui.terminalHost.addEventListener("keyup", (event) => event.stopPropagation());
   ui.settingsToggle.addEventListener("click", () => { ui.settings.hidden = !ui.settings.hidden; });
+  ui.terminalTab.addEventListener("click", () => switchView(ui, "terminal"));
+  ui.chatTab.addEventListener("click", () => switchView(ui, "chat"));
+  ui.showReasoning.addEventListener("change", async () => {
+    CHAT_STATE.showReasoning = ui.showReasoning.checked;
+    localStorage.setItem("ComfyUIPi.ShowReasoning", String(CHAT_STATE.showReasoning));
+    if (CHAT_STATE.sessionId) await loadSession(ui, CHAT_STATE.sessionId);
+  });
+  ui.showTools.addEventListener("change", async () => {
+    CHAT_STATE.showTools = ui.showTools.checked;
+    localStorage.setItem("ComfyUIPi.ShowTools", String(CHAT_STATE.showTools));
+    if (CHAT_STATE.sessionId) await loadSession(ui, CHAT_STATE.sessionId);
+  });
   ui.send.addEventListener("click", () => sendMessage(ui));
   ui.stop.addEventListener("click", () => abortMessage(ui));
   ui.provider.addEventListener("change", () => applyProviderSelection(ui, { forceProbe: true, reloadCatalog: false }));
@@ -895,12 +1204,22 @@ function buildSidebar(el) {
   });
   ui.newChat.addEventListener("click", async () => {
     if (CHAT_STATE.busy) return;
+    const previous = CHAT_STATE.sessionId;
+    if (previous && CHAT_STATE.view === "terminal") {
+      try { await fetchJson("/pi-agent/terminal/stop", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session_id: previous }) }); } catch {}
+    }
     const session = await createSession(ui);
     await refreshSessions(ui, session.session_id);
-    ui.textarea.focus();
+    if (CHAT_STATE.terminal) CHAT_STATE.terminal.reset();
+    if (CHAT_STATE.view === "terminal") await startTerminal(ui); else ui.textarea.focus();
   });
   ui.copyChat.addEventListener("click", async () => {
     if (!CHAT_STATE.sessionId) return;
+    if (CHAT_STATE.view === "terminal" && CHAT_STATE.terminal?.hasSelection?.()) {
+      await copyText(CHAT_STATE.terminal.getSelection());
+      ui.statusline.textContent = "Terminal selection copied.";
+      return;
+    }
     const data = await fetchJson(`/pi-agent/chat/session/${encodeURIComponent(CHAT_STATE.sessionId)}`);
     const transcript = (data.session.messages || []).map((message) => `${message.role === "user" ? "You" : "Pi Agent"}:\n${message.content || ""}`).join("\n\n");
     await copyText(transcript);
@@ -910,14 +1229,21 @@ function buildSidebar(el) {
   ui.clearChat.addEventListener("click", () => clearChat(ui));
   ui.deleteChat.addEventListener("click", async () => {
     if (!CHAT_STATE.sessionId || CHAT_STATE.busy) return;
+    try { await fetchJson("/pi-agent/terminal/stop", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session_id: CHAT_STATE.sessionId }) }); } catch {}
     await fetchJson(`/pi-agent/chat/session/${encodeURIComponent(CHAT_STATE.sessionId)}`, { method: "DELETE" });
     CHAT_STATE.sessionId = null;
     await refreshSessions(ui);
     ui.textarea.focus();
   });
   ui.sessionSelect.addEventListener("change", async () => {
+    const previous = CHAT_STATE.sessionId;
+    if (previous && previous !== ui.sessionSelect.value && CHAT_STATE.view === "terminal") {
+      try { await fetchJson("/pi-agent/terminal/stop", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session_id: previous }) }); } catch {}
+    }
     await loadSession(ui, ui.sessionSelect.value);
     await refreshCommandCatalog(ui);
+    if (CHAT_STATE.terminal) CHAT_STATE.terminal.reset();
+    if (CHAT_STATE.view === "terminal") await startTerminal(ui);
   });
 
   return ui;
@@ -942,11 +1268,44 @@ async function initializeSidebar(el) {
     ui.statusline.textContent = String(error);
   }
   try {
+    const terminalCapability = await fetchJson("/pi-agent/terminal/capability");
+    CHAT_STATE.terminalSupported = Boolean(terminalCapability.supported);
+    ui.terminalTab.disabled = !CHAT_STATE.terminalSupported;
+    ui.terminalTab.title = terminalCapability.message || "Real Pi terminal";
+    if (!CHAT_STATE.terminalSupported) {
+      ui.terminalStatus.textContent = terminalCapability.message || "Native terminal unavailable; using structured Chat.";
+      CHAT_STATE.view = "chat";
+    }
+  } catch (error) {
+    CHAT_STATE.terminalSupported = false;
+    ui.terminalTab.disabled = true;
+    ui.terminalStatus.textContent = `Terminal unavailable: ${String(error)}`;
+    CHAT_STATE.view = "chat";
+  }
+  try {
     await refreshSessions(ui);
   } catch (error) {
     ui.messages.innerHTML = `<div class="pi-agent-empty"><strong>Unable to load chats.</strong><br>${escapeHtml(error)}</div>`;
   }
-  ui.textarea.focus();
+  switchView(ui, CHAT_STATE.terminalSupported ? "terminal" : "chat");
+  if (CHAT_STATE.terminalSupported) {
+    setInterval(async () => {
+      if (CHAT_STATE.view !== "terminal" || !CHAT_STATE.sessionId) return;
+      try {
+        const status = await fetchJson(`/pi-agent/terminal/status/${encodeURIComponent(CHAT_STATE.sessionId)}`);
+        const percent = Number(status.bridge?.context_percent);
+        if (Number.isFinite(percent)) {
+          const ratio = percent > 1 ? percent / 100 : percent;
+          const guard = {
+            threshold: Number(ui.handoffThreshold.value || 82.5) / 100,
+            handoff_count: Number(status.bridge?.handoff_count || 0),
+            last_pressure: { ratio },
+          };
+          updateContextPill(ui, guard);
+        }
+      } catch {}
+    }, 2000);
+  }
 }
 
 app.registerExtension({
@@ -957,7 +1316,7 @@ app.registerExtension({
       name: "Pi Agent: Show optional sidebar after restart",
       type: "boolean",
       defaultValue: false,
-      tooltip: "Adds Pi Agent Chat to the ComfyUI sidebar. All Pi Agent features remain available as nodes when disabled."
+      tooltip: "Adds the real Pi Terminal plus structured Chat fallback to the ComfyUI sidebar. All Pi Agent features remain available as nodes when disabled."
     }
   ],
   commands: [

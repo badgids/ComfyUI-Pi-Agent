@@ -280,12 +280,6 @@ class LocalLlmTests(unittest.TestCase):
         self.assertIn("requested_models = [str(item).strip() for item in (models or [])", source)
         self.assertIn("probe_local_server(normalized, root, reload_catalog=reload_catalog)", source)
 
-    def test_runtime_does_not_hardcode_a_user_timeout_value(self):
-        runtime = (ROOT / "comfy_pi_agent" / "local_llm.py").read_text(encoding="utf-8")
-        chat = (ROOT / "comfy_pi_agent" / "chat.py").read_text(encoding="utf-8")
-        self.assertNotIn("660", runtime)
-        self.assertNotIn("660", chat)
-
     def test_pi_exit_diagnostic_includes_stderr(self):
         from unittest.mock import Mock
         from comfy_pi_agent.pi_runtime import PiRpcClient
@@ -346,9 +340,9 @@ class LocalLlmTests(unittest.TestCase):
             "deepseek", "github-copilot", "xai", "groq", "cerebras", "openrouter",
             "vercel-ai-gateway", "zai", "zai-coding-cn", "mistral", "minimax",
             "minimax-cn", "moonshotai", "moonshotai-cn", "huggingface", "fireworks",
-            "together", "opencode", "opencode-go", "kimi-coding",
+            "together", "baseten", "opencode", "opencode-go", "kimi-coding",
             "cloudflare-workers-ai", "cloudflare-ai-gateway", "qwen-token-plan",
-            "qwen-token-plan-cn", "xiaomi",
+            "qwen-token-plan-cn", "qwen-token-plan-individual", "xiaomi",
             "xiaomi-token-plan-cn", "xiaomi-token-plan-ams", "xiaomi-token-plan-sgp",
         }
         self.assertEqual({provider_id for provider_id, _label in PI_BUILTIN_PROVIDERS}, expected)

@@ -4,6 +4,18 @@
 **Navigation:** [Project README](README.md) · [Documentation home](docs/index.md) · [Previous: Third-party notices](THIRD_PARTY_NOTICES.md) · [Next: Release notes](RELEASE_NOTES.md)
 <!-- DOC_NAV_END -->
 
+## 0.1.16 — real Pi terminal sidebar and faithful output
+
+- Added a PTY-backed **Terminal** view as the default Pi sidebar experience on POSIX platforms. It runs the actual interactive Pi CLI instead of reconstructing Pi's TUI through RPC.
+- Vendored xterm.js under its MIT license for the browser terminal renderer; no extra npm/pip installation is required.
+- Kept structured **Chat** as a secondary/fallback view and fixed false textless completions by falling back to Pi RPC `get_last_assistant_text` and the last assistant message.
+- Structured Chat now records reasoning/thinking and tool activity separately. Both are visible by default and can be hidden independently from sidebar settings.
+- Kept Provider → Model selectors beneath the interaction area. Terminal model/provider changes restart the supervised Pi CLI with `--continue` in the same private terminal session directory.
+- Added one explicit Pi terminal bridge extension. It dynamically injects only the task/integration guidance needed for the current prompt while discovered context files, extensions, skills, and prompt templates remain disabled.
+- Extended the preemptive handoff system to Terminal mode: Pi's bridge reports actual context usage, threshold auto-compaction is cancelled, a bounded durable handoff is written, native `/new` starts a fresh Pi session, and the handoff is injected exactly once on the next real task. Manual `/compact` and overflow recovery remain available.
+- Added terminal capability/start/restart/stop/WebSocket routes and automatic fallback to structured Chat when a native PTY backend is unavailable.
+- Added regression tests for terminal command construction, lazy terminal guidance, terminal handoff behavior, structured Chat final-text recovery, reasoning/tool capture, and default terminal UI state.
+
 ## 0.1.15 — llama.cpp sleeping-model wake fix and HTTP diagnostics
 
 - Distinguished llama.cpp router `sleeping` from `unloaded`: only unloaded presets use `POST /models/load`.

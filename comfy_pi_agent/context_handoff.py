@@ -201,7 +201,8 @@ def build_fallback_handoff(
                  + "\nTask procedures: " + (", ".join(skills) if skills else "none")
                  + "\nReload only procedures/integrations required by the next task; do not preload the library."),
         _section("Recent Visible Conversation", recent),
-        _section("Continuation Rules", "- Continue the user's existing work; do not restart from scratch.\n- Preserve user-approved decisions and manually edited artifacts.\n- Re-check live ComfyUI schemas before graph mutations.\n- Load large workflow/project files only when needed.\n- Load third-party node-pack knowledge dynamically, not globally.\n- If information is missing, inspect the referenced project/workflow artifacts before guessing."),
+        _section("Next Actions", "- Continue the primary objective from the current saved state; do not restart from scratch.\n- Inspect referenced workflow/project files only when exact details are needed.\n- Perform the next requested operation, validate meaningful changes, and report evidence or blockers."),
+        _section("Continuation Rules", "- Preserve user-approved decisions and manually edited artifacts.\n- Re-check live ComfyUI schemas before graph mutations.\n- Load large workflow/project files only when needed.\n- Load third-party node-pack knowledge dynamically, not globally.\n- If information is missing, inspect the referenced project/workflow artifacts before guessing."),
         _section("Context Reset Metadata", f"Context before reset: {pressure.context_tokens:,} / {pressure.context_window:,} tokens ({pressure.ratio * 100:.1f}%).\nTrigger threshold: {pressure.threshold * 100:.1f}%.")
     ])
     return _bounded_lines(header + body, max_chars)

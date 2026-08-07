@@ -1462,7 +1462,12 @@ class ChatRuntimeManager:
                     # native semantics.
                     result = live.client.prompt(text)
                     assistant_text = str(result.get("text") or "").strip() or f"Pi handled `/{parsed_command[0]}` without a text response."
-                    document = self.store.append(session_id, "assistant", assistant_text, slash_command=parsed_command[0], pi_passthrough=True)
+                    document = self.store.append(
+                        session_id, "assistant", assistant_text,
+                        slash_command=parsed_command[0], pi_passthrough=True,
+                        reasoning=str(result.get("reasoning") or ""),
+                        activity=result.get("activity") if isinstance(result.get("activity"), list) else [],
+                    )
                     return {
                         "ok": True,
                         "session": document,
@@ -1517,8 +1522,16 @@ class ChatRuntimeManager:
                 result = live.client.prompt(prompt)
                 assistant_text = str(result.get("text") or "").strip()
                 if not assistant_text:
-                    assistant_text = "Pi finished without returning a text response."
-                document = self.store.append(session_id, "assistant", assistant_text)
+                    event_types = sorted({str(item.get("type") or "") for item in result.get("events", []) if isinstance(item, dict) and item.get("type")})
+                    detail = ", ".join(event_types[:20]) or "no Pi events captured"
+                    assistant_text = f"Pi settled but no assistant text could be recovered. RPC events: {detail}."
+                document = self.store.append(
+                    session_id,
+                    "assistant",
+                    assistant_text,
+                    reasoning=str(result.get("reasoning") or ""),
+                    activity=result.get("activity") if isinstance(result.get("activity"), list) else [],
+                )
                 assistant_message = document["messages"][-1]
                 handoff = None
                 if preemptive_handoff:

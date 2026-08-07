@@ -328,7 +328,9 @@ class PiRpcClient:
         self.send({"id": request_id, "type": "prompt", "message": message})
         deadline = time.monotonic() + self.timeout
         final_text = ""
-        streamed = []
+        streamed: list[str] = []
+        reasoning_stream: list[str] = []
+        activity: list[dict[str, Any]] = []
         event_log = []
         accepted = False
         final_message: dict[str, Any] = {}
@@ -346,8 +348,26 @@ class PiRpcClient:
                     raise RuntimeError(str(event))
             elif event.get("type") == "message_update":
                 delta = event.get("assistantMessageEvent", {})
-                if delta.get("type") == "text_delta":
+                delta_type = str(delta.get("type") or "") if isinstance(delta, dict) else ""
+                if delta_type == "text_delta":
                     streamed.append(str(delta.get("delta", "")))
+                elif delta_type in {"thinking_delta", "reasoning_delta"}:
+                    reasoning_stream.append(str(delta.get("delta", "")))
+                elif delta_type in {"toolcall_start", "toolcall_end"}:
+                    tool_call = delta.get("toolCall") if isinstance(delta.get("toolCall"), dict) else {}
+                    activity.append({
+                        "type": delta_type,
+                        "name": str(tool_call.get("name") or delta.get("name") or "tool"),
+                        "arguments": tool_call.get("arguments") or tool_call.get("input") or {},
+                    })
+            elif event.get("type") in {"tool_execution_start", "tool_execution_update", "tool_execution_end"}:
+                activity.append({
+                    "type": str(event.get("type") or "tool"),
+                    "name": str(event.get("toolName") or event.get("name") or event.get("tool") or "tool"),
+                    "tool_call_id": str(event.get("toolCallId") or event.get("id") or ""),
+                    "is_error": bool(event.get("isError", False)),
+                    "result": event.get("result") if event.get("type") == "tool_execution_end" else None,
+                })
             elif event.get("type") == "message_end":
                 message_obj = event.get("message")
                 if isinstance(message_obj, dict) and message_obj.get("role") == "assistant":
@@ -364,7 +384,39 @@ class PiRpcClient:
                 pass
             raise TimeoutError(f"Pi did not settle within {self.timeout} seconds.")
         if not final_text:
-            final_text = "".join(streamed)
+            final_text = "".join(streamed).strip()
+        # Pi exposes an authoritative final-text RPC specifically so embedders do not
+        # have to guess whether a provider emitted an unusual stream/event shape. Use it
+        # before declaring that a successful turn returned no visible answer.
+        if not final_text and accepted:
+            try:
+                final_text = self.get_last_assistant_text().strip()
+            except Exception:
+                final_text = ""
+        if not final_text and accepted:
+            try:
+                for candidate in reversed(self.get_messages()):
+                    if isinstance(candidate, dict) and candidate.get("role") == "assistant":
+                        final_text = _extract_message_text(candidate).strip()
+                        if final_text:
+                            if not final_message:
+                                final_message = candidate
+                            break
+            except Exception:
+                pass
+        reasoning = "".join(reasoning_stream).strip()
+        if not reasoning and isinstance(final_message, dict):
+            content = final_message.get("content")
+            if isinstance(content, list):
+                blocks: list[str] = []
+                for item in content:
+                    if not isinstance(item, dict):
+                        continue
+                    if str(item.get("type") or "") in {"thinking", "reasoning"}:
+                        value = item.get("thinking") or item.get("reasoning") or item.get("text") or item.get("content") or ""
+                        if value:
+                            blocks.append(str(value))
+                reasoning = "\n".join(blocks).strip()
         stderr = []
         while not self.stderr_lines.empty():
             stderr.append(self.stderr_lines.get())
@@ -398,6 +450,8 @@ class PiRpcClient:
         return {
             "accepted": accepted,
             "text": final_text,
+            "reasoning": reasoning,
+            "activity": activity,
             "events": event_log,
             "stderr": stderr,
             "assistant_message": final_message,

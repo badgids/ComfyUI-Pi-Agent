@@ -1,11 +1,11 @@
 # Pi Agent sidebar chat
 
 <!-- DOC_NAV_START -->
-**Navigation:** [Project README](../README.md) · [Documentation home](index.md) · [Previous: Small local model reliability](small-model-reliability.md) · [Next: Local LLM servers and slash commands](local-llm-slash-commands.md)
+**Navigation:** [Project README](../README.md) · [Documentation home](index.md) · [Previous: Small local model reliability](small-model-reliability.md) · [Next: Real Pi terminal](pi-terminal.md)
 <!-- DOC_NAV_END -->
 
 
-The optional **Pi Agent** tab in ComfyUI now includes a normal AI chat interface. You can talk to Pi Agent directly without adding a node to the workflow.
+The optional **Pi Agent** tab gives you two ways to work with Pi without adding a node: **Terminal** (the real Pi interactive TUI and the default on supported platforms) and **Chat** (the structured ComfyUI chat view).
 
 ## Enable the sidebar
 
@@ -21,21 +21,23 @@ Pi Agent: Show optional sidebar after restart
 
 The sidebar is optional. All node-based tools continue to work when it is disabled.
 
-## What the chat includes
+## What the sidebar includes
 
 The sidebar provides:
 
-- normal user and assistant message bubbles;
+- a default **Terminal** view backed by the real interactive Pi CLI;
+- a secondary **Chat** view with normal user and assistant message bubbles;
+- Pi reasoning and tool activity visible by default in Chat, with settings to hide either;
 - persistent chat sessions;
 - a session picker;
-- **New chat**, **Copy chat**, **Clear**, and **Delete** controls;
+- **New session**, **Copy chat**, **Clear**, and **Delete** controls;
 - a multiline message box;
 - **Enter** to send;
 - **Shift+Enter** to insert a new line;
 - a **Stop** button while Pi is working;
 - optional current-workflow context;
 - optional project notes/context;
-- **Provider** then **Model** dropdowns directly beneath the message box;
+- **Provider** then **Model** dropdowns directly beneath the active Terminal/Chat interaction area;
 - optional project directory, Pi executable, local endpoint, and timeout overrides in Settings.
 
 ## Copy and paste
@@ -101,9 +103,9 @@ Chat history is saved as JSON under ComfyUI user data in the Pi Agent chat-sessi
 
 - **Clear** keeps the chat session but removes its messages.
 - **Delete** removes that saved chat session.
-- **New chat** creates a separate conversation.
+- **New session** creates a separate conversation/terminal session.
 
-A running Pi RPC process is kept for an active chat while the ComfyUI server stays running. After a full ComfyUI server restart, saved transcript history remains available, but a new Pi process is started when you send the next message.
+Structured Chat keeps a Pi RPC process for an active chat. Terminal mode instead runs a real interactive Pi process through a PTY and keeps Pi sessions in a per-sidebar-session directory under ComfyUI user data. After a server restart, Pi can continue that terminal session.
 
 ## Pi is still optional
 
@@ -119,7 +121,7 @@ This chat is part of the normal ComfyUI frontend. It does not start another web 
 
 Type `/` in the composer to open the Pi command picker. ComfyUI-Pi bridges Pi's built-in interactive slash-command names to RPC/host operations so commands such as `/model`, `/session`, `/tree`, `/compact`, and `/copy` work from the ComfyUI sidebar instead of being sent to the LLM as ordinary text.
 
-Directly beneath the chat box are two selectors, in this order:
+Directly beneath the active Terminal/Chat interaction area are two selectors, in this order:
 
 1. **Provider**
 2. **Model**
@@ -144,7 +146,7 @@ The Settings panel contains:
 - **Handoff threshold (%)** — default 82.5, allowed range 80 through 95;
 - **Maximum handoff size** — default 8,000 characters.
 
-The toolbar shows the latest measured context percentage. When the threshold is reached, the current answer is first saved to the visible chat history, then ComfyUI-Pi creates a compact handoff, resets Pi with `new_session`, ingests the handoff in the new context, and continues normally on the next message.
+The toolbar shows the latest measured context percentage. In structured Chat, the reset uses Pi RPC `new_session`. In Terminal mode, ComfyUI-Pi writes the same bounded durable handoff, sends native Pi `/new` through the PTY, and injects the handoff exactly once on the next real task. See [Real Pi terminal](pi-terminal.md).
 
 Handoffs are kept under ComfyUI user data. They contain working state and paths, not the complete transcript or full workflow JSON.
 
@@ -157,5 +159,5 @@ A llama.cpp router can keep a model entry in `sleeping` state after idle sleep. 
 ---
 
 <!-- DOC_NAV_FOOTER_START -->
-**Navigate:** [Project README](../README.md) · [Documentation home](index.md) · [Previous: Small local model reliability](small-model-reliability.md) · [Next: Local LLM servers and slash commands](local-llm-slash-commands.md)
+**Navigate:** [Project README](../README.md) · [Documentation home](index.md) · [Previous: Small local model reliability](small-model-reliability.md) · [Next: Real Pi terminal](pi-terminal.md)
 <!-- DOC_NAV_FOOTER_END -->

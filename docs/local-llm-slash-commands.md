@@ -1,15 +1,15 @@
 # Local LLM servers and Pi slash commands
 
 <!-- DOC_NAV_START -->
-**Navigation:** [Project README](../README.md) · [Documentation home](index.md) · [Previous: Pi Agent sidebar chat](sidebar-chat.md) · [Next: Workflow intelligence](workflow-intelligence.md)
+**Navigation:** [Project README](../README.md) · [Documentation home](index.md) · [Previous: Real Pi terminal](pi-terminal.md) · [Next: Workflow intelligence](workflow-intelligence.md)
 <!-- DOC_NAV_END -->
 
 
-ComfyUI-Pi's sidebar chat is intended to make Pi feel like a normal assistant inside ComfyUI. Pi slash commands work from the chat box, and local servers are selected from a normal provider dropdown instead of requiring users to understand Pi provider IDs, environment plumbing, or `models.json`.
+ComfyUI-Pi's default sidebar Terminal is the real interactive Pi CLI, so Pi slash commands use Pi's native implementation. The secondary structured Chat keeps host-side bridges for the same documented command names. Local servers are selected from a normal provider dropdown instead of requiring users to understand Pi provider IDs, environment plumbing, or `models.json`.
 
-## Provider and Model are on the main chat page
+## Provider and Model are on the main sidebar
 
-Directly beneath the chat box, ComfyUI-Pi shows:
+Directly beneath the active Terminal/Chat interaction area, ComfyUI-Pi shows:
 
 ```text
 Provider  [ ... ]
@@ -27,11 +27,11 @@ The Provider dropdown has four groups:
 
 For built-in/cloud providers, ComfyUI-Pi asks Pi for its live `get_available_models` snapshot and shows every returned model for the selected provider. The model names are **not** duplicated in a plugin hardcoded list. A provider can therefore remain visible while its Model dropdown is empty when Pi has no currently authenticated/configured model for it.
 
-### Pi built-in providers covered by v0.1.14
+### Pi built-in providers covered by this release
 
-The dropdown covers the 38 provider IDs in Pi's current public `KnownProvider` catalog:
+The dropdown covers the 40 provider IDs in Pi's current public `KnownProvider` catalog:
 
-`amazon-bedrock`, `ant-ling`, `anthropic`, `google`, `google-vertex`, `openai`, `azure-openai-responses`, `openai-codex`, `radius`, `nvidia`, `deepseek`, `github-copilot`, `xai`, `groq`, `cerebras`, `openrouter`, `vercel-ai-gateway`, `zai`, `zai-coding-cn`, `mistral`, `minimax`, `minimax-cn`, `moonshotai`, `moonshotai-cn`, `huggingface`, `fireworks`, `together`, `opencode`, `opencode-go`, `kimi-coding`, `cloudflare-workers-ai`, `cloudflare-ai-gateway`, `qwen-token-plan`, `qwen-token-plan-cn`, `xiaomi`, `xiaomi-token-plan-cn`, `xiaomi-token-plan-ams`, and `xiaomi-token-plan-sgp`.
+`amazon-bedrock`, `ant-ling`, `anthropic`, `google`, `google-vertex`, `openai`, `azure-openai-responses`, `openai-codex`, `radius`, `nvidia`, `deepseek`, `github-copilot`, `xai`, `groq`, `cerebras`, `openrouter`, `vercel-ai-gateway`, `zai`, `zai-coding-cn`, `mistral`, `minimax`, `minimax-cn`, `moonshotai`, `moonshotai-cn`, `huggingface`, `fireworks`, `together`, `baseten`, `opencode`, `opencode-go`, `kimi-coding`, `cloudflare-workers-ai`, `cloudflare-ai-gateway`, `qwen-token-plan`, `qwen-token-plan-cn`, `qwen-token-plan-individual`, `xiaomi`, `xiaomi-token-plan-cn`, `xiaomi-token-plan-ams`, and `xiaomi-token-plan-sgp`.
 
 The local-host entries are additional convenience providers managed by ComfyUI-Pi. Runtime/custom providers are unioned into the selector so a user-defined provider does not disappear just because it is not in that built-in list.
 
@@ -40,7 +40,7 @@ The local-host entries are additional convenience providers managed by ComfyUI-P
 For llama.cpp, Ollama, LM Studio, vLLM, and generic OpenAI-compatible servers:
 
 1. Start the local server.
-2. Under the chat box, choose the host from **Provider**.
+2. Beneath the active Terminal/Chat view, choose the host from **Provider**.
 3. ComfyUI-Pi contacts only that selected host using its common default endpoint.
 4. It reads the host's model list, registers those model IDs with Pi, and fills **Model**.
 5. Choose any model in **Model** and use the chat.
@@ -160,7 +160,10 @@ The normal Provider/Model dropdowns are enough to use llama.cpp. Router mode exp
 
 `/llama load` also registers and selects the loaded model for the current ComfyUI-Pi chat. These router operations are never performed automatically at startup.
 
-## Pi slash commands in the ComfyUI chat
+## Pi slash commands in Terminal and Chat
+
+In **Terminal**, these are the actual Pi interactive slash commands and Pi owns their menus, selectors, and behavior. In **Chat**, ComfyUI-Pi keeps compatibility bridges for the documented command names because Pi explicitly treats many built-in TUI commands as interactive-only rather than RPC prompts.
+
 
 Pi's interactive terminal owns many built-in slash commands. Sending those names as ordinary text through RPC does not reproduce the TUI behavior, so ComfyUI-Pi recognizes the built-in names before the LLM/context router and maps them to Pi RPC operations or safe ComfyUI equivalents.
 
@@ -237,7 +240,7 @@ v0.1.9 discovered llama.cpp models but did not register them in Pi's available-m
 
 <!-- DOC_NAV_FOOTER_START -->
 ---
-**Navigate:** [Project README](../README.md) · [Documentation home](index.md) · [Previous: Pi Agent sidebar chat](sidebar-chat.md) · [Next: Workflow intelligence](workflow-intelligence.md)
+**Navigate:** [Project README](../README.md) · [Documentation home](index.md) · [Previous: Real Pi terminal](pi-terminal.md) · [Next: Workflow intelligence](workflow-intelligence.md)
 <!-- DOC_NAV_FOOTER_END -->
 
 ### Sleeping llama.cpp router models

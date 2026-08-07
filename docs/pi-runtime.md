@@ -17,6 +17,16 @@ Pi supplies the LLM runtime, configured model/provider access, and conversationa
 
 No personal location is searched.
 
+## Interactive Terminal runtime
+
+On POSIX platforms, the default sidebar **Terminal** view launches the real interactive `pi` CLI through an operating-system pseudo-terminal. It does not use `--mode rpc`. ComfyUI-Pi explicitly loads only its small terminal bridge extension while disabling automatic discovery of unrelated context files, extensions, skills, and prompt templates.
+
+The terminal bridge observes real user input, dynamically requests only the matching ComfyUI-Pi task/integration guidance, and appends that compact guidance to the system prompt for the current turn. It also reports Pi's own `getContextUsage()` values for the preemptive handoff monitor.
+
+Provider/model changes restart the supervised interactive process with `--continue` and the same private terminal session directory. This preserves Pi's native session semantics while allowing ComfyUI-Pi to prepare local models first. See [Real Pi terminal](pi-terminal.md).
+
+Structured Chat and node/headless features continue to use RPC as described below.
+
 ## RPC protocol
 
 The plugin launches Pi with an argument array and `--mode rpc`. It writes one JSON object per line to standard input and reads one JSON object per line from standard output.
@@ -44,8 +54,9 @@ These flags affect only the Pi subprocess launched by ComfyUI-Pi. They do not de
 The client:
 
 - correlates the prompt response with an ID;
-- collects `text_delta` events;
+- collects `text_delta`, reasoning/thinking, and tool activity events;
 - treats `message_end` as authoritative when available;
+- falls back to Pi RPC `get_last_assistant_text`, then the last assistant message, before declaring a successful turn textless;
 - waits for `agent_settled`;
 - aborts after the configured timeout;
 - does not use `shell=True`;
@@ -89,9 +100,9 @@ See [dynamic-integration-context.md](dynamic-integration-context.md).
 
 ## Preemptive handoff instead of Pi auto-compaction
 
-For stateful sidebar conversations, ComfyUI-Pi owns context lifecycle instead of relying on Pi's built-in compaction summary. The default trigger is **82.5%** of the model context window and can be adjusted between 80% and 95%.
+For stateful sidebar conversations in both Terminal and Chat, ComfyUI-Pi owns context lifecycle instead of relying on Pi's normal threshold compaction. The default trigger is **82.5%** of the model context window and can be adjusted between 80% and 95%.
 
-When the threshold is reached, ComfyUI-Pi creates a bounded continuity handoff using a separate fresh Pi process, structurally validates that handoff, resets the active Pi process with `new_session`, then reads the bounded file host-side and injects that continuity state directly into the fresh context. This avoids depending on a weak model to decide to call a file-read tool after reset. Large workflows and node-pack manuals stay referenced by path or dynamic integration ID instead of being copied into the handoff.
+Structured Chat uses the existing fresh-summarizer + RPC `new_session` path. Terminal mode creates the bounded durable handoff from Pi's saved visible session state, sends native `/new` through the PTY, and lets the explicit bridge inject that handoff exactly once on the next real prompt. This avoids depending on a weak model to decide to call a file-read tool after reset. Large workflows and node-pack manuals stay referenced by path or dynamic integration ID instead of being copied into the handoff.
 
 See [context-handoff.md](context-handoff.md).
 

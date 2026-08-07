@@ -5,8 +5,9 @@ import asyncio
 from .chat import CHAT_MANAGER
 from .models import inventory_models
 from .pi_runtime import discover_pi
-from .local_llm import discover_local_servers, local_provider_presets, probe_local_server
+from .local_llm import discover_local_servers, local_provider_presets, probe_local_server, runtime_environment
 from .provider_catalog import provider_options
+from .terminal import TERMINAL_MANAGER
 from .tutorials import compile_tutorial
 from .version import __version__
 from .workflow import analyze_workflow
@@ -244,6 +245,163 @@ def register_routes() -> bool:
         payload = await request.json()
         result = compile_tutorial(payload.get("workflows", []), payload.get("title", "ComfyUI Project Tutorial"), payload.get("output_directory", ""), payload.get("detail_level", "complete"))
         return web.json_response({"tutorial_directory": result["tutorial_directory"], "controller_workflow": result["controller_workflow"], "overview_workflow": result["overview_workflow"]})
+
+
+    @routes.get("/pi-agent/terminal/capability")
+    async def pi_agent_terminal_capability(request):
+        return web.json_response(TERMINAL_MANAGER.capability())
+
+    @routes.get(r"/pi-agent/terminal/status/{session_id}")
+    async def pi_agent_terminal_status(request):
+        return web.json_response(TERMINAL_MANAGER.status(request.match_info["session_id"]))
+
+    @routes.post("/pi-agent/terminal/start")
+    async def pi_agent_terminal_start(request):
+        payload = await request.json()
+        session_id = str(payload.get("session_id", "") or "").strip()
+        if not session_id:
+            return web.json_response({"ok": False, "error": "A chat session is required."}, status=400)
+        try:
+            local = payload.get("local_llm") if isinstance(payload.get("local_llm"), dict) else {}
+            document = CHAT_MANAGER.store.update_config(
+                session_id,
+                payload.get("project_directory", ""),
+                payload.get("provider", ""),
+                payload.get("model", ""),
+                scoped_models=payload.get("scoped_models", ""),
+                local_llm=local,
+                preemptive_handoff=bool(payload.get("preemptive_handoff", True)),
+                handoff_threshold=payload.get("handoff_threshold_percent", 82.5),
+                handoff_max_chars=payload.get("handoff_max_chars", 8000),
+            )
+            provider = str(document.get("provider") or "")
+            model = str(document.get("model") or "")
+            saved_local = document.get("local_llm") if isinstance(document.get("local_llm"), dict) else {}
+            if str(saved_local.get("kind") or "") == "llama.cpp" and provider and model:
+                await asyncio.to_thread(
+                    CHAT_MANAGER._ensure_llama_router_model,
+                    str(saved_local.get("base_url") or ""),
+                    model,
+                    float(payload.get("timeout_seconds", 180) or 180),
+                )
+            session = await asyncio.to_thread(
+                TERMINAL_MANAGER.start,
+                session_id=session_id,
+                executable=payload.get("pi_executable", ""),
+                project_directory=payload.get("project_directory", ""),
+                provider=provider,
+                model=model,
+                scoped_models=payload.get("scoped_models", ""),
+                timeout=int(payload.get("timeout_seconds", 180) or 180),
+                cols=int(payload.get("cols", 100) or 100),
+                rows=int(payload.get("rows", 32) or 32),
+                resume=bool(payload.get("resume", False)),
+                env_overrides=runtime_environment(saved_local),
+                workflow=payload.get("workflow"),
+                context_settings={
+                    "preemptive_handoff": bool(payload.get("preemptive_handoff", True)),
+                    "handoff_threshold": float(payload.get("handoff_threshold_percent", 82.5) or 82.5) / 100.0,
+                    "handoff_max_chars": int(payload.get("handoff_max_chars", 8000) or 8000),
+                    "project_context": payload.get("project_context", ""),
+                },
+            )
+            return web.json_response({"ok": True, "terminal": session.status().to_dict(), "session": document})
+        except (ValueError, FileNotFoundError, RuntimeError, TimeoutError, OSError) as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=503)
+
+    @routes.post("/pi-agent/terminal/restart")
+    async def pi_agent_terminal_restart(request):
+        payload = await request.json()
+        session_id = str(payload.get("session_id", "") or "").strip()
+        if not session_id:
+            return web.json_response({"ok": False, "error": "A chat session is required."}, status=400)
+        try:
+            document = CHAT_MANAGER.store.load(session_id)
+            local = document.get("local_llm") if isinstance(document.get("local_llm"), dict) else {}
+            provider = str(payload.get("provider", document.get("provider", "")) or "")
+            model = str(payload.get("model", document.get("model", "")) or "")
+            if str(local.get("kind") or "") == "llama.cpp" and provider and model:
+                await asyncio.to_thread(
+                    CHAT_MANAGER._ensure_llama_router_model,
+                    str(local.get("base_url") or ""),
+                    model,
+                    float(payload.get("timeout_seconds", 180) or 180),
+                )
+            session = await asyncio.to_thread(
+                TERMINAL_MANAGER.restart,
+                session_id=session_id,
+                provider=provider,
+                model=model,
+                scoped_models=str(payload.get("scoped_models", document.get("scoped_models", "")) or ""),
+                timeout=int(payload.get("timeout_seconds", 180) or 180),
+                env_overrides=runtime_environment(local),
+                workflow=payload.get("workflow"),
+                context_settings={
+                    "preemptive_handoff": bool(payload.get("preemptive_handoff", True)),
+                    "handoff_threshold": float(payload.get("handoff_threshold_percent", 82.5) or 82.5) / 100.0,
+                    "handoff_max_chars": int(payload.get("handoff_max_chars", 8000) or 8000),
+                    "project_context": payload.get("project_context", ""),
+                },
+            )
+            document["provider"] = provider
+            document["model"] = model
+            CHAT_MANAGER.store.save(document)
+            return web.json_response({"ok": True, "terminal": session.status().to_dict()})
+        except (ValueError, FileNotFoundError, RuntimeError, TimeoutError, OSError) as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=503)
+
+    @routes.post("/pi-agent/terminal/stop")
+    async def pi_agent_terminal_stop(request):
+        payload = await request.json()
+        return web.json_response({"stopped": await asyncio.to_thread(TERMINAL_MANAGER.stop, str(payload.get("session_id", "")))})
+
+    @routes.get(r"/pi-agent/terminal/ws/{session_id}")
+    async def pi_agent_terminal_ws(request):
+        session_id = request.match_info["session_id"]
+        session = TERMINAL_MANAGER.get(session_id)
+        if not session:
+            return web.json_response({"error": "Pi terminal is not running for this session."}, status=404)
+        ws = web.WebSocketResponse(heartbeat=20.0, autoping=True, max_msg_size=2 * 1024 * 1024)
+        await ws.prepare(request)
+        snapshot = session.attach_snapshot()
+        if snapshot:
+            await ws.send_str(json.dumps({"type": "output", "data": snapshot.decode("utf-8", errors="replace")}))
+
+        async def pump_output():
+            while not ws.closed:
+                chunk = await asyncio.to_thread(session.read_output, 0.25)
+                if chunk:
+                    await ws.send_str(json.dumps({"type": "output", "data": chunk.decode("utf-8", errors="replace")}))
+                status = session.status()
+                if not status.running:
+                    await ws.send_str(json.dumps({"type": "exit", "status": status.to_dict()}))
+                    break
+
+        pump = asyncio.create_task(pump_output())
+        try:
+            async for message in ws:
+                if message.type != web.WSMsgType.TEXT:
+                    continue
+                try:
+                    payload = json.loads(message.data)
+                except Exception:
+                    payload = {"type": "input", "data": str(message.data)}
+                kind = str(payload.get("type") or "input")
+                if kind == "input":
+                    session.write(str(payload.get("data") or ""))
+                elif kind == "resize":
+                    session.resize(int(payload.get("cols", session.cols)), int(payload.get("rows", session.rows)))
+                elif kind == "workflow":
+                    session.update_workflow(payload.get("workflow"))
+                elif kind == "ping":
+                    await ws.send_str(json.dumps({"type": "pong"}))
+        finally:
+            pump.cancel()
+            try:
+                await pump
+            except BaseException:
+                pass
+        return ws
 
     @routes.get("/pi-agent/chat/sessions")
     async def pi_agent_chat_sessions(request):
