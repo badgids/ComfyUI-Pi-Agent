@@ -1,8 +1,20 @@
-# Release notes — 0.1.8
+# Release notes — 0.1.9
 
 <!-- DOC_NAV_START -->
 **Navigation:** [Project README](README.md) · [Documentation home](docs/index.md) · [Previous: Changelog](CHANGELOG.md) · [Next: Project inventory](PROJECT_INVENTORY.md)
 <!-- DOC_NAV_END -->
+
+## 0.1.9 — Pi slash-command bridge and easy local LLM setup
+
+- Added a ComfyUI-native slash-command picker to the Pi sidebar chat.
+- Added host-side bridges for all currently documented Pi built-in slash-command names; RPC-supported operations map directly to Pi RPC while TUI-only credential/trust UI is handled transparently and safely.
+- Added on-demand local-server discovery/configuration for llama.cpp, Ollama, LM Studio, vLLM, and other OpenAI-compatible servers.
+- Added safe Pi `models.json` merging that preserves unrelated providers and stores environment-variable references instead of raw API secrets.
+- Added llama.cpp runtime configuration through Pi's built-in provider and `LLAMA_BASE_URL`, plus explicit `/llama` list/load/unload/refresh/download router operations.
+- Kept endpoint probing completely out of ComfyUI/plugin startup and out of normal LLM context.
+- Kept Pi launch lean (`--no-context-files`, `--no-extensions`, `--no-skills`, `--no-prompt-templates`, `--no-themes`, `--no-session`) and preserved ComfyUI-Pi's preemptive handoff lifecycle.
+- Added tests for the complete built-in command catalog, command parsing, local model discovery/configuration, secret handling, scoped-model launch configuration, and frontend controls.
+
 
 ## 0.1.8 — Fully navigable documentation
 

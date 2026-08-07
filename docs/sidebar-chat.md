@@ -1,7 +1,7 @@
 # Pi Agent sidebar chat
 
 <!-- DOC_NAV_START -->
-**Navigation:** [Project README](../README.md) · [Documentation home](index.md) · [Previous: Small local model reliability](small-model-reliability.md) · [Next: Workflow intelligence](workflow-intelligence.md)
+**Navigation:** [Project README](../README.md) · [Documentation home](index.md) · [Previous: Small local model reliability](small-model-reliability.md) · [Next: Local LLM servers and slash commands](local-llm-slash-commands.md)
 <!-- DOC_NAV_END -->
 
 
@@ -114,6 +114,13 @@ Project compilers, workflow inspection, document export, tutorials, and other no
 
 This chat is part of the normal ComfyUI frontend. It does not start another web server or open a private external interface.
 
+## Pi slash commands and local models
+
+Type `/` in the composer to open the Pi command picker. ComfyUI-Pi bridges Pi's built-in interactive slash-command names to RPC/host operations so commands such as `/model`, `/session`, `/tree`, `/compact`, and `/copy` work from the ComfyUI sidebar instead of being sent to the LLM as ordinary text.
+
+The Settings panel also has explicit, on-demand detection/configuration for llama.cpp, Ollama, LM Studio, vLLM, and other OpenAI-compatible servers. No local server is probed at ComfyUI startup.
+
+See [Local LLM servers and Pi slash commands](local-llm-slash-commands.md).
 
 ## Preemptive context handoff
 
@@ -134,5 +141,5 @@ See [context-handoff.md](context-handoff.md).
 ---
 
 <!-- DOC_NAV_FOOTER_START -->
-**Navigate:** [Project README](../README.md) · [Documentation home](index.md) · [Previous: Small local model reliability](small-model-reliability.md) · [Next: Workflow intelligence](workflow-intelligence.md)
+**Navigate:** [Project README](../README.md) · [Documentation home](index.md) · [Previous: Small local model reliability](small-model-reliability.md) · [Next: Local LLM servers and slash commands](local-llm-slash-commands.md)
 <!-- DOC_NAV_FOOTER_END -->

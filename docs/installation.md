@@ -18,7 +18,7 @@ git clone https://github.com/YOUR-ACCOUNT/ComfyUI-Pi-Agent.git
 4. Start ComfyUI.
 5. Search the node menu for `Pi Agent Status`.
 
-Version 0.1.8 has no required Python package dependencies. The `requirements.txt` file is intentionally empty except for comments.
+Version 0.1.9 has no required Python package dependencies. The `requirements.txt` file is intentionally empty except for comments.
 
 ## ZIP installation
 

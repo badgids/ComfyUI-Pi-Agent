@@ -61,7 +61,12 @@ def _extract_message_text(message: Any) -> str:
     return ""
 
 
-def build_pi_command(executable: str, provider: str = "", model: str = "") -> list[str]:
+def build_pi_command(
+    executable: str,
+    provider: str = "",
+    model: str = "",
+    scoped_models: str = "",
+) -> list[str]:
     """Build the deliberately lean Pi RPC command used by ComfyUI-Pi.
 
     Pi normally discovers project/global context files, skills, extensions, prompt templates,
@@ -84,18 +89,34 @@ def build_pi_command(executable: str, provider: str = "", model: str = "") -> li
         command += ["--provider", provider.strip()]
     if model.strip():
         command += ["--model", model.strip()]
+    if scoped_models.strip():
+        command += ["--models", scoped_models.strip()]
     return command
 
 
 class PiRpcClient:
-    def __init__(self, executable: str, project_dir: str = "", provider: str = "", model: str = "", timeout: int = 180):
+    def __init__(
+        self,
+        executable: str,
+        project_dir: str = "",
+        provider: str = "",
+        model: str = "",
+        timeout: int = 180,
+        scoped_models: str = "",
+        env_overrides: dict[str, str] | None = None,
+    ):
         self.timeout = max(10, int(timeout))
-        command = build_pi_command(executable, provider=provider, model=model)
+        command = build_pi_command(executable, provider=provider, model=model, scoped_models=scoped_models)
         cwd = Path(project_dir).expanduser().resolve() if project_dir.strip() else get_comfy_user_directory()
         cwd.mkdir(parents=True, exist_ok=True)
+        process_env = os.environ.copy()
+        for key, value in (env_overrides or {}).items():
+            if key and value is not None:
+                process_env[str(key)] = str(value)
         self.process = subprocess.Popen(
             command,
             cwd=str(cwd),
+            env=process_env,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -185,6 +206,93 @@ class PiRpcClient:
         response = self.command({"type": "get_session_stats"})
         data = response.get("data")
         return data if isinstance(data, dict) else {}
+
+    def get_available_models(self) -> list[dict[str, Any]]:
+        response = self.command({"type": "get_available_models"})
+        data = response.get("data")
+        models = data.get("models") if isinstance(data, dict) else []
+        return models if isinstance(models, list) else []
+
+    def set_model(self, provider: str, model_id: str) -> dict[str, Any]:
+        response = self.command({"type": "set_model", "provider": str(provider), "modelId": str(model_id)})
+        data = response.get("data")
+        return data if isinstance(data, dict) else {}
+
+    def cycle_model(self) -> dict[str, Any] | None:
+        response = self.command({"type": "cycle_model"})
+        data = response.get("data")
+        return data if isinstance(data, dict) else None
+
+    def get_available_thinking_levels(self) -> list[str]:
+        response = self.command({"type": "get_available_thinking_levels"})
+        data = response.get("data")
+        levels = data.get("levels") if isinstance(data, dict) else []
+        return [str(item) for item in levels] if isinstance(levels, list) else []
+
+    def set_thinking_level(self, level: str) -> dict[str, Any]:
+        return self.command({"type": "set_thinking_level", "level": str(level)})
+
+    def set_steering_mode(self, mode: str) -> dict[str, Any]:
+        return self.command({"type": "set_steering_mode", "mode": str(mode)})
+
+    def set_follow_up_mode(self, mode: str) -> dict[str, Any]:
+        return self.command({"type": "set_follow_up_mode", "mode": str(mode)})
+
+    def compact(self, custom_instructions: str = "") -> dict[str, Any]:
+        payload: dict[str, Any] = {"type": "compact"}
+        if custom_instructions.strip():
+            payload["customInstructions"] = custom_instructions.strip()
+        response = self.command(payload, timeout=max(30.0, float(self.timeout)))
+        data = response.get("data")
+        return data if isinstance(data, dict) else {}
+
+    def export_html(self, output_path: str = "") -> dict[str, Any]:
+        payload: dict[str, Any] = {"type": "export_html"}
+        if output_path.strip():
+            payload["outputPath"] = output_path.strip()
+        response = self.command(payload, timeout=max(10.0, float(self.timeout)))
+        data = response.get("data")
+        return data if isinstance(data, dict) else {}
+
+    def switch_session(self, session_path: str) -> dict[str, Any]:
+        response = self.command({"type": "switch_session", "sessionPath": str(session_path)})
+        data = response.get("data")
+        return data if isinstance(data, dict) else {}
+
+    def get_fork_messages(self) -> list[dict[str, Any]]:
+        response = self.command({"type": "get_fork_messages"})
+        data = response.get("data")
+        messages = data.get("messages") if isinstance(data, dict) else []
+        return messages if isinstance(messages, list) else []
+
+    def fork(self, entry_id: str) -> dict[str, Any]:
+        response = self.command({"type": "fork", "entryId": str(entry_id)})
+        data = response.get("data")
+        return data if isinstance(data, dict) else {}
+
+    def clone(self) -> dict[str, Any]:
+        response = self.command({"type": "clone"})
+        data = response.get("data")
+        return data if isinstance(data, dict) else {}
+
+    def get_tree(self) -> dict[str, Any]:
+        response = self.command({"type": "get_tree"})
+        data = response.get("data")
+        return data if isinstance(data, dict) else {}
+
+    def get_last_assistant_text(self) -> str:
+        response = self.command({"type": "get_last_assistant_text"})
+        data = response.get("data")
+        return str(data.get("text") or "") if isinstance(data, dict) else ""
+
+    def set_session_name(self, name: str) -> dict[str, Any]:
+        return self.command({"type": "set_session_name", "name": str(name)})
+
+    def get_commands(self) -> list[dict[str, Any]]:
+        response = self.command({"type": "get_commands"})
+        data = response.get("data")
+        commands = data.get("commands") if isinstance(data, dict) else []
+        return commands if isinstance(commands, list) else []
 
     def prompt(self, message: str) -> dict[str, Any]:
         request_id = f"comfy-{int(time.time() * 1000)}"

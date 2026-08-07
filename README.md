@@ -4,7 +4,7 @@ A ComfyUI custom-node package that connects **Pi Agent** reasoning with practica
 
 **Creator:** Alan D. Guice (**Badgids**)  
 **License:** GPL-3.0  
-**Release:** 0.1.8
+**Release:** 0.1.9
 
 > This project is designed to be powerful without being confusing. The documentation uses plain language, short steps, and concrete examples. Technical details are kept intact instead of being hidden or oversimplified.
 
@@ -44,7 +44,7 @@ Every major tool is available as a normal ComfyUI node. The optional sidebar is 
 
 ## Important first-release boundary
 
-Version 0.1.8 provides the working foundation, project compilers, tutorial compiler, document tools, workflow intelligence, Pi RPC connection, manifests, profiles, examples, and tests.
+Version 0.1.9 provides the working foundation, project compilers, tutorial compiler, document tools, workflow intelligence, Pi RPC connection, manifests, profiles, examples, and tests.
 
 It does **not** bundle large AI model weights, third-party custom-node packs, Pi itself, Node.js, FFmpeg, or Kdenlive. It detects those tools when they are installed. Missing optional tools do not stop ComfyUI from starting.
 
@@ -71,52 +71,53 @@ The plugin never downloads anything during import.
 6. [Pi runtime and model-provider setup](docs/pi-runtime.md)
 7. [Small local model reliability](docs/small-model-reliability.md)
 8. [Pi Agent sidebar chat](docs/sidebar-chat.md)
-9. [Workflow intelligence](docs/workflow-intelligence.md)
-10. [Model discovery, safetensors, and GGUF](docs/model-formats-gguf.md)
-11. [Dynamic integration context](docs/dynamic-integration-context.md)
-12. [Preemptive context handoff](docs/context-handoff.md)
+9. [Local LLM servers and Pi slash commands](docs/local-llm-slash-commands.md)
+10. [Workflow intelligence](docs/workflow-intelligence.md)
+11. [Model discovery, safetensors, and GGUF](docs/model-formats-gguf.md)
+12. [Dynamic integration context](docs/dynamic-integration-context.md)
+13. [Preemptive context handoff](docs/context-handoff.md)
 
 ## Media and production guides
 
-13. [Image generation and editing profiles](docs/image-generation-editing.md)
-14. [Music, speech, and audio profiles](docs/audio-music-voice.md)
-15. [Project directory layout and asset organization](docs/project-directory-layout.md)
-16. [References, mood boards, storyboards, and bibles](docs/references-bibles.md)
-17. [Stories, books, Fountain, and screenplays](docs/writing-screenplay.md)
-18. [Complete and incremental production compiler](docs/production-compiler.md)
-19. [ComfyUI-native tutorial compiler](docs/tutorials.md)
-20. [Kdenlive and NLE handoff](docs/kdenlive-nle.md)
+14. [Image generation and editing profiles](docs/image-generation-editing.md)
+15. [Music, speech, and audio profiles](docs/audio-music-voice.md)
+16. [Project directory layout and asset organization](docs/project-directory-layout.md)
+17. [References, mood boards, storyboards, and bibles](docs/references-bibles.md)
+18. [Stories, books, Fountain, and screenplays](docs/writing-screenplay.md)
+19. [Complete and incremental production compiler](docs/production-compiler.md)
+20. [ComfyUI-native tutorial compiler](docs/tutorials.md)
+21. [Kdenlive and NLE handoff](docs/kdenlive-nle.md)
 
 ## First-class node-pack integrations
 
-21. [MiniMax H3 Director](docs/minimax-h3-director.md)
-22. [WhatDreamsCost-ComfyUI](docs/whatdreamscost-comfyui.md)
-23. [Scene Camera Action](docs/scene-camera-action.md)
-24. [MiniMax H3 Turbo](docs/minimax-h3-turbo.md)
+22. [MiniMax H3 Director](docs/minimax-h3-director.md)
+23. [WhatDreamsCost-ComfyUI](docs/whatdreamscost-comfyui.md)
+24. [Scene Camera Action](docs/scene-camera-action.md)
+25. [MiniMax H3 Turbo](docs/minimax-h3-turbo.md)
 
 ## Technical documentation
 
-25. [Architecture](docs/architecture.md)
-26. [Compatibility](docs/compatibility.md)
-27. [Known limitations](docs/limitations.md)
-28. [Security and path policy](docs/security.md)
-29. [Development and testing](docs/development.md)
-30. [Roadmap](docs/roadmap.md)
+26. [Architecture](docs/architecture.md)
+27. [Compatibility](docs/compatibility.md)
+28. [Known limitations](docs/limitations.md)
+29. [Security and path policy](docs/security.md)
+30. [Development and testing](docs/development.md)
+31. [Roadmap](docs/roadmap.md)
 
 ## Examples, skills, project records, and governance
 
-31. [Example workflows](examples/workflows/README.md)
-32. [Bundled Pi skills and procedures](pi/bundled-skills/README.md)
-33. [Project inventory](PROJECT_INVENTORY.md)
-34. [Release notes](RELEASE_NOTES.md)
-35. [Changelog](CHANGELOG.md)
-36. [Contributing](CONTRIBUTING.md)
-37. [Agent and development rules](AGENTS.md)
-38. [Security policy](SECURITY.md)
-39. [Code of conduct](CODE_OF_CONDUCT.md)
-40. [Third-party notices](THIRD_PARTY_NOTICES.md)
-41. [GPL-3.0 license](LICENSE)
-42. [Model-family profiles](data/model_profiles.json)
+32. [Example workflows](examples/workflows/README.md)
+33. [Bundled Pi skills and procedures](pi/bundled-skills/README.md)
+34. [Project inventory](PROJECT_INVENTORY.md)
+35. [Release notes](RELEASE_NOTES.md)
+36. [Changelog](CHANGELOG.md)
+37. [Contributing](CONTRIBUTING.md)
+38. [Agent and development rules](AGENTS.md)
+39. [Security policy](SECURITY.md)
+40. [Code of conduct](CODE_OF_CONDUCT.md)
+41. [Third-party notices](THIRD_PARTY_NOTICES.md)
+42. [GPL-3.0 license](LICENSE)
+43. [Model-family profiles](data/model_profiles.json)
 
 ---
 
@@ -540,13 +541,15 @@ Kdenlive is the default NLE target.
 - a Markdown assembly guide;
 - a DOCX assembly guide.
 
-The native Kdenlive writer in 0.1.8 is intentionally conservative. Complex effects, title templates, nested sequences, transitions, and version-specific features should be finished inside Kdenlive. The portable manifest and assembly guide remain available when a native project needs repair.
+The native Kdenlive writer in 0.1.9 is intentionally conservative. Complex effects, title templates, nested sequences, transitions, and version-specific features should be finished inside Kdenlive. The portable manifest and assembly guide remain available when a native project needs repair.
 
 Read [docs/kdenlive-nle.md](docs/kdenlive-nle.md).
 
 ---
 
 # Optional ComfyUI sidebar chat
+
+The sidebar accepts Pi's documented built-in slash-command names through a host-side RPC bridge and provides explicit, on-demand setup for llama.cpp, Ollama, LM Studio, vLLM, and other OpenAI-compatible local servers. Type `/` in the composer for the command picker. See [Local LLM servers and Pi slash commands](docs/local-llm-slash-commands.md).
 
 The optional sidebar is disabled by default. Enable it in ComfyUI settings:
 

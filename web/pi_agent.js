@@ -6,6 +6,8 @@ const CHAT_STATE = {
   busy: false,
   abortRequested: false,
   sessions: [],
+  commands: [],
+  commandIndex: -1,
 };
 
 function escapeHtml(value) {
@@ -110,6 +112,15 @@ function ensureStyles() {
     .pi-agent-send { margin-left:auto; min-width:72px; }
     .pi-agent-help { font-size:10px; opacity:.6; }
     .pi-agent-statusline { font-size:11px; min-height:16px; padding:0 2px; opacity:.72; }
+    .pi-agent-command-menu { display:none; max-height:220px; overflow:auto; border:1px solid color-mix(in srgb, currentColor 22%, transparent); border-radius:8px; background:var(--comfy-menu-bg, #222); }
+    .pi-agent-command-menu.open { display:block; }
+    .pi-agent-command-item { padding:7px 9px; cursor:pointer; display:grid; gap:2px; }
+    .pi-agent-command-item.active, .pi-agent-command-item:hover { background:color-mix(in srgb, currentColor 10%, transparent); }
+    .pi-agent-command-name { font-family:monospace; font-size:12px; }
+    .pi-agent-command-desc { font-size:10px; opacity:.68; }
+    .pi-agent-local-box { border:1px solid color-mix(in srgb, currentColor 16%, transparent); border-radius:8px; padding:8px; display:grid; gap:7px; }
+    .pi-agent-local-actions { display:flex; gap:6px; flex-wrap:wrap; }
+    .pi-agent-local-status { font-size:10px; opacity:.72; white-space:pre-wrap; }
     .pi-agent-hidden { display:none !important; }
   `;
   document.head.appendChild(style);
@@ -181,6 +192,20 @@ async function loadSession(ui, sessionId) {
   ui.project.value = data.session.project_directory || "";
   ui.provider.value = data.session.provider || "";
   ui.model.value = data.session.model || "";
+  ui.scopedModels.value = data.session.scoped_models || "";
+  const local = data.session.local_llm || {};
+  if (local.kind) ui.localKind.value = local.kind;
+  ui.localBaseUrl.value = local.base_url || "";
+  ui.localProviderId.value = local.provider || "";
+  if (local.model) {
+    ui.localModel.innerHTML = "";
+    const option = document.createElement("option");
+    option.value = local.model;
+    option.textContent = local.model;
+    ui.localModel.appendChild(option);
+    ui.localModel.value = local.model;
+  }
+  ui.localApiKeyEnv.value = local.api_key_env || "";
   const guard = data.session.context_guard || {};
   ui.preemptiveHandoff.checked = guard.enabled !== false;
   ui.handoffThreshold.value = Number((guard.threshold ?? 0.825) * 100).toFixed(1);
@@ -218,6 +243,15 @@ async function createSession(ui) {
       project_directory: ui?.project?.value || "",
       provider: ui?.provider?.value || "",
       model: ui?.model?.value || "",
+      scoped_models: ui?.scopedModels?.value || "",
+      local_llm: ui ? {
+        enabled: Boolean(ui.localBaseUrl?.value?.trim() || ui.localProviderId?.value?.trim() || ui.localModel?.value),
+        kind: ui.localKind?.value || "",
+        base_url: ui.localBaseUrl?.value?.trim() || "",
+        provider: ui.localProviderId?.value?.trim() || "",
+        model: ui.localModel?.value || "",
+        api_key_env: ui.localApiKeyEnv?.value?.trim() || "",
+      } : {},
     }),
   });
   CHAT_STATE.sessionId = data.session.session_id;
@@ -254,6 +288,15 @@ async function sendMessage(ui) {
     project_directory: ui.project.value.trim(),
     provider: ui.provider.value.trim(),
     model: ui.model.value.trim(),
+    scoped_models: ui.scopedModels.value.trim(),
+    local_llm: {
+      enabled: Boolean(ui.localBaseUrl.value.trim() || ui.localProviderId.value.trim() || ui.localModel.value),
+      kind: ui.localKind.value,
+      base_url: ui.localBaseUrl.value.trim(),
+      provider: ui.localProviderId.value.trim(),
+      model: ui.localModel.value,
+      api_key_env: ui.localApiKeyEnv.value.trim(),
+    },
     pi_executable: ui.executable.value.trim(),
     timeout_seconds: Number(ui.timeout.value || 180),
     workflow: ui.includeWorkflow.checked ? currentWorkflow() : null,
@@ -276,7 +319,14 @@ async function sendMessage(ui) {
           : "Context handoff created; automatic ingest needs attention.";
       }
       updateContextPill(ui, data.context_guard || data.session?.context_guard || {});
-      await refreshSessions(ui, data.session?.session_id || CHAT_STATE.sessionId);
+      if (data.ui_action === "copy_text") await copyText(data.message?.content || "");
+      if (data.ui_action === "open_settings") ui.settings.hidden = false;
+      if (data.ui_action === "open_local_llm") {
+        ui.settings.hidden = false;
+        ui.localBox.scrollIntoView?.({ block: "nearest" });
+      }
+      const targetSession = data.switch_session_id || data.session?.session_id || CHAT_STATE.sessionId;
+      await refreshSessions(ui, targetSession);
     }
   } catch (error) {
     renderMessage(ui.messages, { role: "assistant", content: String(error), error: true, created_at: Date.now() / 1000 });
@@ -285,6 +335,132 @@ async function sendMessage(ui) {
     setBusy(ui, false);
     scrollToBottom(ui.messages);
     ui.textarea.focus();
+  }
+}
+
+async function refreshCommandCatalog(ui) {
+  try {
+    const suffix = CHAT_STATE.sessionId ? `?session_id=${encodeURIComponent(CHAT_STATE.sessionId)}` : "";
+    const data = await fetchJson(`/pi-agent/chat/commands${suffix}`);
+    CHAT_STATE.commands = Array.isArray(data.commands) ? data.commands : [];
+  } catch {
+    CHAT_STATE.commands = [];
+  }
+}
+
+function closeCommandMenu(ui) {
+  CHAT_STATE.commandIndex = -1;
+  ui.commandMenu.classList.remove("open");
+  ui.commandMenu.innerHTML = "";
+}
+
+function commandMatches(text) {
+  const value = String(text || "");
+  if (!value.startsWith("/") || value.includes("\n")) return [];
+  const body = value.slice(1);
+  if (/\s/.test(body)) return [];
+  const query = body.toLowerCase();
+  return CHAT_STATE.commands.filter((item) => String(item.name || "").toLowerCase().startsWith(query)).slice(0, 24);
+}
+
+function renderCommandMenu(ui) {
+  const matches = commandMatches(ui.textarea.value);
+  if (!matches.length) return closeCommandMenu(ui);
+  CHAT_STATE.commandIndex = Math.min(Math.max(CHAT_STATE.commandIndex, 0), matches.length - 1);
+  ui.commandMenu.innerHTML = "";
+  matches.forEach((item, index) => {
+    const row = document.createElement("div");
+    row.className = `pi-agent-command-item${index === CHAT_STATE.commandIndex ? " active" : ""}`;
+    row.innerHTML = `<span class="pi-agent-command-name">/${escapeHtml(item.name)}</span><span class="pi-agent-command-desc">${escapeHtml(item.description || item.usage || "")}</span>`;
+    row.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+      ui.textarea.value = `/${item.name} `;
+      ui.textarea.focus();
+      closeCommandMenu(ui);
+    });
+    ui.commandMenu.appendChild(row);
+  });
+  ui.commandMenu.classList.add("open");
+}
+
+function populateLocalModels(ui, models) {
+  const previous = ui.localModel.value;
+  ui.localModel.innerHTML = "";
+  for (const model of models || []) {
+    const option = document.createElement("option");
+    option.value = String(model);
+    option.textContent = String(model);
+    ui.localModel.appendChild(option);
+  }
+  if (previous && (models || []).includes(previous)) ui.localModel.value = previous;
+  if (!ui.localModel.options.length) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = "No models detected";
+    ui.localModel.appendChild(option);
+  }
+}
+
+async function detectLocalServers(ui) {
+  ui.localStatus.textContent = "Looking for local servers on common loopback ports…";
+  try {
+    const data = await fetchJson("/pi-agent/local-llm/discover");
+    const available = (data.servers || []).filter((item) => item.available);
+    if (!available.length) {
+      ui.localStatus.textContent = "No common local server was detected. Choose a server type and enter its endpoint manually.";
+      return;
+    }
+    const best = available[0];
+    ui.localKind.value = best.kind;
+    ui.localBaseUrl.value = best.base_url || "";
+    populateLocalModels(ui, best.models || []);
+    ui.localStatus.textContent = available.map((item) => `${item.label}: ${item.models?.length || 0} model(s) at ${item.base_url}`).join("\n");
+  } catch (error) {
+    ui.localStatus.textContent = String(error);
+  }
+}
+
+async function probeLocalServer(ui) {
+  ui.localStatus.textContent = "Checking local server…";
+  try {
+    const data = await fetchJson("/pi-agent/local-llm/probe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kind: ui.localKind.value, base_url: ui.localBaseUrl.value.trim() }),
+    });
+    ui.localBaseUrl.value = data.base_url || ui.localBaseUrl.value;
+    populateLocalModels(ui, data.models || []);
+    ui.localStatus.textContent = data.message || "Local server detected.";
+  } catch (error) {
+    ui.localStatus.textContent = String(error);
+  }
+}
+
+async function enableLocalServer(ui) {
+  if (!CHAT_STATE.sessionId) await createSession(ui);
+  ui.localStatus.textContent = "Configuring Pi local provider…";
+  try {
+    const modelOptions = [...ui.localModel.options].map((option) => option.value).filter(Boolean);
+    const data = await fetchJson("/pi-agent/local-llm/configure", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        session_id: CHAT_STATE.sessionId,
+        kind: ui.localKind.value,
+        base_url: ui.localBaseUrl.value.trim(),
+        models: modelOptions,
+        model: ui.localModel.value,
+        provider_id: ui.localProviderId.value.trim(),
+        api_key_env: ui.localApiKeyEnv.value.trim(),
+      }),
+    });
+    ui.provider.value = data.provider || "";
+    ui.model.value = data.model || "";
+    ui.localProviderId.value = data.provider || ui.localProviderId.value;
+    ui.localStatus.textContent = `${data.message || "Local provider configured."}\nProvider: ${data.provider || ""}\nModel: ${data.model || ""}`;
+    await loadSession(ui, CHAT_STATE.sessionId);
+  } catch (error) {
+    ui.localStatus.textContent = String(error);
   }
 }
 
@@ -343,6 +519,18 @@ function buildSidebar(el) {
         <div class="pi-agent-help">Node-pack knowledge is loaded only when your message or attached workflow matches that integration.</div>
         <div class="pi-agent-field"><label for="pi-agent-provider">Pi provider override</label><input id="pi-agent-provider" class="pi-agent-input" type="text" placeholder="Leave blank for Pi default" /></div>
         <div class="pi-agent-field"><label for="pi-agent-model">Pi model override</label><input id="pi-agent-model" class="pi-agent-input" type="text" placeholder="Leave blank for Pi default" /></div>
+        <div class="pi-agent-field"><label for="pi-agent-scoped-models">Scoped model patterns (optional)</label><input id="pi-agent-scoped-models" class="pi-agent-input" type="text" placeholder="Example: llama.cpp/*,ollama/qwen*" /></div>
+        <div id="pi-agent-local-box" class="pi-agent-local-box">
+          <strong>Local LLM server</strong>
+          <div class="pi-agent-help">Nothing is probed at startup. Click Detect when you want ComfyUI-Pi to look for a running local server.</div>
+          <div class="pi-agent-field"><label for="pi-agent-local-kind">Server type</label><select id="pi-agent-local-kind" class="pi-agent-input"><option value="llama.cpp">llama.cpp</option><option value="ollama">Ollama</option><option value="lm-studio">LM Studio</option><option value="vllm">vLLM</option><option value="openai-compatible">Other OpenAI-compatible</option></select></div>
+          <div class="pi-agent-field"><label for="pi-agent-local-url">Base URL</label><input id="pi-agent-local-url" class="pi-agent-input" type="text" placeholder="Leave blank for the selected server's common local default" /></div>
+          <div class="pi-agent-field"><label for="pi-agent-local-model">Local model</label><select id="pi-agent-local-model" class="pi-agent-input"><option value="">Detect models first</option></select></div>
+          <div class="pi-agent-field"><label for="pi-agent-local-provider-id">Pi provider id (optional)</label><input id="pi-agent-local-provider-id" class="pi-agent-input" type="text" placeholder="Automatic: ollama, lm-studio, vllm, comfyui-local" /></div>
+          <div class="pi-agent-field"><label for="pi-agent-local-api-env">API-key environment variable (optional)</label><input id="pi-agent-local-api-env" class="pi-agent-input" type="text" placeholder="Example: LOCAL_LLM_API_KEY — raw keys are not stored here" /></div>
+          <div class="pi-agent-local-actions"><button id="pi-agent-local-detect" class="pi-agent-btn" type="button">Detect common servers</button><button id="pi-agent-local-probe" class="pi-agent-btn" type="button">Check endpoint</button><button id="pi-agent-local-enable" class="pi-agent-btn" type="button">Use in this chat</button></div>
+          <div id="pi-agent-local-status" class="pi-agent-local-status"></div>
+        </div>
         <div class="pi-agent-field"><label for="pi-agent-executable">Pi executable override</label><input id="pi-agent-executable" class="pi-agent-input" type="text" placeholder="Leave blank for auto-discovery" /></div>
         <label class="pi-agent-check"><input id="pi-agent-preemptive-handoff" type="checkbox" checked /> Preemptive context handoff and reset</label>
         <div class="pi-agent-help">ComfyUI-Pi disables Pi's built-in auto-compaction. At the configured threshold it writes a compact handoff, starts a fresh Pi context, and ingests the handoff automatically.</div>
@@ -352,7 +540,8 @@ function buildSidebar(el) {
       </div>
       <div id="pi-agent-messages" class="pi-agent-messages" aria-live="polite"></div>
       <div class="pi-agent-composer">
-        <textarea id="pi-agent-chat-input" class="pi-agent-textarea" placeholder="Message Pi Agent… Paste text here normally. Enter sends; Shift+Enter adds a new line."></textarea>
+        <textarea id="pi-agent-chat-input" class="pi-agent-textarea" placeholder="Message Pi Agent… Type / for Pi commands. Paste text normally. Enter sends; Shift+Enter adds a new line."></textarea>
+        <div id="pi-agent-command-menu" class="pi-agent-command-menu" role="listbox" aria-label="Pi slash commands"></div>
         <div id="pi-agent-statusline" class="pi-agent-statusline"></div>
         <div class="pi-agent-composer-actions">
           <span class="pi-agent-help">Text in the conversation is selectable and copyable.</span>
@@ -375,6 +564,17 @@ function buildSidebar(el) {
     includeWorkflow: el.querySelector("#pi-agent-include-workflow"),
     provider: el.querySelector("#pi-agent-provider"),
     model: el.querySelector("#pi-agent-model"),
+    scopedModels: el.querySelector("#pi-agent-scoped-models"),
+    localBox: el.querySelector("#pi-agent-local-box"),
+    localKind: el.querySelector("#pi-agent-local-kind"),
+    localBaseUrl: el.querySelector("#pi-agent-local-url"),
+    localModel: el.querySelector("#pi-agent-local-model"),
+    localProviderId: el.querySelector("#pi-agent-local-provider-id"),
+    localApiKeyEnv: el.querySelector("#pi-agent-local-api-env"),
+    localDetect: el.querySelector("#pi-agent-local-detect"),
+    localProbe: el.querySelector("#pi-agent-local-probe"),
+    localEnable: el.querySelector("#pi-agent-local-enable"),
+    localStatus: el.querySelector("#pi-agent-local-status"),
     executable: el.querySelector("#pi-agent-executable"),
     preemptiveHandoff: el.querySelector("#pi-agent-preemptive-handoff"),
     handoffThreshold: el.querySelector("#pi-agent-handoff-threshold"),
@@ -382,6 +582,7 @@ function buildSidebar(el) {
     timeout: el.querySelector("#pi-agent-timeout"),
     messages: el.querySelector("#pi-agent-messages"),
     textarea: el.querySelector("#pi-agent-chat-input"),
+    commandMenu: el.querySelector("#pi-agent-command-menu"),
     statusline: el.querySelector("#pi-agent-statusline"),
     send: el.querySelector("#pi-agent-send"),
     stop: el.querySelector("#pi-agent-stop"),
@@ -392,7 +593,45 @@ function buildSidebar(el) {
   ui.settingsToggle.addEventListener("click", () => { ui.settings.hidden = !ui.settings.hidden; });
   ui.send.addEventListener("click", () => sendMessage(ui));
   ui.stop.addEventListener("click", () => abortMessage(ui));
+  ui.localDetect.addEventListener("click", () => detectLocalServers(ui));
+  ui.localProbe.addEventListener("click", () => probeLocalServer(ui));
+  ui.localEnable.addEventListener("click", () => enableLocalServer(ui));
+  ui.textarea.addEventListener("input", () => { CHAT_STATE.commandIndex = 0; renderCommandMenu(ui); });
   ui.textarea.addEventListener("keydown", (event) => {
+    const menuOpen = ui.commandMenu.classList.contains("open");
+    const matches = commandMatches(ui.textarea.value);
+    if (menuOpen && event.key === "ArrowDown") {
+      event.preventDefault();
+      CHAT_STATE.commandIndex = Math.min(CHAT_STATE.commandIndex + 1, matches.length - 1);
+      renderCommandMenu(ui);
+      return;
+    }
+    if (menuOpen && event.key === "ArrowUp") {
+      event.preventDefault();
+      CHAT_STATE.commandIndex = Math.max(CHAT_STATE.commandIndex - 1, 0);
+      renderCommandMenu(ui);
+      return;
+    }
+    if (menuOpen && (event.key === "Tab" || (event.key === "Enter" && !event.shiftKey))) {
+      const item = matches[CHAT_STATE.commandIndex];
+      if (item) {
+        event.preventDefault();
+        const exact = ui.textarea.value.trim().toLowerCase() === `/${String(item.name || "").toLowerCase()}`;
+        if (event.key === "Enter" && exact) {
+          closeCommandMenu(ui);
+          sendMessage(ui);
+        } else {
+          ui.textarea.value = `/${item.name} `;
+          closeCommandMenu(ui);
+        }
+        return;
+      }
+    }
+    if (event.key === "Escape" && menuOpen) {
+      event.preventDefault();
+      closeCommandMenu(ui);
+      return;
+    }
     if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
       event.preventDefault();
       sendMessage(ui);
@@ -420,13 +659,17 @@ function buildSidebar(el) {
     await refreshSessions(ui);
     ui.textarea.focus();
   });
-  ui.sessionSelect.addEventListener("change", () => loadSession(ui, ui.sessionSelect.value));
+  ui.sessionSelect.addEventListener("change", async () => {
+    await loadSession(ui, ui.sessionSelect.value);
+    await refreshCommandCatalog(ui);
+  });
 
   return ui;
 }
 
 async function initializeSidebar(el) {
   const ui = buildSidebar(el);
+  await refreshCommandCatalog(ui);
   try {
     const status = await fetchStatus();
     const pi = status.pi || {};

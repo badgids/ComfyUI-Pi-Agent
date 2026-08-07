@@ -28,7 +28,7 @@ Tutorial compilation writes originals and annotated copies separately. Repair re
 
 ## First-class integration recognition
 
-Workflow analysis can attach integration-specific reports when recognized node packs are present. In v0.1.8, MiniMax H3 Director, WhatDreamsCost-ComfyUI, Scene Camera Action, and MiniMax H3 Turbo are recognized by their public node IDs. The analyzer lazy-loads only the inspector for integrations actually present in the graph.
+Workflow analysis can attach integration-specific reports when recognized node packs are present. In v0.1.9, MiniMax H3 Director, WhatDreamsCost-ComfyUI, Scene Camera Action, and MiniMax H3 Turbo are recognized by their public node IDs. The analyzer lazy-loads only the inspector for integrations actually present in the graph.
 
 MiniMax Director analysis checks loader roles, FL2VA/ref2VA models, video/audio VAEs, serialized timeline reference counts, and safe-edit warnings. WhatDreamsCost analysis recognizes its Director and utility nodes and treats frontend-managed timeline state conservatively. Scene Camera Action analysis checks the Scene → Acting → Directing chain plus SceneState safety. H3 Turbo analysis checks the Turbo LoRA/sampler path, scheduler starting profile, MiniMax model/CLIP signals, and joint AV requirements.
 
