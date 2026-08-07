@@ -4,6 +4,16 @@
 **Navigation:** [Project README](README.md) · [Documentation home](docs/index.md) · [Previous: Third-party notices](THIRD_PARTY_NOTICES.md) · [Next: Release notes](RELEASE_NOTES.md)
 <!-- DOC_NAV_END -->
 
+## 0.1.17 — controlling PTY terminal and selectable ComfyUI placement
+
+- Fixed the real Pi terminal launch so POSIX Pi runs under a genuine controlling terminal through a tiny single-threaded PTY child that calls `setsid()` + `TIOCSCTTY` before `exec`. v0.1.16 provided TTY file descriptors but started a new session after opening the slave PTY, which could leave modern Pi TUI raw-mode/job-control initialization without a controlling terminal.
+- Added a PTY regression test that proves the child owns the controlling terminal and can receive browser-style input.
+- Fixed browser terminal focus by removing the outer host `tabindex`, explicitly focusing xterm on pointer interaction, and supporting both modern `onData`/`onResize` and legacy xterm event APIs.
+- Added compatibility handling for Pi's DEC synchronized-output (`?2026`) redraw wrappers when using the bundled legacy xterm renderer.
+- Added terminal input/output byte diagnostics so a running process with no PTY output is reported distinctly.
+- Added **Pi Agent: Interface placement** with **Left sidebar** and **Bottom panel** choices. Bottom placement uses ComfyUI's native `bottomPanelTabs` extension API and the same Terminal/Chat implementation.
+- Placement is applied on browser page load so only the selected Pi Agent location is registered.
+
 ## 0.1.16 — real Pi terminal sidebar and faithful output
 
 - Added a PTY-backed **Terminal** view as the default Pi sidebar experience on POSIX platforms. It runs the actual interactive Pi CLI instead of reconstructing Pi's TUI through RPC.

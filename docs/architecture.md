@@ -10,7 +10,7 @@
 1. ComfyUI nodes in `comfy_pi_agent/nodes.py`.
 2. Shared services for workflows, models, Fountain, projects, tutorials, NLE, DOCX, Pi RPC, and PTY terminal supervision.
 3. Optional HTTP/WebSocket routes in `comfy_pi_agent/routes.py`.
-4. Optional ComfyUI frontend extension in `web/pi_agent.js`, including the bundled xterm.js terminal renderer.
+4. Optional ComfyUI frontend extension in `web/pi_agent.js`, including the bundled xterm.js terminal renderer and selectable left-sidebar/native-bottom-panel placement.
 5. Interoperability adapters in `comfy_pi_agent/integrations/` for explicitly supported third-party node packs.
 6. Host-side weak-model guidance and deterministic task-skill routing in `comfy_pi_agent/agent_guidance.py`.
 7. Data profiles and original Pi skills.
@@ -70,7 +70,7 @@ Workflow analysis uses the same strategy: only inspectors for node packs actuall
 
 ## Sidebar runtime modes
 
-On POSIX systems the default sidebar path is `browser xterm.js → ComfyUI WebSocket → OS PTY → real interactive pi`. Structured Chat remains `browser messages → ComfyUI route → Pi JSONL RPC`. Both share provider preparation, lazy integration routing, and handoff storage. See [pi-terminal.md](pi-terminal.md).
+On POSIX systems the Terminal path is `browser xterm.js → ComfyUI WebSocket → controlling OS PTY (`setsid` + `TIOCSCTTY` helper) → real interactive pi`. The UI can be registered in either ComfyUI’s left sidebar or its native bottom panel. Structured Chat remains `browser messages → ComfyUI route → Pi JSONL RPC`. Both share provider preparation, lazy integration routing, and handoff storage. See [pi-terminal.md](pi-terminal.md).
 
 ## Context lifecycle
 

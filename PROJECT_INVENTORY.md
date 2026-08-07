@@ -7,7 +7,7 @@
 
 ## Release
 
-- Version: 0.1.16
+- Version: 0.1.17
 - Creator: Alan D. Guice (Badgids)
 - License: GPL-3.0-only
 
@@ -20,7 +20,7 @@
 - Test modules: 15
 - Example workflows: 3
 - First-class lazy node-pack integrations: 4
-- Manifest-tracked source files: 177
+- Manifest-tracked source files: 178
 
 ## Context-efficiency guarantees
 
@@ -29,7 +29,8 @@
 - A deterministic host-side task router selects at most a few matching bundled procedures; weak local models do not need to choose from the complete skill library themselves.
 - Every Pi turn receives a compact current-job envelope with an explicit completion rule; the stable core contract is injected only when a new hidden scope is established.
 - Normal matched requests receive compact, task-targeted guidance; complete skill guides load only for explicit deep/tutorial requests.
-- The default sidebar Terminal is a real PTY-backed Pi CLI; structured Chat remains a fallback.
+- The default Pi Agent Terminal is a real controlling-PTY-backed Pi CLI; structured Chat remains a fallback.
+- The optional Pi Agent interface can be registered in either the ComfyUI left sidebar or native bottom panel.
 - Sidebar and Pi Agent Prompt workflow context uses a bounded digest first; full workflow JSON is made available locally only for on-demand reading.
 - Stateful sidebar chat resets Pi's hidden scope when integration/project/workflow context changes, then restores only a bounded clean visible transcript.
 - Installed live ComfyUI schemas and the installed node pack's own example workflows outrank bundled static compatibility profiles.

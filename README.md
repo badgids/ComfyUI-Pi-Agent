@@ -4,7 +4,7 @@ A ComfyUI custom-node package that connects **Pi Agent** reasoning with practica
 
 **Creator:** Alan D. Guice (**Badgids**)  
 **License:** GPL-3.0  
-**Release:** 0.1.16
+**Release:** 0.1.17
 
 > This project is designed to be powerful without being confusing. The documentation uses plain language, short steps, and concrete examples. Technical details are kept intact instead of being hidden or oversimplified.
 
@@ -29,7 +29,7 @@ ComfyUI Pi Agent helps organize that work. It can:
 - export Markdown, DOCX, Fountain, and JSON files;
 - prepare a Kdenlive-first editorial package with a portable timeline fallback;
 - call Pi through its JSONL RPC mode for structured/headless features when Pi is installed and configured;
-- run the **real interactive Pi CLI** in the ComfyUI left sidebar through a native PTY, with Pi reasoning, tools, slash commands, menus, and errors rendered directly;
+- run the **real interactive Pi CLI** in either the ComfyUI left sidebar or its bottom panel through a native controlling PTY, with Pi reasoning, tools, slash commands, menus, and errors rendered directly;
 - keep a structured Chat view as a secondary/fallback interface, with reasoning and tool activity visible by default and independently hideable;
 - recognize, explain, inspect, plan, create, and safely edit workflows for **ComfyUI-MiniMaxH3-Director** when that pack is installed;
 - recognize, explain, inspect, plan, create, and safely edit workflows for **WhatDreamsCost-ComfyUI**, including LTX Director, Prompt Relay, keyframes, IC-LoRA, audio, and its utility nodes;
@@ -45,7 +45,7 @@ Every major tool is available as a normal ComfyUI node. The optional sidebar is 
 
 ## Important first-release boundary
 
-Version 0.1.16 provides the working foundation, project compilers, tutorial compiler, document tools, workflow intelligence, Pi RPC connection, manifests, profiles, examples, and tests.
+Version 0.1.17 provides the working foundation, project compilers, tutorial compiler, document tools, workflow intelligence, Pi RPC connection, manifests, profiles, examples, and tests.
 
 It does **not** bundle large AI model weights, third-party custom-node packs, Pi itself, Node.js, FFmpeg, or Kdenlive. It detects those tools when they are installed. Missing optional tools do not stop ComfyUI from starting.
 
@@ -551,7 +551,7 @@ Read [docs/kdenlive-nle.md](docs/kdenlive-nle.md).
 
 # Optional ComfyUI Pi sidebar
 
-The optional **Pi Agent** sidebar now has two views:
+The optional **Pi Agent** interface can live in the left sidebar or ComfyUI bottom panel and has two views:
 
 - **Terminal** — the default when native PTY support is available. This is the real interactive `pi` CLI rendered inside ComfyUI, so Pi itself owns reasoning display, tool calls/results, slash commands, interactive menus, keyboard behavior, and streaming output.
 - **Chat** — the structured ComfyUI chat retained as a secondary/fallback view. It recovers final answers with Pi's authoritative RPC text command when necessary and shows reasoning/tool activity by default, with settings to hide either.
@@ -562,13 +562,14 @@ Terminal mode still uses ComfyUI-Pi's sparse context router. Pi starts with unre
 
 The preemptive handoff system also remains active. Terminal mode watches Pi's real context usage, writes a bounded durable handoff at the configured 80–95% threshold (82.5% default), starts a fresh Pi session with native `/new`, and injects the handoff exactly once on the next real task. Pi's normal threshold-triggered auto-compaction is cancelled by the bridge; manual `/compact` and emergency overflow recovery remain available.
 
-Enable the optional sidebar in ComfyUI settings:
+Enable the optional interface and choose its placement in ComfyUI settings:
 
 ```text
-Pi Agent: Show optional sidebar after restart
+Pi Agent: Enable interface after restart
+Pi Agent: Interface placement = Left sidebar | Bottom panel
 ```
 
-There is no separate user-facing WebUI or second browser application. The real terminal is a PTY supervised by the ComfyUI backend and rendered in the existing ComfyUI sidebar.
+There is no separate user-facing WebUI or second browser application. The real terminal is a controlling PTY supervised by the ComfyUI backend and rendered in the selected native ComfyUI panel. Placement changes take effect after refreshing the ComfyUI browser page.
 
 Read [Pi Agent sidebar](docs/sidebar-chat.md), [Real Pi terminal](docs/pi-terminal.md), and [Local LLM servers and Pi slash commands](docs/local-llm-slash-commands.md).
 

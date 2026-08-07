@@ -1,10 +1,10 @@
-# Real Pi terminal in the ComfyUI sidebar
+# Real Pi terminal inside ComfyUI
 
 <!-- DOC_NAV_START -->
 **Navigation:** [Project README](../README.md) · [Documentation home](index.md) · [Previous: Pi Agent sidebar](sidebar-chat.md) · [Next: Local LLM servers and slash commands](local-llm-slash-commands.md)
 <!-- DOC_NAV_END -->
 
-The **Terminal** tab is the default Pi Agent sidebar view on platforms with a native PTY backend. It runs the actual interactive `pi` CLI inside ComfyUI instead of reconstructing Pi's interface from RPC events.
+The **Terminal** tab is the default Pi Agent interface view on platforms with a native PTY backend. It runs the actual interactive `pi` CLI inside ComfyUI instead of reconstructing Pi's interface from RPC events.
 
 ## Why Terminal is the default
 
@@ -19,10 +19,10 @@ Pi's own interactive interface already knows how to render:
 - queued steering/follow-up input;
 - Pi's footer, model, context, and session information.
 
-ComfyUI-Pi therefore connects the browser sidebar to a real Pi process through a pseudo-terminal (PTY). The browser uses the bundled xterm.js renderer. There is no second user-facing web application and no separate terminal server.
+ComfyUI-Pi therefore connects the selected ComfyUI panel to a real Pi process through a controlling pseudo-terminal (PTY). The browser uses the bundled xterm.js renderer. There is no second user-facing web application and no separate terminal server.
 
 ```text
-ComfyUI sidebar
+ComfyUI left sidebar or bottom panel
       ↓
 xterm.js terminal renderer
       ↓
@@ -35,7 +35,7 @@ real interactive `pi` process
 
 ## Terminal and Chat views
 
-The sidebar has two views:
+The Pi Agent interface has two views:
 
 - **Terminal** — default when native PTY support is available. This is Pi's real interactive TUI.
 - **Chat** — the structured ComfyUI chat renderer retained as a secondary/fallback interface.
@@ -43,6 +43,16 @@ The sidebar has two views:
 The Chat view now recovers final text from Pi's authoritative `get_last_assistant_text` RPC when a provider produces an event stream that contains no usable visible text. It also records reasoning and tool activity separately.
 
 In Chat settings, **Show reasoning** and **Show tool calls and tool activity** are both enabled by default. Disable either option to hide that information from the structured Chat display. Terminal mode follows Pi's own native rendering and Pi settings.
+
+
+## Interface placement
+
+ComfyUI settings provide **Pi Agent: Interface placement** with two choices:
+
+- **Left sidebar** — the original Pi Agent location.
+- **Bottom panel** — registers Pi Agent through ComfyUI's native `bottomPanelTabs` extension API in the same lower workspace used by ComfyUI terminal/log panels.
+
+The same Terminal/Chat UI and the same supervised Pi session are used in either location. Refresh the ComfyUI browser page after changing placement so the extension registers only the selected location.
 
 ## Provider and Model controls
 
@@ -56,6 +66,15 @@ Model     [ ... ]
 Provider is always first. Model is always second.
 
 For local providers, ComfyUI-Pi prepares the selected model before starting or restarting Pi. For an existing Terminal session, changing Provider or Model restarts the supervised Pi TUI with `--continue` in the same private terminal-session directory so Pi can continue that session under the new model.
+
+
+## Terminal compatibility and focus
+
+The terminal host does not take browser focus itself; clicks are forwarded to xterm's real input textarea so normal typing, Pi shortcuts, slash commands, and paste reach the PTY. The frontend accepts both modern xterm `onData`/`onResize` callbacks and the legacy EventEmitter form used by the bundled renderer.
+
+Pi's current TUI wraps redraws in DEC synchronized-output mode. The bundled renderer predates that mode, so ComfyUI-Pi removes only the `2026` begin/end synchronization wrappers before rendering while preserving all visible ANSI content.
+
+Terminal status exposes input/output byte counters. If Pi is running but no PTY output has arrived, the UI reports that distinction instead of claiming a healthy interactive terminal.
 
 ## Sparse dynamic guidance
 
@@ -87,7 +106,7 @@ The bridge cancels Pi's normal **threshold-triggered** auto-compaction so the du
 
 ## Platform support
 
-The first terminal backend uses the standard POSIX PTY API, so it works on Linux, WSL, and macOS environments where ComfyUI runs under POSIX Python.
+The POSIX backend opens a PTY, launches a tiny single-threaded helper, and has that helper call `setsid()` plus `TIOCSCTTY` before it `exec`s Pi. Pi therefore becomes the session leader of a real **controlling terminal**, not merely a process with TTY-shaped stdin/stdout file descriptors. This is required by modern Pi TUI raw-mode, foreground-process-group, resize, and terminal-capability behavior. It works on Linux, WSL, and macOS environments where ComfyUI runs under POSIX Python.
 
 When native PTY support is unavailable, the Terminal tab is disabled and ComfyUI-Pi automatically falls back to structured Chat. This must never stop ComfyUI or the node pack from loading.
 

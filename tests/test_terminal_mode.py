@@ -2,6 +2,8 @@ import json
 import os
 import queue
 import tempfile
+import sys
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -77,6 +79,39 @@ class TerminalArchitectureTests(unittest.TestCase):
         self.assertIn("--continue", command)
         self.assertEqual(command[command.index("--provider") + 1], "llama.cpp")
         self.assertEqual(command[command.index("--model") + 1], "test-model")
+
+
+    @unittest.skipUnless(os.name == "posix", "requires POSIX controlling PTY")
+    def test_real_terminal_child_has_controlling_tty_and_accepts_input(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            code = (
+                "import os,sys; "
+                "print('TTY=%s CTRL=%s' % (os.isatty(0) and os.isatty(1), os.tcgetpgrp(0)==os.getpgrp()), flush=True); "
+                "line=sys.stdin.readline(); print('ECHO:'+line.strip(), flush=True)"
+            )
+            with patch("comfy_pi_agent.terminal.terminal_session_root", return_value=root / "terminal"), \
+                 patch("comfy_pi_agent.terminal.build_terminal_command", return_value=[sys.executable, "-c", code]):
+                session = PiTerminalSession(
+                    session_id="ptytest", executable=sys.executable, project_directory=str(root),
+                    provider="", model="", scoped_models="", timeout=30,
+                )
+                try:
+                    output = b""
+                    deadline = time.time() + 4
+                    while b"CTRL=True" not in output and time.time() < deadline:
+                        output += session.read_output(0.1)
+                    self.assertIn(b"TTY=True CTRL=True", output)
+                    session.write("hello from browser\r")
+                    deadline = time.time() + 4
+                    while b"ECHO:hello from browser" not in output and time.time() < deadline:
+                        output += session.read_output(0.1)
+                    self.assertIn(b"ECHO:hello from browser", output)
+                    status = session.status()
+                    self.assertGreater(status.output_bytes, 0)
+                    self.assertGreater(status.input_bytes, 0)
+                finally:
+                    session.stop(graceful=False)
 
     def test_terminal_guidance_stays_lazy(self):
         plain = build_terminal_guidance("Say hello")
@@ -162,6 +197,14 @@ class TerminalArchitectureTests(unittest.TestCase):
         self.assertLess(provider_pos, model_pos)
         self.assertTrue((ROOT / "web" / "vendor" / "xterm.js").is_file())
         self.assertTrue((ROOT / "web" / "vendor" / "XTERM_LICENSE.txt").is_file())
+        self.assertIn('typeof term.onData === "function"', js)
+        self.assertIn('addEventListener("pointerdown"', js)
+        self.assertNotIn('id="pi-agent-terminal-host" class="pi-agent-terminal-host" tabindex="0"', js)
+        self.assertIn('id: "PiAgent.UI.Placement"', js)
+        self.assertIn('options: ["Left sidebar", "Bottom panel"]', js)
+        self.assertIn('bottomPanelTabs:', js)
+        self.assertIn('targetPanel: "terminal"', js)
+        self.assertIn('initializeSidebar(el, "bottom")', js)
 
 
 if __name__ == "__main__":

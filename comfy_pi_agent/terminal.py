@@ -4,10 +4,10 @@ import errno
 import json
 import os
 import queue
+import subprocess
 import shutil
 import signal
 import struct
-import subprocess
 import sys
 import threading
 import time
@@ -33,11 +33,18 @@ except ImportError:  # pragma: no cover - exercised by capability tests through 
 _PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 _BRIDGE_EXTENSION = _PLUGIN_ROOT / "pi" / "terminal-bridge.ts"
 _BRIDGE_CLI = Path(__file__).resolve().with_name("terminal_bridge_cli.py")
+_PTY_CHILD = Path(__file__).resolve().with_name("terminal_pty_child.py")
 
 
 def terminal_backend_name() -> str:
-    if os.name == "posix" and pty is not None and fcntl is not None and termios is not None:
-        return "posix-pty"
+    if (
+        os.name == "posix"
+        and pty is not None
+        and fcntl is not None
+        and termios is not None
+        and hasattr(termios, "TIOCSCTTY")
+    ):
+        return "posix-controlling-pty"
     return "unavailable"
 
 
@@ -113,6 +120,9 @@ class TerminalStatus:
     rows: int = 32
     started_at: float = 0.0
     message: str = ""
+    input_bytes: int = 0
+    output_bytes: int = 0
+    last_output_at: float = 0.0
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -167,6 +177,9 @@ class PiTerminalSession:
         self._last_bridge_update = 0.0
         self.master_fd: int | None = None
         self.process: subprocess.Popen[bytes] | None = None
+        self._input_bytes = 0
+        self._output_bytes = 0
+        self._last_output_at = 0.0
         self._save_workflow(workflow)
         self._save_bridge_config(context_settings or {})
         self._start(resume=resume, env_overrides=env_overrides or {})
@@ -203,9 +216,8 @@ class PiTerminalSession:
         self._save_bridge_config(settings)
 
     def _start(self, resume: bool, env_overrides: dict[str, str]) -> None:
-        assert pty is not None and fcntl is not None and termios is not None
-        master_fd, slave_fd = pty.openpty()
-        fcntl.ioctl(slave_fd, termios.TIOCSWINSZ, _winsize(self.rows, self.cols))
+        if pty is None or fcntl is None or termios is None or not hasattr(termios, "TIOCSCTTY"):
+            raise RuntimeError("A controlling-terminal PTY backend is not available on this platform.")
         command = build_terminal_command(
             self.executable,
             provider=self.provider,
@@ -228,16 +240,23 @@ class PiTerminalSession:
         env["COMFYUI_PI_BRIDGE_CONFIG"] = str(self.bridge_config_path)
         env["COMFYUI_PI_BRIDGE_STATE"] = str(self.bridge_state_path)
         env["COMFYUI_PI_HANDOFF_MARKER"] = str(self.handoff_marker_path)
+
+        # A plain Popen(start_new_session=True) with a pre-opened PTY slave only gives
+        # Pi TTY file descriptors; it does not make that PTY Pi's controlling terminal.
+        # Launch a tiny single-threaded helper first. The helper calls setsid/TIOCSCTTY
+        # safely, then execs Pi in-place so the PID/process group remains stable.
+        master_fd, slave_fd = pty.openpty()
+        fcntl.ioctl(slave_fd, termios.TIOCSWINSZ, _winsize(self.rows, self.cols))
+        helper_command = [sys.executable, str(_PTY_CHILD), "--cwd", str(cwd), "--", *command]
         try:
             process = subprocess.Popen(
-                command,
+                helper_command,
                 cwd=str(cwd),
                 env=env,
                 stdin=slave_fd,
                 stdout=slave_fd,
                 stderr=slave_fd,
                 close_fds=True,
-                start_new_session=True,
             )
         except Exception:
             os.close(master_fd)
@@ -250,6 +269,10 @@ class PiTerminalSession:
                 pass
         self.master_fd = master_fd
         self.process = process
+        try:
+            os.kill(process.pid, signal.SIGWINCH)
+        except Exception:
+            pass
         self._reader = threading.Thread(target=self._reader_loop, daemon=True, name=f"comfy-pi-terminal-{self.session_id[:8]}")
         self._reader.start()
         self._monitor = threading.Thread(target=self._monitor_loop, daemon=True, name=f"comfy-pi-handoff-{self.session_id[:8]}")
@@ -280,6 +303,8 @@ class PiTerminalSession:
             # WebSocket attach takes the same lock while snapshotting/draining, so output
             # produced at the reconnect boundary is never silently discarded.
             with self._state_lock:
+                self._output_bytes += len(data)
+                self._last_output_at = time.time()
                 self._append_ring(data)
                 self.output_queue.put(data)
         self._closed.set()
@@ -326,7 +351,8 @@ class PiTerminalSession:
         if not payload:
             return
         with self._write_lock:
-            os.write(fd, payload)
+            written = os.write(fd, payload)
+            self._input_bytes += max(0, int(written))
 
     def resize(self, cols: int, rows: int) -> None:
         self.cols = max(20, int(cols or self.cols))
@@ -506,6 +532,10 @@ class PiTerminalSession:
         process = self.process
         code = process.poll() if process else None
         running = process is not None and code is None and not self._closed.is_set()
+        if running and self._output_bytes == 0 and time.time() - self.started_at > 3.0:
+            message = "Pi process is running, but the PTY has not produced terminal output yet."
+        else:
+            message = "Pi interactive terminal is running." if running else "Pi interactive terminal is stopped."
         return TerminalStatus(
             session_id=self.session_id,
             supported=True,
@@ -519,7 +549,10 @@ class PiTerminalSession:
             cols=self.cols,
             rows=self.rows,
             started_at=self.started_at,
-            message="Pi interactive terminal is running." if running else "Pi interactive terminal is stopped.",
+            message=message,
+            input_bytes=self._input_bytes,
+            output_bytes=self._output_bytes,
+            last_output_at=self._last_output_at,
         )
 
     def stop(self, graceful: bool = True) -> None:

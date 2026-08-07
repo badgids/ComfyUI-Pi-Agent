@@ -1,29 +1,37 @@
-# Pi Agent sidebar chat
+# Pi Agent Terminal and Chat interface
 
 <!-- DOC_NAV_START -->
 **Navigation:** [Project README](../README.md) · [Documentation home](index.md) · [Previous: Small local model reliability](small-model-reliability.md) · [Next: Real Pi terminal](pi-terminal.md)
 <!-- DOC_NAV_END -->
 
 
-The optional **Pi Agent** tab gives you two ways to work with Pi without adding a node: **Terminal** (the real Pi interactive TUI and the default on supported platforms) and **Chat** (the structured ComfyUI chat view).
+The optional **Pi Agent** interface gives you two ways to work with Pi without adding a node: **Terminal** (the real Pi interactive TUI and the default on supported platforms) and **Chat** (the structured ComfyUI chat view).
 
-## Enable the sidebar
+## Enable the interface
 
 1. Open ComfyUI settings.
 2. Enable:
 
 ```text
-Pi Agent: Show optional sidebar after restart
+Pi Agent: Enable interface after restart
 ```
 
-3. Reload or restart the ComfyUI frontend.
-4. Open the **Pi Agent** tab in the left sidebar.
+3. Choose **Pi Agent: Interface placement** → **Left sidebar** or **Bottom panel**.
+4. Refresh the ComfyUI browser page.
+5. Open **Pi Agent** in the selected panel.
 
-The sidebar is optional. All node-based tools continue to work when it is disabled.
+The interface is optional. All node-based tools continue to work when it is disabled.
 
-## What the sidebar includes
 
-The sidebar provides:
+### Left sidebar or bottom panel
+
+Placement is handled by ComfyUI itself. **Left sidebar** uses ComfyUI's sidebar-tab API. **Bottom panel** uses the official `bottomPanelTabs` extension API and targets the terminal workspace. The plugin registers only the selected location on page load, so the same Pi session is not duplicated in two panels.
+
+Changing placement requires a browser refresh so ComfyUI can rebuild its registered extension panels.
+
+## What the interface includes
+
+The interface provides:
 
 - a default **Terminal** view backed by the real interactive Pi CLI;
 - a secondary **Chat** view with normal user and assistant message bubbles;

@@ -19,6 +19,7 @@ const CHAT_STATE = {
   terminalSocket: null,
   terminalAssetsPromise: null,
   terminalStarting: false,
+  terminalStatusTimer: null,
   showReasoning: localStorage.getItem("ComfyUIPi.ShowReasoning") !== "false",
   showTools: localStorage.getItem("ComfyUIPi.ShowTools") !== "false",
 };
@@ -160,12 +161,39 @@ function terminalWebSocketUrl(sessionId) {
   return url.toString();
 }
 
+function normalizePiTerminalOutput(data) {
+  // Pi's current TUI wraps redraws in DEC synchronized-output mode (2026).
+  // The bundled xterm renderer predates that mode. Unknown DEC modes should be
+  // ignored, but stripping only the begin/end wrappers avoids old-renderer blank
+  // redraws while leaving all visible ANSI content untouched.
+  return String(data || "").replace(/\x1b\[\?2026[hl]/g, "");
+}
+
 function closeTerminalSocket() {
   const ws = CHAT_STATE.terminalSocket;
   CHAT_STATE.terminalSocket = null;
   if (ws) {
     try { ws.close(); } catch {}
   }
+}
+
+function disposePiInterface() {
+  closeTerminalSocket();
+  if (CHAT_STATE.terminalStatusTimer) {
+    clearInterval(CHAT_STATE.terminalStatusTimer);
+    CHAT_STATE.terminalStatusTimer = null;
+  }
+  const term = CHAT_STATE.terminal;
+  CHAT_STATE.terminal = null;
+  if (term?._comfyPiResizeObserver) {
+    try { term._comfyPiResizeObserver.disconnect(); } catch {}
+  }
+  try { term?._comfyPiDataDisposable?.dispose?.(); } catch {}
+  try { term?._comfyPiResizeDisposable?.dispose?.(); } catch {}
+  try {
+    if (typeof term?.dispose === "function") term.dispose();
+    else if (typeof term?.destroy === "function") term.destroy();
+  } catch {}
 }
 
 function ensureTerminalInstance(ui) {
@@ -185,13 +213,24 @@ function ensureTerminalInstance(ui) {
   });
   term.open(ui.terminalHost);
   if (typeof term.fit === "function") term.fit();
-  term.on("data", (data) => {
+  const sendTerminalInput = (data) => {
     const ws = CHAT_STATE.terminalSocket;
     if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "input", data }));
-  });
-  term.on("resize", ({ cols, rows }) => {
+  };
+  const sendTerminalResize = ({ cols, rows }) => {
     const ws = CHAT_STATE.terminalSocket;
     if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "resize", cols, rows }));
+  };
+  // xterm 5+ uses onData/onResize disposables. Keep the legacy EventEmitter
+  // fallback for the bundled build so terminal input works across ComfyUI installs.
+  term._comfyPiDataDisposable = typeof term.onData === "function"
+    ? term.onData(sendTerminalInput)
+    : term.on("data", sendTerminalInput);
+  term._comfyPiResizeDisposable = typeof term.onResize === "function"
+    ? term.onResize(sendTerminalResize)
+    : term.on("resize", sendTerminalResize);
+  ui.terminalHost.addEventListener("pointerdown", () => {
+    queueMicrotask(() => term.focus());
   });
   if (typeof ResizeObserver !== "undefined") {
     const observer = new ResizeObserver(() => {
@@ -222,13 +261,16 @@ async function connectTerminalSocket(ui) {
       if (typeof term.fit === "function") term.fit();
       ws.send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }));
       if (ui.includeWorkflow.checked) ws.send(JSON.stringify({ type: "workflow", workflow: currentWorkflow() }));
-      term.focus();
+      requestAnimationFrame(() => {
+        if (typeof term.fit === "function") term.fit();
+        term.focus();
+      });
     }
   });
   ws.addEventListener("message", (event) => {
     let payload;
     try { payload = JSON.parse(event.data); } catch { payload = { type: "output", data: String(event.data || "") }; }
-    if (payload.type === "output") CHAT_STATE.terminal?.write(String(payload.data || ""));
+    if (payload.type === "output") CHAT_STATE.terminal?.write(normalizePiTerminalOutput(payload.data));
     if (payload.type === "exit") {
       const code = payload.status?.exit_code;
       ui.terminalStatus.textContent = `Pi terminal exited${code == null ? "" : ` with code ${code}`}.`;
@@ -398,6 +440,11 @@ function ensureStyles() {
     .pi-agent-terminal-host { flex:1 1 auto; min-height:260px; width:100%; overflow:hidden; padding:4px; box-sizing:border-box; background:#0f1115; }
     .pi-agent-terminal-host .terminal { height:100%; }
     .pi-agent-terminal-status { font-size:10px; padding:4px 8px; min-height:16px; border-top:1px solid #2a2d34; color:#c8ccd4; background:#15181e; }
+    .pi-agent-terminal-host .xterm, .pi-agent-terminal-host .xterm-viewport, .pi-agent-terminal-host .xterm-screen { height:100%; }
+    .pi-agent-terminal-host .xterm-helper-textarea { pointer-events:auto; }
+    .pi-agent-shell.pi-agent-placement-bottom { height:100%; min-height:220px; width:100%; }
+    .pi-agent-shell.pi-agent-placement-bottom .pi-agent-terminal-pane, .pi-agent-shell.pi-agent-placement-bottom .pi-agent-terminal-host { min-height:150px; }
+    .pi-agent-shell.pi-agent-placement-bottom .pi-agent-messages { min-height:120px; }
     .pi-agent-chat-pane { flex:1 1 auto; min-height:0; display:flex; flex-direction:column; }
     .pi-agent-shared-controls { border-top:1px solid color-mix(in srgb, currentColor 15%, transparent); padding:8px; display:grid; gap:7px; }
     .pi-agent-activity-block { margin-top:8px; border-top:1px solid color-mix(in srgb, currentColor 14%, transparent); padding-top:6px; font-size:11px; }
@@ -1003,10 +1050,11 @@ async function clearChat(ui) {
   await refreshSessions(ui, CHAT_STATE.sessionId);
 }
 
-function buildSidebar(el) {
+function buildSidebar(el, placement = "sidebar") {
   ensureStyles();
+  const placementClass = placement === "bottom" ? "pi-agent-placement-bottom" : "pi-agent-placement-sidebar";
   el.innerHTML = `
-    <div class="pi-agent-shell">
+    <div class="pi-agent-shell ${placementClass}">
       <div class="pi-agent-toolbar">
         <span class="pi-agent-title">Pi Agent</span>
         <span id="pi-agent-runtime-pill" class="pi-agent-pill">Checking Pi…</span>
@@ -1059,7 +1107,7 @@ function buildSidebar(el) {
         <div class="pi-agent-field"><label for="pi-agent-timeout">Timeout in seconds</label><input id="pi-agent-timeout" class="pi-agent-input" type="number" min="10" max="3600" value="180" /></div>
       </div>
       <div id="pi-agent-terminal-pane" class="pi-agent-terminal-pane" role="tabpanel">
-        <div id="pi-agent-terminal-host" class="pi-agent-terminal-host" tabindex="0" aria-label="Real Pi interactive terminal"></div>
+        <div id="pi-agent-terminal-host" class="pi-agent-terminal-host" role="application" aria-label="Real Pi interactive terminal"></div>
         <div id="pi-agent-terminal-status" class="pi-agent-terminal-status">Terminal starts when this view opens.</div>
       </div>
       <div id="pi-agent-chat-pane" class="pi-agent-chat-pane" role="tabpanel" hidden>
@@ -1249,8 +1297,8 @@ function buildSidebar(el) {
   return ui;
 }
 
-async function initializeSidebar(el) {
-  const ui = buildSidebar(el);
+async function initializeSidebar(el, placement = "sidebar") {
+  const ui = buildSidebar(el, placement);
   await refreshCommandCatalog(ui);
   try {
     await refreshProviderMetadata(ui);
@@ -1288,12 +1336,19 @@ async function initializeSidebar(el) {
     ui.messages.innerHTML = `<div class="pi-agent-empty"><strong>Unable to load chats.</strong><br>${escapeHtml(error)}</div>`;
   }
   switchView(ui, CHAT_STATE.terminalSupported ? "terminal" : "chat");
+  if (CHAT_STATE.terminalStatusTimer) {
+    clearInterval(CHAT_STATE.terminalStatusTimer);
+    CHAT_STATE.terminalStatusTimer = null;
+  }
   if (CHAT_STATE.terminalSupported) {
-    setInterval(async () => {
+    CHAT_STATE.terminalStatusTimer = setInterval(async () => {
       if (CHAT_STATE.view !== "terminal" || !CHAT_STATE.sessionId) return;
       try {
         const status = await fetchJson(`/pi-agent/terminal/status/${encodeURIComponent(CHAT_STATE.sessionId)}`);
         const percent = Number(status.bridge?.context_percent);
+        if (status.running && Number(status.output_bytes || 0) === 0 && Date.now() / 1000 - Number(status.started_at || 0) > 3) {
+          ui.terminalStatus.textContent = status.message || "Pi is running but has not produced terminal output yet.";
+        }
         if (Number.isFinite(percent)) {
           const ratio = percent > 1 ? percent / 100 : percent;
           const guard = {
@@ -1313,10 +1368,18 @@ app.registerExtension({
   settings: [
     {
       id: "PiAgent.UI.ShowSidebar",
-      name: "Pi Agent: Show optional sidebar after restart",
+      name: "Pi Agent: Enable interface after restart",
       type: "boolean",
       defaultValue: false,
-      tooltip: "Adds the real Pi Terminal plus structured Chat fallback to the ComfyUI sidebar. All Pi Agent features remain available as nodes when disabled."
+      tooltip: "Enables the Pi Agent Terminal/Chat interface. Choose its location with the Pi Agent interface placement setting. All Pi Agent features remain available as nodes when disabled."
+    },
+    {
+      id: "PiAgent.UI.Placement",
+      name: "Pi Agent: Interface placement",
+      type: "combo",
+      options: ["Left sidebar", "Bottom panel"],
+      defaultValue: "Left sidebar",
+      tooltip: "Choose whether Pi Agent appears in the left sidebar or in ComfyUI's bottom panel. Refresh the ComfyUI browser page after changing this setting."
     }
   ],
   commands: [
@@ -1340,7 +1403,31 @@ app.registerExtension({
   ],
   async setup() {
     const enabled = app.extensionManager?.setting?.get?.("PiAgent.UI.ShowSidebar") ?? false;
-    if (!enabled || !app.extensionManager?.registerSidebarTab) return;
+    if (!enabled) return;
+    const placement = app.extensionManager?.setting?.get?.("PiAgent.UI.Placement") ?? "Left sidebar";
+    if (placement === "Bottom panel") {
+      // ComfyUI's public bottomPanelTabs API registers extension-owned tabs in the
+      // same lower workspace used by its terminal/log panels. Registering this small
+      // runtime extension here lets the persisted placement setting choose exactly one
+      // Pi Agent location on page load instead of rendering duplicate interfaces.
+      app.registerExtension({
+        name: "badgids.ComfyUI.PiAgent.BottomPanel",
+        bottomPanelTabs: [
+          {
+            id: "pi-agent-bottom-panel",
+            title: "Pi Agent",
+            type: "custom",
+            targetPanel: "terminal",
+            render: async (el) => {
+              await initializeSidebar(el, "bottom");
+            },
+            destroy: () => disposePiInterface()
+          }
+        ]
+      });
+      return;
+    }
+    if (!app.extensionManager?.registerSidebarTab) return;
     app.extensionManager.registerSidebarTab({
       id: "pi-agent-sidebar",
       icon: "pi pi-comments",
@@ -1348,8 +1435,9 @@ app.registerExtension({
       tooltip: "Chat with and instruct Pi Agent directly inside ComfyUI",
       type: "custom",
       render: async (el) => {
-        await initializeSidebar(el);
-      }
+        await initializeSidebar(el, "sidebar");
+      },
+      destroy: () => disposePiInterface()
     });
   }
 });

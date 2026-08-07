@@ -1,8 +1,18 @@
-# Release notes — 0.1.16
+# Release notes — 0.1.17
 
 <!-- DOC_NAV_START -->
 **Navigation:** [Project README](README.md) · [Documentation home](docs/index.md) · [Previous: Changelog](CHANGELOG.md) · [Next: Project inventory](PROJECT_INVENTORY.md)
 <!-- DOC_NAV_END -->
+
+## 0.1.17 — real controlling terminal and native panel placement
+
+The v0.1.16 terminal could report WebSocket connectivity while Pi's TUI remained blank. The child inherited a PTY slave for stdin/stdout/stderr, then `start_new_session=True` detached it into a new session without making that slave the controlling terminal. v0.1.17 launches a tiny single-threaded PTY child, has that child call POSIX `setsid()` plus `TIOCSCTTY`, then `exec`s Pi in-place. Pi therefore starts with a real controlling terminal and correct foreground process-group semantics without forking the multi-threaded ComfyUI process.
+
+The browser side also no longer lets the outer terminal container steal focus from xterm's hidden input textarea. Clicking/tapping the terminal explicitly focuses xterm, input/resize handlers support both current and bundled legacy xterm APIs, and Pi's current DEC synchronized-output wrappers are removed only for rendering compatibility with the bundled legacy xterm build. Visible ANSI output is preserved.
+
+A new ComfyUI setting, **Pi Agent: Interface placement**, offers **Left sidebar** or **Bottom panel**. Bottom placement uses ComfyUI's public `bottomPanelTabs` extension API and targets the same terminal workspace used by ComfyUI's lower terminal/log UI. The same Pi Agent Terminal/Chat implementation is rendered in either place; refresh the browser after changing placement so only the chosen location is registered.
+
+Terminal status now includes PTY input/output byte counters and can distinguish “process running but no PTY output yet” from a healthy terminal. No personal model IDs, filesystem paths, or user timeout values are added.
 
 ## 0.1.16 — real Pi interactive terminal inside ComfyUI
 
