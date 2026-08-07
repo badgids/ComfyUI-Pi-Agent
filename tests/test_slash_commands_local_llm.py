@@ -12,6 +12,7 @@ from comfy_pi_agent.local_llm import (
     local_provider_presets,
     probe_local_server,
     runtime_environment,
+    wait_for_llama_router_model,
 )
 from comfy_pi_agent.pi_commands import BUILTIN_COMMANDS, parse_slash_command
 from comfy_pi_agent.pi_runtime import build_pi_command
@@ -69,16 +70,16 @@ class LocalLlmTests(unittest.TestCase):
                 result = configure_local_provider(
                     "llama.cpp",
                     "http://127.0.0.1:8080",
-                    models=["Qwen3.6-35B"],
-                    model="Qwen3.6-35B",
+                    models=["test-local-model"],
+                    model="test-local-model",
                 )
                 self.assertEqual(result["provider"], "llama.cpp")
-                self.assertEqual(result["model"], "Qwen3.6-35B")
+                self.assertEqual(result["model"], "test-local-model")
                 data = json.loads((Path(temp) / "models.json").read_text(encoding="utf-8"))
                 provider = data["providers"]["llama.cpp"]
                 self.assertEqual(provider["baseUrl"], "http://127.0.0.1:8080/v1")
                 self.assertEqual(provider["api"], "openai-completions")
-                self.assertEqual(provider["models"][0]["id"], "Qwen3.6-35B")
+                self.assertEqual(provider["models"][0]["id"], "test-local-model")
                 self.assertEqual(runtime_environment({"kind": "llama.cpp", "base_url": result["base_url"]}), {})
 
     def test_models_json_merge_preserves_existing_providers_and_never_stores_raw_key(self):
@@ -113,20 +114,60 @@ class LocalLlmTests(unittest.TestCase):
             self.assertIn('"apiKey": "$LOCAL_LLM_API_KEY"', text)
             self.assertNotIn("super-secret", text)
 
-    def test_llama_router_discovery_lists_all_routable_models(self):
+    def test_llama_router_discovery_lists_all_routable_models_without_forced_reload(self):
         payload = {
             "data": [
-                {"id": "loaded-model", "status": {"value": "loaded"}},
-                {"id": "cold-model", "status": {"value": "unloaded"}},
-                {"id": "sleeping-model", "status": {"value": "sleeping"}},
-                {"id": "broken-model", "status": {"value": "unloaded", "failed": True}},
+                {"id": "alpha", "status": {"value": "loaded"}, "source": "preset"},
+                {"id": "beta", "status": {"value": "unloaded"}, "source": "preset"},
+                {"id": "gamma", "status": {"value": "sleeping"}, "source": "preset"},
+                {"id": "broken", "status": {"value": "unloaded", "failed": True}, "source": "preset"},
             ]
         }
         with patch("comfy_pi_agent.local_llm._json_request", return_value=payload) as request:
             result = probe_local_server("llama.cpp", "http://127.0.0.1:8080")
             self.assertTrue(result["available"])
-            self.assertEqual(result["models"], ["cold-model", "loaded-model", "sleeping-model"])
+            self.assertTrue(result["router"])
+            self.assertEqual(result["models"], ["alpha", "beta", "gamma"])
+            self.assertTrue(request.call_args.args[0].endswith("/models"))
+            self.assertNotIn("reload=1", request.call_args.args[0])
+            self.assertEqual(request.call_count, 1)
+
+    def test_llama_router_explicit_refresh_reloads_presets_with_long_timeout(self):
+        payload = {
+            "data": [
+                {"id": "alpha", "status": {"value": "unloaded"}, "source": "preset"},
+                {"id": "beta", "status": {"value": "unloaded"}, "source": "preset"},
+                {"id": "gamma", "status": {"value": "unloaded"}, "source": "preset"},
+            ]
+        }
+        with patch("comfy_pi_agent.local_llm._json_request", return_value=payload) as request:
+            result = probe_local_server("llama.cpp", "http://127.0.0.1:8080", timeout=2.5, reload_catalog=True)
+            self.assertEqual(result["models"], ["alpha", "beta", "gamma"])
+            self.assertEqual(result["catalog_mode"], "router-reload")
             self.assertTrue(request.call_args.args[0].endswith("/models?reload=1"))
+            self.assertGreaterEqual(float(request.call_args.kwargs["timeout"]), 15.0)
+
+    def test_llama_router_reload_timeout_falls_back_to_cached_full_catalog_not_v1(self):
+        cached = {
+            "data": [
+                {"id": "alpha", "status": {"value": "unloaded"}, "source": "preset"},
+                {"id": "beta", "status": {"value": "loaded"}, "source": "preset"},
+                {"id": "gamma", "status": {"value": "unloaded"}, "source": "preset"},
+            ]
+        }
+        calls = []
+        def fake_request(url, **kwargs):
+            calls.append((url, kwargs.get("timeout")))
+            if "reload=1" in url:
+                raise TimeoutError("preset reload is still running")
+            if url.endswith("/models"):
+                return cached
+            raise AssertionError("/v1/models must not be used after a complete cached router catalog succeeds")
+        with patch("comfy_pi_agent.local_llm._json_request", side_effect=fake_request):
+            result = probe_local_server("llama.cpp", "http://127.0.0.1:8080", reload_catalog=True)
+        self.assertEqual(result["models"], ["alpha", "beta", "gamma"])
+        self.assertEqual(result["catalog_mode"], "router")
+        self.assertEqual(len(calls), 2)
 
     def test_ollama_and_openai_style_model_discovery(self):
         with patch("comfy_pi_agent.local_llm._json_request", return_value={"models": [{"name": "qwen:7b"}, {"name": "llama3.1:8b"}, {"name": "gemma3:12b"}]}) as request:
@@ -162,6 +203,44 @@ class LocalLlmTests(unittest.TestCase):
             llama_router_action("download", "owner/model:Q4_K_M", "http://127.0.0.1:8080")
             self.assertTrue(request.call_args.args[0].endswith("/models"))
 
+    def test_llama_router_waits_until_model_is_really_ready(self):
+        sequence = [
+            {"ok": True, "models": [{"id": "cold-model", "status": "loading", "failed": False}]},
+            {"ok": True, "models": [{"id": "cold-model", "status": "loaded", "failed": False}]},
+        ]
+        with patch("comfy_pi_agent.local_llm.llama_router_models", side_effect=sequence), \
+             patch("comfy_pi_agent.local_llm.time.sleep", return_value=None):
+            result = wait_for_llama_router_model("http://127.0.0.1:8080", "cold-model", timeout=10, poll_interval=0.1)
+        self.assertTrue(result["ready"])
+        self.assertEqual(result["status"], "loaded")
+
+    def test_llama_router_wait_surfaces_failed_load(self):
+        payload = {"ok": True, "models": [{"id": "bad-model", "status": "unloaded", "failed": True, "exit_code": 9}]}
+        with patch("comfy_pi_agent.local_llm.llama_router_models", return_value=payload):
+            with self.assertRaisesRegex(RuntimeError, "failed to load"):
+                wait_for_llama_router_model("http://127.0.0.1:8080", "bad-model", timeout=10)
+
+    def test_llama_runtime_has_no_static_model_catalog(self):
+        presets = {item["kind"]: item for item in local_provider_presets()}
+        self.assertNotIn("models", presets["llama.cpp"])
+        source = (ROOT / "comfy_pi_agent" / "local_llm.py").read_text(encoding="utf-8")
+        self.assertIn("requested_models = [str(item).strip() for item in (models or [])", source)
+        self.assertIn("probe_local_server(normalized, root, reload_catalog=reload_catalog)", source)
+
+    def test_pi_exit_diagnostic_includes_stderr(self):
+        from unittest.mock import Mock
+        from comfy_pi_agent.pi_runtime import PiRpcClient
+        client = PiRpcClient.__new__(PiRpcClient)
+        client.process = Mock()
+        client.process.poll.return_value = 2
+        client.stderr_history = ["provider initialization failed", "model is not available"]
+        import threading
+        client._stderr_lock = threading.Lock()
+        error = client._exit_diagnostic("Pi exited during RPC startup")
+        self.assertIn("exit code 2", str(error))
+        self.assertIn("provider initialization failed", str(error))
+        self.assertIn("model is not available", str(error))
+
     def test_frontend_uses_dead_simple_provider_and_model_dropdowns(self):
         source = (ROOT / "web" / "pi_agent.js").read_text(encoding="utf-8")
         for needle in (
@@ -178,6 +257,10 @@ class LocalLlmTests(unittest.TestCase):
             "Endpoint override (optional)",
             "Provider and Model are selected directly beneath the chat box",
             "Type / for Pi commands",
+            "color-scheme:dark",
+            ".pi-agent-shell select option",
+            "await applyProviderSelection(ui, { forceProbe: true, reloadCatalog: false })",
+            "Preparing ${model}… This can take a while for a local model.",
         ):
             self.assertIn(needle, source)
         self.assertEqual(source.count('id="pi-agent-provider"'), 1)
@@ -236,10 +319,10 @@ class LocalLlmTests(unittest.TestCase):
         provider, model = _normalized_provider_model(
             "http://127.0.0.1:8080",
             "",
-            {"kind": "llama.cpp", "model": "Qwen3.6-35B"},
+            {"kind": "llama.cpp", "model": "test-local-model"},
         )
         self.assertEqual(provider, "llama.cpp")
-        self.assertEqual(model, "Qwen3.6-35B")
+        self.assertEqual(model, "test-local-model")
 
     def test_model_command_treats_local_provider_name_as_provider_selection(self):
         import inspect
@@ -272,9 +355,11 @@ class LocalLlmTests(unittest.TestCase):
                 live = SimpleNamespace(client=client, lock=threading.Lock(), provider="llama.cpp", model="loaded-model")
                 manager._live[document["session_id"]] = live
                 with patch("comfy_pi_agent.chat.llama_router_models", return_value={"ok": True, "models": [{"id": "cold-model", "status": "unloaded", "failed": False}]}), \
-                     patch("comfy_pi_agent.chat.llama_router_action", return_value={"ok": True}) as load:
+                     patch("comfy_pi_agent.chat.llama_router_action", return_value={"ok": True}) as load, \
+                     patch("comfy_pi_agent.chat.wait_for_llama_router_model", return_value={"ready": True, "model": "cold-model", "status": "loaded", "entry": {"id": "cold-model"}}) as ready:
                     _result, saved = manager.select_model(document["session_id"], "llama.cpp", "cold-model")
-                load.assert_called_once_with("load", "cold-model", "http://127.0.0.1:8080", timeout=20.0)
+                load.assert_called_once_with("load", "cold-model", "http://127.0.0.1:8080", timeout=10.0)
+                ready.assert_called_once_with("http://127.0.0.1:8080", "cold-model", timeout=180.0)
                 client.set_model.assert_called_once_with("llama.cpp", "cold-model")
                 self.assertEqual(saved["local_llm"]["model"], "cold-model")
 

@@ -7,7 +7,7 @@
 
 ## Release
 
-- Version: 0.1.11
+- Version: 0.1.12
 - Creator: Alan D. Guice (Badgids)
 - License: GPL-3.0-only
 
@@ -36,7 +36,7 @@
 - Current Pi RPC `get_session_stats.contextUsage` is preferred for pressure measurement; assistant usage + model context window remains a compatibility fallback.
 - Handoff generation uses a separate fresh Pi process and references large workflows/assets by path instead of embedding them.
 - Pi built-in slash commands are bridged host-side before LLM routing; the slash-command catalog itself does not consume model context.
-- Local-server discovery/configuration is explicit and on-demand; no llama.cpp/Ollama/LM Studio/vLLM endpoint is probed at startup.
+- Local-server discovery/configuration is explicit and on-demand; no llama.cpp/Ollama/LM Studio/vLLM endpoint is probed at plugin startup. llama.cpp router model IDs come from its live catalog, and an unloaded selected model is awaited until ready before Pi RPC starts.
 
 ## First-class integrations
 

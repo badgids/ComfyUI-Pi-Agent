@@ -294,10 +294,11 @@ def register_routes() -> bool:
                 session_id,
                 payload.get("provider", ""),
                 payload.get("model", ""),
+                float(payload.get("timeout", 180) or 180),
             )
             result["session"] = document
             return web.json_response(result)
-        except (ValueError, FileNotFoundError, RuntimeError) as exc:
+        except (ValueError, FileNotFoundError, RuntimeError, TimeoutError, OSError) as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
 
     @routes.get("/pi-agent/local-llm/discover")
@@ -313,6 +314,8 @@ def register_routes() -> bool:
             probe_local_server,
             payload.get("kind", "openai-compatible"),
             payload.get("base_url", ""),
+            float(payload.get("timeout", 2.5) or 2.5),
+            bool(payload.get("reload_catalog", False)),
         )
         return web.json_response(result, status=200 if result.get("available") else 404)
 
@@ -332,10 +335,11 @@ def register_routes() -> bool:
                 payload.get("models") if isinstance(payload.get("models"), list) else [],
                 payload.get("provider_id", ""),
                 payload.get("api_key_env", ""),
+                bool(payload.get("reload_catalog", False)),
             )
             result["session"] = document
             return web.json_response(result)
-        except (ValueError, FileNotFoundError) as exc:
+        except (ValueError, FileNotFoundError, RuntimeError, TimeoutError, OSError) as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
 
     @routes.post("/pi-agent/chat/new")

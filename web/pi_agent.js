@@ -140,6 +140,8 @@ function ensureStyles() {
     .pi-agent-field { display:grid; gap:3px; }
     .pi-agent-field label { font-size:11px; opacity:.75; }
     .pi-agent-input { width:100%; box-sizing:border-box; border:1px solid color-mix(in srgb, currentColor 22%, transparent); background:color-mix(in srgb, currentColor 4%, transparent); color:inherit; border-radius:7px; padding:6px 8px; font:inherit; }
+    .pi-agent-shell select { color-scheme:dark; background-color:var(--comfy-menu-bg, var(--bg-color, #202020)); color:var(--input-text, var(--fg-color, #f2f2f2)); }
+    .pi-agent-shell select option, .pi-agent-shell select optgroup { background-color:var(--comfy-menu-bg, var(--bg-color, #202020)); color:var(--input-text, var(--fg-color, #f2f2f2)); }
     .pi-agent-check { display:flex; gap:7px; align-items:center; font-size:12px; }
     .pi-agent-messages { flex:1 1 auto; overflow:auto; padding:10px; display:flex; flex-direction:column; gap:10px; min-height:0; }
     .pi-agent-empty { margin:auto; max-width:300px; text-align:center; opacity:.72; line-height:1.45; padding:20px; }
@@ -274,6 +276,16 @@ async function loadSession(ui, sessionId) {
   updateContextPill(ui, guard);
   ui.sessionSelect.value = CHAT_STATE.sessionId;
   scrollToBottom(ui.messages);
+  if (isLocalProvider(providerSelector)) {
+    // The sidebar is already open: refresh the selected host now so stale saved
+    // one-model catalogs do not survive across upgrades/restarts. This is not a
+    // ComfyUI/plugin-startup probe; it occurs only when Pi Agent Chat is rendered.
+    try {
+      await applyProviderSelection(ui, { forceProbe: true, reloadCatalog: false });
+    } catch (error) {
+      ui.statusline.textContent = String(error);
+    }
+  }
 }
 
 async function refreshSessions(ui, preferredSessionId = null) {
@@ -555,13 +567,14 @@ async function persistModelSelection(ui, provider, model) {
       session_id: CHAT_STATE.sessionId,
       provider: provider || "",
       model: model || "",
+      timeout: Number(ui.timeout.value || 180),
     }),
   });
   if (provider && model) CHAT_STATE.providerModelMemory[provider] = model;
   return data;
 }
 
-async function applyProviderSelection(ui, { forceProbe = false } = {}) {
+async function applyProviderSelection(ui, { forceProbe = false, reloadCatalog = false } = {}) {
   const selector = ui.provider.value;
   updateProviderControls(ui);
 
@@ -593,16 +606,17 @@ async function applyProviderSelection(ui, { forceProbe = false } = {}) {
           kind: selector,
           base_url: ui.localBaseUrl.value.trim(),
           models: knownModels,
-          model: forceProbe ? "" : ui.model.value,
+          model: ui.model.value || "",
           api_key_env: ui.localApiKeyEnv.value.trim(),
+          reload_catalog: Boolean(reloadCatalog),
         }),
       });
       populateModels(ui, data.models || [], data.model || "", "No models reported by this host");
       mergeProviderModels(data.provider || providerIdForSelector(selector), data.models || []);
       CHAT_STATE.providerModelMemory[data.provider || providerIdForSelector(selector)] = data.model || "";
       const endpoint = data.base_url || LOCAL_PROVIDER_DEFAULTS[selector] || "";
-      ui.statusline.textContent = `Ready: ${data.provider}/${data.model}`;
-      ui.localStatus.textContent = `Endpoint: ${endpoint}\n${(data.models || []).length} model(s) available from this host.`;
+      ui.statusline.textContent = `${(data.models || []).length} model(s) available from ${data.provider || selector}.`;
+      ui.localStatus.textContent = `Endpoint: ${endpoint}\n${(data.models || []).length} model(s) reported by this host. The selected model is loaded only when needed.`;
       const defaultEndpoint = LOCAL_PROVIDER_DEFAULTS[selector] || "";
       ui.localBaseUrl.value = endpoint && endpoint !== defaultEndpoint ? endpoint : "";
     } catch (error) {
@@ -656,11 +670,14 @@ async function selectCurrentModel(ui) {
   const provider = providerIdForSelector(selector);
   ui.model.disabled = true;
   try {
+    if (isLocalProvider(selector)) {
+      ui.statusline.textContent = `Preparing ${model}… This can take a while for a local model.`;
+    }
     const data = await persistModelSelection(ui, provider, model);
     ui.statusline.textContent = `Using ${data.provider || provider}/${data.model || model}`;
     if (isLocalProvider(selector)) {
       const endpoint = ui.localBaseUrl.value.trim() || LOCAL_PROVIDER_DEFAULTS[selector] || "";
-      ui.localStatus.textContent = `Endpoint: ${endpoint}\n${ui.model.options.length} model(s) available from this host.`;
+      ui.localStatus.textContent = `Endpoint: ${endpoint}\n${ui.model.options.length} model(s) reported by this host. Selected model is ready.`;
     }
   } catch (error) {
     ui.statusline.textContent = String(error);
@@ -797,7 +814,7 @@ function buildSidebar(el) {
   ui.settingsToggle.addEventListener("click", () => { ui.settings.hidden = !ui.settings.hidden; });
   ui.send.addEventListener("click", () => sendMessage(ui));
   ui.stop.addEventListener("click", () => abortMessage(ui));
-  ui.provider.addEventListener("change", () => applyProviderSelection(ui, { forceProbe: true }));
+  ui.provider.addEventListener("change", () => applyProviderSelection(ui, { forceProbe: true, reloadCatalog: false }));
   ui.model.addEventListener("change", () => selectCurrentModel(ui));
   ui.model.addEventListener("focus", async () => {
     const selector = ui.provider.value;
@@ -810,7 +827,7 @@ function buildSidebar(el) {
       ui.statusline.textContent = String(error);
     }
   });
-  ui.localRefresh.addEventListener("click", () => applyProviderSelection(ui, { forceProbe: true }));
+  ui.localRefresh.addEventListener("click", () => applyProviderSelection(ui, { forceProbe: true, reloadCatalog: true }));
   ui.textarea.addEventListener("input", () => { CHAT_STATE.commandIndex = 0; renderCommandMenu(ui); });
   ui.textarea.addEventListener("keydown", (event) => {
     const menuOpen = ui.commandMenu.classList.contains("open");

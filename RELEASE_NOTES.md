@@ -1,8 +1,20 @@
-# Release notes — 0.1.11
+# Release notes — 0.1.12
 
 <!-- DOC_NAV_START -->
 **Navigation:** [Project README](README.md) · [Documentation home](docs/index.md) · [Previous: Changelog](CHANGELOG.md) · [Next: Project inventory](PROJECT_INVENTORY.md)
 <!-- DOC_NAV_END -->
+
+## 0.1.12 — llama.cpp full catalog, readiness wait, and dark-mode dropdown repair
+
+- Fixed llama.cpp router discovery so the normal sidebar path reads the full live `/models` catalog before any single-model `/v1/models` fallback. Configured presets remain selectable even when `load-on-startup` is disabled and their status is unloaded.
+- Changed explicit **Refresh models / apply endpoint** to use `/models?reload=1` first with a longer timeout, while safely falling back to the cached full router `/models` catalog if preset reloading is slow or unavailable.
+- Removed the race between `/models/load` and Pi startup. ComfyUI-Pi now waits for the selected llama.cpp router model to report a ready state before launching or switching Pi.
+- Added a second Pi RPC startup readiness probe (`get_state`) so the first user prompt is not used as the startup test. Early Pi exits now include the exit code and recent Pi stderr in the chat error.
+- Refreshes the selected local provider when the Pi Agent Chat sidebar is rendered, replacing stale saved one-model catalogs from earlier releases without probing any host at plugin import/startup.
+- Fixed Provider/Model native option styling for ComfyUI dark mode by applying explicit dark colors to the actual sidebar select/option/optgroup elements.
+- Added regression coverage proving the llama.cpp runtime has no static model catalog; model IDs are supplied by live host discovery or explicit caller data.
+- Preserved the Provider → Model main-chat layout, optional endpoint override, sparse context architecture, lazy integration loading, and 82.5% default preemptive handoff threshold.
+
 
 ## 0.1.11 — Provider and model switcher in the main chat
 
