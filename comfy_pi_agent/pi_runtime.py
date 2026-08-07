@@ -134,16 +134,12 @@ class PiRpcClient:
         # until Pi is actually accepting JSONL commands, and surface startup stderr if
         # it exits because a provider/model/configuration is invalid.
         self._wait_until_rpc_ready(timeout=min(30.0, max(10.0, float(self.timeout))))
-        # ComfyUI-Pi owns long-session context lifecycle. Disable Pi's built-in auto
-        # compactor so it cannot race the external handoff/reset policy. Older Pi builds
-        # that do not expose this RPC command remain usable, but the status is reported.
+        # Pi remains the long-session compaction authority. Do not disable its built-in
+        # threshold/overflow compactor: native Pi compaction appends a CompactionEntry,
+        # preserves recent messages, and continues in the same session. ComfyUI-Pi adds
+        # durable handoff checkpoints around that mechanism instead of replacing it.
         self.auto_compaction_disabled = False
         self.auto_compaction_warning = ""
-        try:
-            self.set_auto_compaction(False)
-            self.auto_compaction_disabled = True
-        except Exception as exc:
-            self.auto_compaction_warning = f"Could not disable Pi auto-compaction: {type(exc).__name__}: {exc}"
 
     def _read_stdout(self) -> None:
         assert self.process.stdout is not None

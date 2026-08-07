@@ -632,8 +632,8 @@ function updateContextPill(ui, guard = {}) {
     ui.contextPill.textContent = "Context --";
   }
   const last = guard?.last_handoff || {};
-  const handoffInfo = count ? ` Handoffs: ${count}. Last: ${last.path || "saved"}.` : "";
-  ui.contextPill.title = `Preemptive handoff threshold ${(threshold * 100).toFixed(1)}%.${handoffInfo}`;
+  const handoffInfo = count ? ` Checkpoints: ${count}. Last: ${last.path || "saved"}.` : "";
+  ui.contextPill.title = `In-place compaction threshold ${(threshold * 100).toFixed(1)}%.${handoffInfo}`;
 }
 
 async function loadSession(ui, sessionId) {
@@ -786,9 +786,9 @@ async function sendMessage(ui) {
     });
     if (!CHAT_STATE.abortRequested) {
       if (data.handoff) {
-        ui.statusline.textContent = data.handoff.ingested
-          ? "Context handoff created, reset, and ingested automatically."
-          : "Context handoff created; automatic ingest needs attention.";
+        ui.statusline.textContent = data.handoff.continuity_method === "pi_compaction"
+          ? "Durable checkpoint saved; Pi compacted the current session in place."
+          : "Durable context checkpoint saved.";
       }
       updateContextPill(ui, data.context_guard || data.session?.context_guard || {});
       if (data.ui_action === "copy_text") await copyText(data.message?.content || "");
@@ -1145,7 +1145,7 @@ function buildSidebar(el, placement = "sidebar") {
       <div class="pi-agent-toolbar">
         <span class="pi-agent-title">Pi Agent</span>
         <span id="pi-agent-runtime-pill" class="pi-agent-pill">Checking Pi…</span>
-        <span id="pi-agent-context-pill" class="pi-agent-pill" title="Context pressure and preemptive handoff status">Context --</span>
+        <span id="pi-agent-context-pill" class="pi-agent-pill" title="Context pressure and in-place compaction checkpoint status">Context --</span>
         <button id="pi-agent-settings-toggle" class="pi-agent-btn pi-agent-icon-btn" type="button" title="Pi Agent settings" aria-label="Chat settings"><i class="pi pi-cog" aria-hidden="true"></i></button>
       </div>
       <div class="pi-agent-toolbar">
@@ -1187,8 +1187,8 @@ function buildSidebar(el, placement = "sidebar") {
         </div>
         <div class="pi-agent-field"><label for="pi-agent-scoped-models">Scoped model patterns (optional)</label><input id="pi-agent-scoped-models" class="pi-agent-input" type="text" placeholder="Example: llama.cpp/*,ollama/qwen*" /></div>
         <div class="pi-agent-field"><label for="pi-agent-executable">Pi executable override</label><input id="pi-agent-executable" class="pi-agent-input" type="text" placeholder="Leave blank for auto-discovery" /></div>
-        <label class="pi-agent-check"><input id="pi-agent-preemptive-handoff" type="checkbox" checked /> Preemptive context handoff and reset</label>
-        <div class="pi-agent-help">ComfyUI-Pi disables Pi's built-in auto-compaction. At the configured threshold it writes a compact handoff, starts a fresh Pi context, and ingests the handoff automatically.</div>
+        <label class="pi-agent-check"><input id="pi-agent-preemptive-handoff" type="checkbox" checked /> Durable context checkpoint + in-place Pi compaction</label>
+        <div class="pi-agent-help">ComfyUI-Pi keeps Pi's native compaction enabled. At the configured threshold it saves a bounded durable checkpoint and asks Pi to compact the current session in place. No new Pi session is started.</div>
         <div class="pi-agent-field"><label for="pi-agent-handoff-threshold">Handoff threshold (%)</label><input id="pi-agent-handoff-threshold" class="pi-agent-input" type="number" min="80" max="95" step="0.5" value="82.5" /></div>
         <div class="pi-agent-field"><label for="pi-agent-handoff-max-chars">Maximum handoff size (characters)</label><input id="pi-agent-handoff-max-chars" class="pi-agent-input" type="number" min="4000" max="16000" step="500" value="8000" /></div>
         <div class="pi-agent-field"><label for="pi-agent-timeout">Timeout in seconds</label><input id="pi-agent-timeout" class="pi-agent-input" type="number" min="10" max="3600" value="180" /></div>

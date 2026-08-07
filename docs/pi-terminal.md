@@ -97,20 +97,22 @@ For each real user prompt, that bridge:
 
 The user's visible terminal input remains unchanged.
 
-## Preemptive handoff in Terminal mode
+## In-place compaction and durable handoff in Terminal mode
 
-The terminal bridge reports Pi's actual `getContextUsage()` values after completed agent work. ComfyUI-Pi watches those values using the same configured 80–95% threshold range and 82.5% default used by structured Chat.
+The terminal bridge reports Pi's actual `getContextUsage()` values after completed agent work. ComfyUI-Pi watches those values using the configured 80–95% threshold range and 82.5% default, but **Pi remains the compaction authority**.
 
-When the threshold is reached:
+Pi's native compaction does not require a new session. It summarizes older context, appends a `CompactionEntry`, preserves recent messages from Pi's chosen keep boundary, rebuilds the active context from the summary plus those recent messages, and continues in the same session.
 
-1. ComfyUI-Pi reads only the visible user/assistant text needed from Pi's session JSONL;
-2. writes the bounded durable handoff under ComfyUI user data;
-3. keeps the complete active workflow referenced by path instead of embedding it;
-4. sends Pi's native `/new` command through the PTY;
-5. stores a one-time handoff marker;
-6. on the next real user task, the bridge injects that bounded handoff once and removes the marker.
+ComfyUI-Pi keeps its specialized continuity functions around that native mechanism:
 
-The bridge cancels Pi's normal **threshold-triggered** auto-compaction so the durable handoff happens first. Manual `/compact` remains a real Pi command. Pi's overflow recovery is also left available as an emergency fallback for a single unexpectedly huge turn.
+1. before any Pi compaction (`manual`, `threshold`, or `overflow`), the bridge writes a bounded durable continuity checkpoint under ComfyUI user data;
+2. the checkpoint keeps the complete active workflow referenced by path instead of embedding it;
+3. the bridge returns control to Pi without cancelling `session_before_compact`;
+4. Pi performs its normal in-place compaction and keeps the same session;
+5. if the configured ComfyUI-Pi threshold is earlier than Pi's own reserve-token threshold, the bridge requests Pi's public `compact()` operation after the agent has fully settled;
+6. the durable checkpoint remains an additive recovery/audit artifact; Pi's own `CompactionEntry` is the active memory used for the next turn.
+
+No `/new` command is sent during compaction. Manual `/compact` remains Pi compaction, overflow recovery remains Pi's native recovery path, and both are checkpointed without replacing the session. A one-time marker left by an older reset-based ComfyUI-Pi build is still accepted only as backward-compatible recovery state.
 
 ## Platform support
 

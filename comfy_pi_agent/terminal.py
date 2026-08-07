@@ -204,6 +204,8 @@ class PiTerminalSession:
             "session_id": self.session_id,
             "workflow_path": str(self.workflow_path),
             "project_directory": self.project_directory,
+            "provider": self.provider,
+            "model": self.model,
             "preemptive_handoff": bool(settings.get("preemptive_handoff", True)),
             "handoff_threshold": float(settings.get("handoff_threshold", 0.825)),
             "handoff_max_chars": int(settings.get("handoff_max_chars", 8000)),
@@ -275,8 +277,10 @@ class PiTerminalSession:
             pass
         self._reader = threading.Thread(target=self._reader_loop, daemon=True, name=f"comfy-pi-terminal-{self.session_id[:8]}")
         self._reader.start()
-        self._monitor = threading.Thread(target=self._monitor_loop, daemon=True, name=f"comfy-pi-handoff-{self.session_id[:8]}")
-        self._monitor.start()
+        # Pi's extension hooks now own the compaction lifecycle. The old host monitor
+        # used context usage to send /new, which discarded Pi's CompactionEntry and
+        # broke continuity. Keep the monitor method only as a compatibility-safe helper;
+        # do not start it for new terminal sessions.
 
     def _append_ring(self, data: bytes) -> None:
         self._ring.append(data)
@@ -474,31 +478,13 @@ class PiTerminalSession:
             max_chars=clamp_handoff_chars(config.get("handoff_max_chars", 8000)),
             summarizer=None,
         )
-        marker = {
-            "created_at": time.time(),
-            "handoff_path": str(metadata.get("path") or ""),
-            "handoff_index": metadata.get("handoff_index"),
-            "context_pressure": pressure.to_dict(),
-        }
-        self.handoff_marker_path.write_text(json.dumps(marker, ensure_ascii=False, indent=2), encoding="utf-8")
-        # Clear the old high-water mark before issuing /new so the monitor cannot loop on
-        # the same completed turn while Pi redraws the TUI.
-        reset_state = dict(bridge)
-        reset_state.update({
-            "updated_at": time.time(),
-            "context_tokens": 0,
-            "context_percent": 0.0,
-            "preemptive_handoff": marker,
-        })
-        self.bridge_state_path.write_text(json.dumps(reset_state, ensure_ascii=False, indent=2), encoding="utf-8")
         self._emit_host_notice(
             f"Context reached {ratio * 100:.1f}% (threshold {threshold * 100:.1f}%). "
-            f"Saved handoff-{int(metadata.get('handoff_index') or 0):04d} and starting a fresh Pi session."
+            f"Saved durable handoff-{int(metadata.get('handoff_index') or 0):04d}; "
+            "Pi compaction remains in the current session."
         )
-        # Native Pi handles /new itself. Keeping the same PTY preserves the browser terminal
-        # while replacing the LLM context. The bridge injects the bounded handoff exactly
-        # once on the next real user prompt.
-        self.write("/new\r")
+        # Never send /new here. Pi's native compactor appends a CompactionEntry and keeps
+        # recent messages in this same session; the durable handoff is an additive backup.
         return metadata
 
     def _monitor_loop(self) -> None:

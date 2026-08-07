@@ -28,7 +28,6 @@ from .context_handoff import (
     clamp_threshold,
     context_pressure,
     create_handoff,
-    handoff_bootstrap_prompt,
 )
 from .local_llm import (
     configure_local_provider,
@@ -40,6 +39,14 @@ from .local_llm import (
 )
 
 
+COMFYUI_PI_COMPACTION_INSTRUCTIONS = (
+    "Preserve continuity for the current ComfyUI task using Pi's normal compaction format. "
+    "Preserve the user's current objective and constraints, completed and in-progress work, "
+    "key decisions, blockers, exact relevant file/workflow/model identifiers, and concrete next steps. "
+    "Keep large workflow/project artifacts referenced by path instead of embedding them. "
+    "Preserve which ComfyUI/node-pack procedures may need to be reloaded on demand, but do not inline "
+    "large manuals or whole workflows. Continue the same task after compaction; do not restart from scratch."
+)
 
 
 def _is_url_like(value: str) -> bool:
@@ -701,22 +708,22 @@ class ChatRuntimeManager:
             max_chars=max_chars,
             summarizer=summarizer,
         )
-        live.client.new_session()
-        handoff_text = Path(str(handoff["path"])).read_text(encoding="utf-8")
-        bootstrap = live.client.prompt(handoff_bootstrap_prompt(str(handoff["path"]), handoff_text=handoff_text))
-        post_pressure = self._pressure_from_prompt_result(bootstrap, threshold).to_dict()
+        instructions = COMFYUI_PI_COMPACTION_INSTRUCTIONS
+        if focus.strip():
+            instructions += "\n\nUser /compact focus: " + focus.strip()
+        compaction = live.client.compact(instructions)
+        post_pressure = self._pressure_from_session_stats(live, threshold).to_dict()
         handoff = dict(handoff)
         handoff.update({
-            "ingested": True,
-            "bootstrap_acknowledged": str(bootstrap.get("text") or "").strip().upper() == "HANDOFF_READY",
-            "reset_method": "new_session",
+            "ingested": False,
+            "continuity_method": "pi_compaction",
+            "reset_method": "none",
             "trigger_pressure": pressure.to_dict(),
-            "post_reset_pressure": post_pressure,
+            "post_compaction_pressure": post_pressure,
+            "compaction": compaction,
             "manual": True,
         })
         document = self.store.update_context_guard(session_id, post_pressure, handoff=handoff)
-        live.context_signature = None
-        live.handoff_ingested = True
         return document, handoff
 
     def _handle_builtin_command(
@@ -1029,7 +1036,10 @@ class ChatRuntimeManager:
                 session_id, live, document, project_context, workflow_summary, workflow_path,
                 routed, threshold, max_handoff_chars, focus=raw_args,
             )
-            response_text = f"Created and ingested ComfyUI-Pi handoff `{handoff.get('path')}` and reset Pi context."
+            response_text = (
+                f"Saved durable ComfyUI-Pi handoff `{handoff.get('path')}` and compacted "
+                "the current Pi session in place."
+            )
         elif name == "copy":
             last = next((str(item.get("content") or "") for item in reversed(document.get("messages") or []) if isinstance(item, dict) and item.get("role") == "assistant"), "")
             response_text = last or "There is no assistant reply to copy yet."
@@ -1313,6 +1323,18 @@ class ChatRuntimeManager:
         usage = {"totalTokens": direct_tokens} if direct_tokens > 0 else prompt_result.get("usage")
         return context_pressure(usage, prompt_result.get("context_window"), threshold)
 
+    @staticmethod
+    def _pressure_from_session_stats(live: _LiveSession, threshold: float):
+        """Read Pi's post-compaction context usage without inventing a fresh session."""
+        try:
+            stats = live.client.get_session_stats()
+        except Exception:
+            stats = {}
+        usage = stats.get("contextUsage") if isinstance(stats, dict) else {}
+        tokens = int((usage or {}).get("tokens") or 0) if isinstance(usage, dict) else 0
+        window = int((usage or {}).get("contextWindow") or 0) if isinstance(usage, dict) else 0
+        return context_pressure({"totalTokens": tokens}, window, threshold)
+
     def _preemptive_handoff(
         self,
         session_id: str,
@@ -1353,26 +1375,20 @@ class ChatRuntimeManager:
             summarizer=summarizer,
         )
 
-        # Hard reset instead of Pi's built-in compaction. Then silently ingest the durable
-        # handoff once. The user-visible transcript stays in ComfyUI-Pi's JSON store.
-        live.client.new_session()
-        handoff_text = Path(str(handoff["path"])).read_text(encoding="utf-8")
-        bootstrap = live.client.prompt(handoff_bootstrap_prompt(str(handoff["path"]), handoff_text=handoff_text))
-        ack = str(bootstrap.get("text") or "").strip().upper() == "HANDOFF_READY"
-        post_pressure = self._pressure_from_prompt_result(bootstrap, threshold).to_dict()
+        # Keep the current Pi session. The durable handoff is a recovery checkpoint; Pi's
+        # own CompactionEntry is the active continuity state and preserves recent messages.
+        compaction = live.client.compact(COMFYUI_PI_COMPACTION_INSTRUCTIONS)
+        post_pressure = self._pressure_from_session_stats(live, threshold).to_dict()
         handoff = dict(handoff)
-        # Successful prompt delivery means the bounded handoff is now literally in the fresh
-        # Pi context even if a weak model fails to obey the requested acknowledgement string.
-        handoff["ingested"] = True
-        handoff["bootstrap_acknowledged"] = ack
-        handoff["reset_method"] = "new_session"
-        handoff["trigger_pressure"] = pressure_dict
-        handoff["post_reset_pressure"] = post_pressure
+        handoff.update({
+            "ingested": False,
+            "continuity_method": "pi_compaction",
+            "reset_method": "none",
+            "trigger_pressure": pressure_dict,
+            "post_compaction_pressure": post_pressure,
+            "compaction": compaction,
+        })
         document = self.store.update_context_guard(session_id, post_pressure, handoff=handoff)
-        # The next user turn should inject the current bounded workflow/integration scope again,
-        # but should not replay old visible history because the handoff already captured it.
-        live.context_signature = None
-        live.handoff_ingested = True
         return document, handoff
 
     def send(

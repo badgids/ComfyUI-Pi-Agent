@@ -11,7 +11,7 @@ from unittest.mock import patch
 import comfy_pi_agent.routes as pi_routes
 from comfy_pi_agent.pi_runtime import PiRpcClient
 from comfy_pi_agent.terminal import PiTerminalSession, build_terminal_command
-from comfy_pi_agent.terminal_bridge_cli import build_terminal_guidance
+from comfy_pi_agent.terminal_bridge_cli import build_terminal_guidance, create_terminal_handoff
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -126,13 +126,16 @@ class TerminalArchitectureTests(unittest.TestCase):
         self.assertIn("MiniMax", matched)
         self.assertLess(len(matched), 24001)
 
-    def test_terminal_bridge_intercepts_threshold_compaction_and_injects_handoff(self):
+    def test_terminal_bridge_keeps_pi_native_in_place_compaction(self):
         text = (ROOT / "pi" / "terminal-bridge.ts").read_text(encoding="utf-8")
         self.assertIn('pi.on("session_before_compact"', text)
-        self.assertIn('event.reason === "threshold"', text)
-        self.assertIn("return { cancel: true }", text)
-        self.assertIn("COMFYUI-PI CONTINUITY HANDOFF", text)
-        self.assertIn('pi.on("before_agent_start"', text)
+        self.assertIn('pi.on("session_compact"', text)
+        self.assertIn('pi.on("agent_settled"', text)
+        self.assertIn("ctx.compact({", text)
+        self.assertIn("--create-handoff", text)
+        self.assertNotIn("return { cancel: true }", text)
+        self.assertIn('return undefined;', text)
+        self.assertIn("LEGACY COMFYUI-PI CONTINUITY HANDOFF", text)
         self.assertIn("--message-file", text)
         self.assertIn("ctx.getContextUsage", text)
 
@@ -160,35 +163,52 @@ class TerminalArchitectureTests(unittest.TestCase):
         self.assertIn('parser.add_argument("--message-file"', bridge)
         self.assertIn('read_text(encoding="utf-8")', bridge)
 
-    def test_terminal_preemptive_handoff_uses_pi_session_and_native_new(self):
+    def test_terminal_compaction_checkpoint_never_starts_a_new_session(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            with patch("comfy_pi_agent.terminal.terminal_supported", return_value=True), \
-                 patch("comfy_pi_agent.terminal.terminal_session_root", return_value=root / "terminal"), \
-                 patch("comfy_pi_agent.context_handoff.get_comfy_user_directory", return_value=root), \
-                 patch.object(PiTerminalSession, "_start", return_value=None):
-                session = PiTerminalSession(
-                    session_id="abc123", executable="pi", project_directory="", provider="local",
-                    model="model", scoped_models="", timeout=123,
-                    context_settings={"preemptive_handoff": True, "handoff_threshold": 0.825, "handoff_max_chars": 8000},
+            workflow = root / "workflow.json"
+            workflow.write_text(
+                json.dumps({"nodes": [{"type": "TestNode"}], "links": []}),
+                encoding="utf-8",
+            )
+            config = root / "bridge-config.json"
+            config.write_text(
+                json.dumps({
+                    "session_id": "abc123",
+                    "workflow_path": str(workflow),
+                    "project_directory": str(root),
+                    "provider": "llama.cpp",
+                    "model": "model",
+                    "preemptive_handoff": True,
+                    "handoff_threshold": 0.825,
+                    "handoff_max_chars": 8000,
+                    "project_context": "Preserve the approved workflow edits.",
+                }),
+                encoding="utf-8",
+            )
+            pi_session = root / "session.jsonl"
+            pi_session.write_text(
+                json.dumps({"type": "session", "id": "s", "cwd": str(root)}) + "\n" +
+                json.dumps({"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "Keep working on the workflow"}]}}) + "\n" +
+                json.dumps({"type": "message", "message": {"role": "assistant", "content": [{"type": "text", "text": "Current work is in progress"}]}}) + "\n",
+                encoding="utf-8",
+            )
+            with patch("comfy_pi_agent.context_handoff.get_comfy_user_directory", return_value=root):
+                metadata = create_terminal_handoff(
+                    str(config), str(pi_session), 83000, 100000, "threshold"
                 )
-                pi_session = root / "session.jsonl"
-                pi_session.write_text(
-                    json.dumps({"type": "session", "id": "s", "cwd": str(root)}) + "\n" +
-                    json.dumps({"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "Keep working on the workflow"}]}}) + "\n" +
-                    json.dumps({"type": "message", "message": {"role": "assistant", "content": [{"type": "text", "text": "Current work is in progress"}]}}) + "\n",
-                    encoding="utf-8",
-                )
-                writes = []
-                session.write = lambda value: writes.append(value)
-                metadata = session._create_preemptive_handoff(
-                    {"context_percent": 83.0, "context_tokens": 83000, "context_window": 100000, "session_file": str(pi_session)},
-                    {"preemptive_handoff": True, "handoff_threshold": 0.825, "handoff_max_chars": 8000},
-                )
-                self.assertIsNotNone(metadata)
-                self.assertTrue(Path(metadata["path"]).is_file())
-                self.assertTrue(session.handoff_marker_path.is_file())
-                self.assertEqual(writes, ["/new\r"])
+            self.assertTrue(Path(metadata["path"]).is_file())
+            self.assertEqual(metadata["compaction_reason"], "threshold")
+            handoff_text = Path(metadata["path"]).read_text(encoding="utf-8")
+            self.assertIn("Keep working on the workflow", handoff_text)
+
+        terminal_source = (ROOT / "comfy_pi_agent" / "terminal.py").read_text(encoding="utf-8")
+        start_source = terminal_source[
+            terminal_source.index("    def _start("):
+            terminal_source.index("    def _append_ring(")
+        ]
+        self.assertNotIn("target=self._monitor_loop", start_source)
+        self.assertNotIn('self.write("/new\\r")', terminal_source)
 
     def test_terminal_start_route_reattaches_before_llama_readiness_work(self):
         routes = (ROOT / "comfy_pi_agent" / "routes.py").read_text(encoding="utf-8")
@@ -205,7 +225,7 @@ class TerminalArchitectureTests(unittest.TestCase):
 
     def test_frontend_terminal_is_default_and_chat_reasoning_tools_default_visible(self):
         js = (ROOT / "web" / "pi_agent.js").read_text(encoding="utf-8")
-        self.assertIn('view: "terminal"', js)
+        self.assertIn('view: sessionStorage.getItem("ComfyUIPi.ActiveView") === "chat" ? "chat" : "terminal"', js)
         self.assertIn('>Terminal</button>', js)
         self.assertIn('>Chat</button>', js)
         self.assertIn('id="pi-agent-show-reasoning" type="checkbox" checked', js)

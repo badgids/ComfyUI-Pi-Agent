@@ -78,13 +78,13 @@ class ChatSessionStoreTests(unittest.TestCase):
 class SidebarChatFrontendTests(unittest.TestCase):
     def test_sidebar_js_has_copy_paste_friendly_chat_ui(self):
         js = (Path(__file__).parents[1] / "web" / "pi_agent.js").read_text(encoding="utf-8")
-        self.assertIn("Pi Agent Chat", js)
+        self.assertIn('class="pi-agent-title">Pi Agent</span>', js)
         self.assertIn("user-select:text", js)
         self.assertIn("navigator.clipboard", js)
         self.assertIn("Shift+Enter", js)
         self.assertIn("/pi-agent/chat/send", js)
         self.assertIn("Include the current ComfyUI workflow", js)
-        self.assertIn("Preemptive context handoff and reset", js)
+        self.assertIn("Durable context checkpoint + in-place Pi compaction", js)
         self.assertIn("handoff_threshold_percent", js)
         self.assertIn('max="95"', js)
         self.assertIn("Context --", js)

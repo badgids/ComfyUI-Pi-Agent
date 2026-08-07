@@ -187,7 +187,7 @@ Type `/` in the composer to open the command picker. Continue typing to filter i
 | `/trust` | Explains the supervised trust boundary; it does not silently enable project trust. |
 | `/fork` | Lists or uses Pi fork points. |
 | `/clone` | Clones the active Pi branch/chat state. |
-| `/compact` | Runs ComfyUI-Pi's durable preemptive handoff/reset rather than Pi's built-in compactor. |
+| `/compact` | Saves a durable ComfyUI-Pi continuity checkpoint, then runs Pi's built-in compactor in the current session. |
 | `/copy` | Copies the previous assistant answer. |
 | `/export` | Exports the Pi session to HTML. |
 | `/import` | Loads a Pi JSONL session. |
@@ -213,7 +213,7 @@ Provider/model discovery is host-side configuration, not LLM context.
 - Model lists are not injected into ordinary LLM turns.
 - Slash commands are intercepted before workflow/integration/task-procedure context is built.
 - Node-pack integrations remain lazy.
-- The 80%–95% preemptive-handoff range remains unchanged, with 82.5% as the default.
+- The 80%–95% in-place compaction checkpoint range remains unchanged, with 82.5% as the default.
 
 ## Troubleshooting
 

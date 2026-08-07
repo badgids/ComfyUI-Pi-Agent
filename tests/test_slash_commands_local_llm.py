@@ -326,7 +326,7 @@ class LocalLlmTests(unittest.TestCase):
             "Type / for Pi commands",
             "color-scheme:dark",
             ".pi-agent-shell select option",
-            "await applyProviderSelection(ui, { forceProbe: true, reloadCatalog: false })",
+            "applyProviderSelection(ui, { forceProbe: true, reloadCatalog: false })",
             "Preparing ${model}… waiting up to ${configuredTimeout}s for the local host to report it ready.",
         ):
             self.assertIn(needle, source)

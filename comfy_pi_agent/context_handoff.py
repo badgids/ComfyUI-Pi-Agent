@@ -187,8 +187,9 @@ def build_fallback_handoff(
 
     header = (
         "# ComfyUI-Pi Continuity Handoff\n\n"
-        "> Generated before a ComfyUI-Pi preemptive context reset. This is continuity state, "
-        "not a full transcript. Large workflows/assets are referenced by path and should be read only when needed.\n\n"
+        "> Generated as a durable checkpoint before ComfyUI-Pi context compaction or recovery. "
+        "This is continuity state, not a full transcript. Large workflows/assets are referenced "
+        "by path and should be read only when needed.\n\n"
     )
     body = "".join([
         _section("Primary Objective / Current Request", latest_user),
@@ -203,7 +204,7 @@ def build_fallback_handoff(
         _section("Recent Visible Conversation", recent),
         _section("Next Actions", "- Continue the primary objective from the current saved state; do not restart from scratch.\n- Inspect referenced workflow/project files only when exact details are needed.\n- Perform the next requested operation, validate meaningful changes, and report evidence or blockers."),
         _section("Continuation Rules", "- Preserve user-approved decisions and manually edited artifacts.\n- Re-check live ComfyUI schemas before graph mutations.\n- Load large workflow/project files only when needed.\n- Load third-party node-pack knowledge dynamically, not globally.\n- If information is missing, inspect the referenced project/workflow artifacts before guessing."),
-        _section("Context Reset Metadata", f"Context before reset: {pressure.context_tokens:,} / {pressure.context_window:,} tokens ({pressure.ratio * 100:.1f}%).\nTrigger threshold: {pressure.threshold * 100:.1f}%.")
+        _section("Context Continuity Metadata", f"Context before compaction/checkpoint: {pressure.context_tokens:,} / {pressure.context_window:,} tokens ({pressure.ratio * 100:.1f}%).\nTrigger threshold: {pressure.threshold * 100:.1f}%.")
     ])
     return _bounded_lines(header + body, max_chars)
 
