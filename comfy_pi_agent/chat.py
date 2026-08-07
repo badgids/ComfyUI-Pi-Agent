@@ -16,6 +16,7 @@ from .io_utils import atomic_write_json
 from .pi_runtime import PiRpcClient, discover_pi
 from .local_llm import runtime_environment
 from .pi_commands import COMMAND_BY_NAME, command_catalog, command_help, parse_slash_command
+from .provider_catalog import provider_options, simplified_models
 from .integrations.router import build_dynamic_integration_context
 from .workflow import analyze_workflow
 from .agent_guidance import build_request_guidance, guidance_signature
@@ -29,8 +30,37 @@ from .context_handoff import (
     create_handoff,
     handoff_bootstrap_prompt,
 )
-from .local_llm import configure_local_provider, llama_router_action, llama_router_models, probe_local_server
+from .local_llm import (
+    configure_local_provider,
+    llama_router_action,
+    llama_router_models,
+    local_provider_id,
+    probe_local_server,
+)
 
+
+
+
+def _is_url_like(value: str) -> bool:
+    text = str(value or "").strip().lower()
+    return text.startswith("http://") or text.startswith("https://")
+
+
+def _normalized_provider_model(
+    provider: str,
+    model: str,
+    local_llm: dict[str, Any] | None = None,
+) -> tuple[str, str]:
+    """Keep endpoint URLs out of Pi's provider field and repair old v0.1.9 sessions."""
+    provider_value = str(provider or "").strip()
+    model_value = str(model or "").strip()
+    local = local_llm if isinstance(local_llm, dict) else {}
+    if _is_url_like(provider_value):
+        kind = str(local.get("kind") or "").strip()
+        provider_value = local_provider_id(kind) if kind else ""
+        if not model_value:
+            model_value = str(local.get("model") or "").strip()
+    return provider_value, model_value
 
 def _now() -> float:
     return time.time()
@@ -160,6 +190,13 @@ class ChatSessionStore:
         data.setdefault("messages", [])
         data.setdefault("scoped_models", "")
         data.setdefault("local_llm", {})
+        repaired_provider, repaired_model = _normalized_provider_model(
+            str(data.get("provider") or ""),
+            str(data.get("model") or ""),
+            data.get("local_llm") if isinstance(data.get("local_llm"), dict) else {},
+        )
+        data["provider"] = repaired_provider
+        data["model"] = repaired_model
         data.setdefault("context_guard", {
             "enabled": True,
             "threshold": DEFAULT_HANDOFF_THRESHOLD,
@@ -211,8 +248,9 @@ class ChatSessionStore:
     ) -> dict[str, Any]:
         document = self.load(session_id)
         document["project_directory"] = str(project_directory or "")
-        document["provider"] = str(provider or "")
-        document["model"] = str(model or "")
+        provider_value, model_value = _normalized_provider_model(provider, model, local_llm)
+        document["provider"] = provider_value
+        document["model"] = model_value
         document["scoped_models"] = str(scoped_models or "")
         if isinstance(local_llm, dict):
             # Never persist a raw API key in chat JSON. Local servers normally need no key;
@@ -296,6 +334,72 @@ class ChatRuntimeManager:
     def close(self, session_id: str) -> None:
         self._close_live(session_id)
 
+    @staticmethod
+    def _ensure_llama_router_model(base_url: str, model: str) -> dict[str, Any]:
+        """Best-effort router load so model switching also works with autoload disabled."""
+        model_id = str(model or "").strip()
+        if not model_id:
+            return {"attempted": False, "status": "no-model"}
+        try:
+            catalog = llama_router_models(base_url, timeout=2.0)
+        except Exception:
+            # Single-model llama-server does not need the router management API.
+            return {"attempted": False, "status": "single-model-or-router-unavailable"}
+        entry = next((item for item in catalog.get("models", []) if str(item.get("id") or "") == model_id), None)
+        if not entry:
+            return {"attempted": False, "status": "not-in-router-catalog"}
+        status = str(entry.get("status") or "unknown")
+        if status in {"loaded", "loading", "sleeping"}:
+            return {"attempted": False, "status": status}
+        if status != "unloaded" or bool(entry.get("failed", False)):
+            return {"attempted": False, "status": status}
+        try:
+            result = llama_router_action("load", model_id, base_url, timeout=20.0)
+            return {"attempted": True, "status": "load-requested", "result": result}
+        except Exception as exc:
+            # The normal router default is autoload-on-request, so a management-route
+            # failure should not block selecting the model in Pi.
+            return {"attempted": True, "status": "load-request-failed", "error": f"{type(exc).__name__}: {exc}"}
+
+    def activate_local_provider(
+        self,
+        session_id: str,
+        kind: str,
+        base_url: str = "",
+        model: str = "",
+        models: list[str] | None = None,
+        provider_id: str = "",
+        api_key_env: str = "",
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        """Probe/configure a local provider and make it the chat's active model source.
+
+        The currently running Pi RPC process is closed because its available-model snapshot
+        is immutable until Pi reloads/restarts. The next message starts Pi with the freshly
+        written models.json provider and selected model.
+        """
+        result = configure_local_provider(
+            kind, base_url, models=models, model=model, provider_id=provider_id, api_key_env=api_key_env
+        )
+        document = self.store.load(session_id)
+        if str(result.get("kind") or "") == "llama.cpp" and str(result.get("model") or ""):
+            result["router_load"] = self._ensure_llama_router_model(
+                str(result.get("base_url") or ""), str(result.get("model") or "")
+            )
+        document["provider"] = str(result.get("provider") or "")
+        document["model"] = str(result.get("model") or "")
+        document["local_llm"] = {
+            "enabled": True,
+            "kind": str(result.get("kind") or ""),
+            "base_url": str(result.get("base_url") or ""),
+            "provider": str(result.get("provider") or ""),
+            "model": str(result.get("model") or ""),
+            "models": list(result.get("models") or []),
+            "api_key_env": str(result.get("api_key_env") or ""),
+        }
+        document = self.store.save(document)
+        self._close_live(session_id)
+        return result, document
+
     def delete(self, session_id: str) -> bool:
         self._close_live(session_id)
         try:
@@ -354,6 +458,137 @@ class ChatRuntimeManager:
             except Exception:
                 pass
         return commands
+
+    def model_catalog(
+        self,
+        session_id: str = "",
+        executable: str = "",
+        project_directory: str = "",
+        timeout: int = 30,
+    ) -> dict[str, Any]:
+        """Return Pi provider metadata plus the models Pi can actually use.
+
+        Provider metadata is always available without probing local inference servers. The
+        model list comes from Pi's own get_available_models RPC snapshot. When this chat
+        already has a live Pi process we reuse it; otherwise a short-lived lean RPC process
+        is created and closed immediately. Local hosts are still probed only when the user
+        explicitly selects/refreshes that local provider.
+        """
+        document: dict[str, Any] = {}
+        if session_id:
+            try:
+                document = self.store.load(session_id)
+            except FileNotFoundError:
+                document = {}
+        cwd = str(project_directory or document.get("project_directory") or "")
+        models: list[dict[str, Any]] = []
+        state: dict[str, Any] = {}
+        runtime_error = ""
+
+        live = None
+        if session_id:
+            with self._guard:
+                live = self._live.get(session_id)
+        if live:
+            try:
+                with live.lock:
+                    models = live.client.get_available_models()
+                    state = live.client.get_state()
+            except Exception as exc:
+                runtime_error = f"{type(exc).__name__}: {exc}"
+        else:
+            status = discover_pi(executable)
+            if not status.available or not status.executable:
+                runtime_error = status.message
+            else:
+                client = None
+                try:
+                    client = PiRpcClient(
+                        str(status.executable),
+                        project_dir=cwd,
+                        timeout=max(10, min(int(timeout or 30), 60)),
+                    )
+                    models = client.get_available_models()
+                    state = client.get_state()
+                except Exception as exc:
+                    runtime_error = f"{type(exc).__name__}: {exc}"
+                finally:
+                    if client is not None:
+                        client.close()
+
+        safe_models = simplified_models(models)
+        current_provider = str(document.get("provider") or "").strip()
+        current_model = str(document.get("model") or "").strip()
+        if not current_provider or not current_model:
+            state_provider, state_model = self._model_label(state.get("model") if isinstance(state, dict) else {})
+            current_provider = current_provider or state_provider
+            current_model = current_model or state_model
+        return {
+            "providers": provider_options(models),
+            "models": safe_models,
+            "current": {"provider": current_provider, "model": current_model},
+            "runtime_error": runtime_error,
+        }
+
+    def select_model(self, session_id: str, provider: str = "", model: str = "") -> tuple[dict[str, Any], dict[str, Any]]:
+        """Persist a provider/model selection and switch the live Pi process when possible."""
+        document = self.store.load(session_id)
+        provider_value = str(provider or "").strip()
+        model_value = str(model or "").strip()
+        if _is_url_like(provider_value):
+            raise ValueError("A provider id cannot be an endpoint URL.")
+
+        # Pi default means no explicit provider/model flags. A fresh lean RPC process is
+        # required because RPC has no 'restore startup default' command. Visible chat history
+        # remains in ComfyUI-Pi and is rehydrated on the next turn.
+        if not provider_value and not model_value:
+            document["provider"] = ""
+            document["model"] = ""
+            document["local_llm"] = {}
+            document = self.store.save(document)
+            self._close_live(session_id)
+            return {"ok": True, "provider": "", "model": "", "switched_live": False}, document
+        if not provider_value or not model_value:
+            raise ValueError("Both provider and model are required when selecting an explicit Pi model.")
+
+        selected: dict[str, Any] = {}
+        switched_live = False
+        local = document.get("local_llm") if isinstance(document.get("local_llm"), dict) else {}
+        if (
+            str(local.get("kind") or "") == "llama.cpp"
+            and str(local.get("provider") or "") == provider_value
+        ):
+            self._ensure_llama_router_model(str(local.get("base_url") or ""), model_value)
+
+        with self._guard:
+            live = self._live.get(session_id)
+        if live:
+            with live.lock:
+                selected = live.client.set_model(provider_value, model_value)
+            selected_provider, selected_model = self._model_label(selected)
+            provider_value = selected_provider or provider_value
+            model_value = selected_model or model_value
+            live.provider = provider_value
+            live.model = model_value
+            switched_live = True
+
+        document["provider"] = provider_value
+        document["model"] = model_value
+        local = document.get("local_llm") if isinstance(document.get("local_llm"), dict) else {}
+        if local and str(local.get("provider") or "") != provider_value:
+            document["local_llm"] = {}
+        elif local:
+            local = dict(local)
+            local["model"] = model_value
+            document["local_llm"] = local
+        document = self.store.save(document)
+        return {
+            "ok": True,
+            "provider": provider_value,
+            "model": model_value,
+            "switched_live": switched_live,
+            "selected": simplified_models([selected])[0] if selected else {},
+        }, document
 
     @staticmethod
     def _format_models(models: list[dict[str, Any]], current: dict[str, Any] | None = None, limit: int = 120) -> str:
@@ -503,27 +738,69 @@ class ChatRuntimeManager:
                 provider, model_id = self._model_label(selected if isinstance(selected, dict) else {})
                 response_text = f"Switched Pi model to `{provider}/{model_id}`." if model_id else "Pi has no additional model to cycle to."
             else:
-                if len(args) >= 2:
-                    target_provider, target_model = args[0], args[1]
-                elif "/" in args[0]:
-                    target_provider, target_model = args[0].split("/", 1)
+                local_aliases = {
+                    "llama.cpp", "llamacpp", "llama-cpp", "llama_cpp",
+                    "ollama", "lm-studio", "lmstudio", "lm_studio", "vllm",
+                    "openai-compatible", "openai", "generic",
+                }
+                first = args[0]
+                # Dead-simple local-provider form: `/model llama.cpp` means "use llama.cpp",
+                # not "find a model literally named llama.cpp under the current provider".
+                if len(args) == 1 and first.lower() in local_aliases:
+                    current_local = document.get("local_llm") if isinstance(document.get("local_llm"), dict) else {}
+                    requested_provider = local_provider_id(first)
+                    base_url = str(current_local.get("base_url") or "") if str(current_local.get("provider") or "") == requested_provider else ""
+                    preferred = str(current_local.get("model") or "") if str(current_local.get("provider") or "") == requested_provider else ""
+                    configured, document = self.activate_local_provider(
+                        session_id, first, base_url=base_url, model=preferred
+                    )
+                    fresh = self._ensure_live(
+                        session_id, live.project_directory, configured["provider"], configured["model"],
+                        live.scoped_models, document.get("local_llm", {}), executable, live.client.timeout,
+                    )
+                    state = fresh.client.get_state()
+                    p, mid = self._model_label(state.get("model") if isinstance(state, dict) else {})
+                    response_text = (
+                        f"Switched Pi to `{p or configured['provider']}/{mid or configured['model']}`. "
+                        f"Endpoint: `{configured['base_url']}`."
+                    )
                 else:
-                    target_provider = str(document.get("provider") or "")
-                    target_model = args[0]
+                    if len(args) >= 2:
+                        target_provider, target_model = args[0], args[1]
+                    elif "/" in first:
+                        target_provider, target_model = first.split("/", 1)
+                    else:
+                        target_provider = str(document.get("provider") or "")
+                        target_model = first
+                        if not target_provider:
+                            matches = [m for m in live.client.get_available_models() if self._model_label(m)[1] == target_model]
+                            if len(matches) == 1:
+                                target_provider, _ = self._model_label(matches[0])
                     if not target_provider:
-                        matches = [m for m in live.client.get_available_models() if self._model_label(m)[1] == target_model]
-                        if len(matches) == 1:
-                            target_provider, _ = self._model_label(matches[0])
-                if not target_provider:
-                    raise ValueError("Use `/model provider/model-id` when the provider cannot be inferred.")
-                selected = live.client.set_model(target_provider, target_model)
-                document["provider"] = target_provider
-                document["model"] = target_model
-                self.store.save(document)
-                live.provider = target_provider
-                live.model = target_model
-                p, mid = self._model_label(selected)
-                response_text = f"Switched Pi model to `{p or target_provider}/{mid or target_model}`."
+                        raise ValueError("Use `/model provider/model-id` when the provider cannot be inferred.")
+                    if target_provider.lower() in local_aliases:
+                        current_local = document.get("local_llm") if isinstance(document.get("local_llm"), dict) else {}
+                        requested_provider = local_provider_id(target_provider)
+                        base_url = str(current_local.get("base_url") or "") if str(current_local.get("provider") or "") == requested_provider else ""
+                        configured, document = self.activate_local_provider(
+                            session_id, target_provider, base_url=base_url, model=target_model
+                        )
+                        fresh = self._ensure_live(
+                            session_id, live.project_directory, configured["provider"], configured["model"],
+                            live.scoped_models, document.get("local_llm", {}), executable, live.client.timeout,
+                        )
+                        state = fresh.client.get_state()
+                        p, mid = self._model_label(state.get("model") if isinstance(state, dict) else {})
+                        response_text = f"Switched Pi model to `{p or configured['provider']}/{mid or configured['model']}`."
+                    else:
+                        selected = live.client.set_model(target_provider, target_model)
+                        document["provider"] = target_provider
+                        document["model"] = target_model
+                        self.store.save(document)
+                        live.provider = target_provider
+                        live.model = target_model
+                        p, mid = self._model_label(selected)
+                        response_text = f"Switched Pi model to `{p or target_provider}/{mid or target_model}`."
         elif name == "scoped-models":
             if raw_args:
                 document["scoped_models"] = raw_args
@@ -591,16 +868,10 @@ class ChatRuntimeManager:
                     model_id = args[1]
                     result = llama_router_action(subcommand, model_id, base_url=base_url, timeout=min(30.0, float(live.client.timeout)))
                     if subcommand == "load":
-                        configured = configure_local_provider("llama.cpp", result["base_url"], models=[model_id], model=model_id)
-                        document["provider"] = configured["provider"]
-                        document["model"] = configured["model"]
-                        document["local_llm"] = {
-                            "enabled": True, "kind": "llama.cpp", "base_url": configured["base_url"],
-                            "provider": configured["provider"], "model": configured["model"],
-                        }
-                        self.store.save(document)
-                        self._close_live(session_id)
-                        response_text = f"llama.cpp router loaded `{model_id}`. This chat will use it on the next normal message."
+                        configured, document = self.activate_local_provider(
+                            session_id, "llama.cpp", result["base_url"], model=model_id, models=[model_id]
+                        )
+                        response_text = f"llama.cpp router loaded `{model_id}` and selected `{configured['provider']}/{configured['model']}` for this chat."
                     elif subcommand == "unload":
                         if str(document.get("model") or "") == model_id:
                             document["model"] = ""
@@ -615,11 +886,9 @@ class ChatRuntimeManager:
                     listing = llama_router_models(base_url=base_url, reload=subcommand in {"refresh", "reload"})
                     base_url = str(listing.get("base_url") or base_url)
                     models = listing.get("models") or []
-                    document["local_llm"] = {
-                        "enabled": True, "kind": "llama.cpp", "base_url": base_url,
-                        "provider": "llama.cpp", "model": str(document.get("model") or ""),
-                    }
-                    document["provider"] = "llama.cpp"
+                    current = document.get("local_llm") if isinstance(document.get("local_llm"), dict) else {}
+                    current.update({"kind": "llama.cpp", "base_url": base_url})
+                    document["local_llm"] = current
                     self.store.save(document)
                     rows = [f"llama.cpp router: `{base_url}`", ""]
                     rows.extend(f"- `{item.get('id')}` — {item.get('status', 'unknown')}" for item in models[:120] if item.get("id"))
@@ -638,19 +907,10 @@ class ChatRuntimeManager:
                         ui_action = "open_local_llm"
                     else:
                         models = list(probe.get("models") or [])
-                        configured = configure_local_provider(requested_kind, url_arg, models=models, model=model_arg)
-                        document["provider"] = configured.get("provider", "")
-                        document["model"] = configured.get("model", "")
-                        document["local_llm"] = {
-                            "enabled": True,
-                            "kind": configured.get("kind", ""),
-                            "base_url": configured.get("base_url", ""),
-                            "provider": configured.get("provider", ""),
-                            "model": configured.get("model", ""),
-                        }
-                        self.store.save(document)
-                        self._close_live(session_id)
-                        response_text = str(configured.get("message") or "Local provider configured.") + " The next normal message starts a fresh Pi RPC process with it."
+                        configured, document = self.activate_local_provider(
+                            session_id, requested_kind, url_arg, model=model_arg, models=models
+                        )
+                        response_text = str(configured.get("message") or "Local provider configured.")
                 else:
                     response_text = (
                         "Pi's subscription/OAuth `/login` selector exists only in its interactive TUI; RPC does not expose that credential UI. "
@@ -1116,8 +1376,12 @@ class ChatRuntimeManager:
         )
         document = self.store.append(session_id, "user", text)
         try:
+            # Always launch Pi from the normalized, persisted provider/model state.
+            # This is especially important when opening a chat created by v0.1.9,
+            # which could accidentally store an endpoint URL in the provider field.
+            # update_config() repairs that state before we reach this point.
             live = self._ensure_live(
-                session_id, project_directory, provider, model,
+                session_id, project_directory, str(document.get("provider") or ""), str(document.get("model") or ""),
                 str(document.get("scoped_models") or ""),
                 document.get("local_llm", {}),
                 executable, timeout,

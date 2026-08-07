@@ -4,6 +4,27 @@
 **Navigation:** [Project README](README.md) · [Documentation home](docs/index.md) · [Previous: Third-party notices](THIRD_PARTY_NOTICES.md) · [Next: Release notes](RELEASE_NOTES.md)
 <!-- DOC_NAV_END -->
 
+## 0.1.11 — Main chat provider/model switching
+
+- Added Provider → Model selectors directly beneath the chat composer.
+- Covered Pi's current complete built-in provider ID catalog while also surfacing custom/runtime providers.
+- Filled cloud/provider models from Pi's live available-model RPC catalog and local models from each selected local host.
+- Changed llama.cpp router discovery to list all routable non-failed models, including unloaded models, and best-effort load a selected unloaded model.
+- Preserved active Pi context for ordinary live provider/model switches through RPC `set_model`.
+- Kept endpoint overrides advanced/optional and retained zero startup probing.
+
+
+## 0.1.10 — Simplified provider/model selection
+
+- Replaced raw provider/model configuration fields with a normal provider dropdown and automatically populated model dropdown.
+- Local providers now self-configure on selection using common defaults; endpoint override is advanced/optional.
+- Unified llama.cpp with Pi's supported `models.json` local-provider path so discovered llama.cpp models are actually available to Pi RPC.
+- Made `/model llama.cpp` and the other local provider names perform provider selection instead of ambiguous model-name lookup.
+- Added repair for legacy v0.1.9 sessions with an endpoint URL stored as provider.
+- Kept local probing opt-in by user action and outside LLM context.
+
+
+
 ## 0.1.9 — Slash commands and local LLM servers
 
 - Added ComfyUI chat bridges for Pi's documented built-in slash commands.

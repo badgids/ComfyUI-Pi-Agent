@@ -7,7 +7,7 @@
 
 ## Release
 
-- Version: 0.1.9
+- Version: 0.1.11
 - Creator: Alan D. Guice (Badgids)
 - License: GPL-3.0-only
 
@@ -20,7 +20,7 @@
 - Test modules: 14
 - Example workflows: 3
 - First-class lazy node-pack integrations: 4
-- Manifest-tracked source files: 167
+- Manifest-tracked source files: 168
 
 ## Context-efficiency guarantees
 

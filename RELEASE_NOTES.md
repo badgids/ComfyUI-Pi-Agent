@@ -1,8 +1,34 @@
-# Release notes — 0.1.9
+# Release notes — 0.1.11
 
 <!-- DOC_NAV_START -->
 **Navigation:** [Project README](README.md) · [Documentation home](docs/index.md) · [Previous: Changelog](CHANGELOG.md) · [Next: Project inventory](PROJECT_INVENTORY.md)
 <!-- DOC_NAV_END -->
+
+## 0.1.11 — Provider and model switcher in the main chat
+
+- Added **Provider** and **Model** dropdowns directly beneath the sidebar chat box, in that order, so normal model switching no longer requires opening Settings or typing `/model`.
+- Expanded the Provider dropdown to cover all 38 provider IDs in Pi's current public `KnownProvider` catalog, plus the supported local-host presets and custom providers found in Pi's runtime/model configuration.
+- Populated hosted-provider Model choices from Pi's live `get_available_models` RPC snapshot instead of maintaining a duplicate hardcoded model list.
+- Kept providers visible even when they are not yet authenticated; those providers simply show no selectable models until Pi reports models as available.
+- Populated local-host Model choices from the host's own model-list endpoint. Ollama, LM Studio, vLLM, and generic OpenAI-compatible servers expose every model they report. llama.cpp router mode now uses `/models?reload=1` so unloaded-but-routable models also appear, while explicitly failed entries are omitted.
+- Added best-effort llama.cpp router loading when an unloaded router model is selected, so switching also works when router autoload has been disabled. Normal llama.cpp router autoload remains supported.
+- Preserved live Pi context when switching between already-available hosted/provider models by using Pi RPC `set_model`; a supervised Pi restart is only used when local `models.json` registration must be reloaded or when restoring Pi's startup default.
+- Moved local endpoint configuration to **Settings → Local model host — advanced**. Normal provider/model selection stays on the main chat page; endpoint overrides remain optional.
+- Preserved zero local-server probing at startup and kept provider/model catalogs out of LLM prompt context.
+
+
+## 0.1.10 — Dead-simple local provider selection
+
+- Replaced the confusing raw **Pi provider override**, **Pi provider id**, and **Use in this chat** workflow with one **Provider** dropdown and one automatically populated **Model** dropdown.
+- Selecting llama.cpp, Ollama, LM Studio, or vLLM now uses the common endpoint automatically, discovers models, writes the required Pi provider/model catalog entry, selects a model, and restarts only that chat's supervised Pi RPC process.
+- Moved endpoint editing under **Advanced: custom endpoint**. Most users do not need to enter or even view an endpoint.
+- Fixed llama.cpp model registration. v0.1.9 could discover llama.cpp models but did not add them to Pi's RPC-visible model catalog; v0.1.10 registers llama.cpp through Pi's supported `models.json` mechanism just like the other local OpenAI-compatible servers.
+- Fixed `/model llama.cpp`: a local provider name by itself now means “switch to this provider and choose its current/first model,” rather than being interpreted as a model ID beneath the previous provider.
+- Added migration/repair for v0.1.9 chat state that accidentally stored an `http://...` endpoint in the Pi provider field.
+- Preserved existing unrelated `models.json` providers and retained environment-variable references for authenticated generic OpenAI-compatible servers.
+- Preserved zero startup probing, sparse LLM context, lazy integration/procedure loading, and the 80%–95% preemptive handoff system with 82.5% default.
+
+
 
 ## 0.1.9 — Pi slash-command bridge and easy local LLM setup
 

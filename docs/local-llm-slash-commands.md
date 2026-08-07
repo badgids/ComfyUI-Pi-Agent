@@ -4,168 +4,217 @@
 **Navigation:** [Project README](../README.md) · [Documentation home](index.md) · [Previous: Pi Agent sidebar chat](sidebar-chat.md) · [Next: Workflow intelligence](workflow-intelligence.md)
 <!-- DOC_NAV_END -->
 
-ComfyUI-Pi's sidebar chat is intended to feel like a normal Pi conversation while remaining inside ComfyUI. You can type Pi's documented slash commands directly into the chat box, and you can point the embedded Pi runtime at a local llama.cpp, Ollama, LM Studio, vLLM, or other OpenAI-compatible server without editing ComfyUI workflows.
 
-## Why ComfyUI-Pi bridges built-in slash commands
+ComfyUI-Pi's sidebar chat is intended to make Pi feel like a normal assistant inside ComfyUI. Pi slash commands work from the chat box, and local servers are selected from a normal provider dropdown instead of requiring users to understand Pi provider IDs, environment plumbing, or `models.json`.
 
-Pi's interactive terminal UI owns its built-in commands such as `/model`, `/settings`, `/tree`, and `/compact`. Pi's RPC protocol does **not** execute those built-in TUI commands when they are sent as ordinary prompts. ComfyUI-Pi therefore recognizes the built-in command names itself and maps them to Pi RPC operations or an equivalent ComfyUI-Pi action.
+## Provider and Model are on the main chat page
 
-This is deliberate. A slash command should never accidentally become an LLM prompt just because the chat is using RPC mode.
-
-Commands registered by a Pi extension, prompt template, or skill can still be discovered through Pi's RPC command catalog when those resources are explicitly loaded. ComfyUI-Pi continues to start Pi lean by default, so unrelated resources are not loaded simply to populate the command menu.
-
-## Using the slash-command picker
-
-1. Open the **Pi Agent** sidebar.
-2. Click in the chat composer.
-3. Type `/`.
-4. Continue typing to filter the list.
-5. Use the mouse, `Up` / `Down`, or `Tab` to choose a command.
-6. Add any arguments and press `Enter`.
-
-The chat currently recognizes Pi's documented built-in command names:
-
-| Command | Embedded ComfyUI-Pi behavior |
-| --- | --- |
-| `/login` | Easy local-server configuration in chat; cloud OAuth remains Pi's interactive credential flow because RPC does not expose the credential selector. |
-| `/logout` | Clears this chat's provider/model override. It does not silently delete Pi's stored credentials. |
-| `/llama` | Inspect/configure the llama.cpp router and explicitly list, load, unload, refresh, or start downloads for router models. |
-| `/model` | List models, select `provider/model`, or cycle to the next model. |
-| `/scoped-models` | Show or set the patterns used for model cycling. |
-| `/settings` | Show runtime state and change RPC-supported thinking/delivery settings or ComfyUI-Pi's handoff threshold. |
-| `/resume` | List or switch persistent ComfyUI-Pi sidebar chats. |
-| `/new` | Start a new sidebar chat. |
-| `/name` | Rename the current chat and Pi session. |
-| `/session` | Show ComfyUI-Pi and Pi session/context statistics. |
-| `/tree` | Show Pi's current session tree. |
-| `/trust` | Explain the embedded supervised trust policy. ComfyUI-Pi does not silently enable project trust. |
-| `/fork` | List fork points or fork from a Pi user-message entry. |
-| `/clone` | Clone the current Pi branch and create a matching sidebar chat. |
-| `/compact` | Run ComfyUI-Pi's durable handoff/reset now instead of Pi's built-in lossy auto-compaction. |
-| `/copy` | Copy the previous assistant answer. |
-| `/export` | Export the active Pi session to HTML. |
-| `/import` | Load a Pi JSONL session file into the active RPC process. |
-| `/share` | Export HTML and, when authenticated GitHub CLI is available, explicitly create a secret gist. |
-| `/reload` | Restart the lean Pi RPC process so current model/provider/scoped configuration is re-read. |
-| `/hotkeys` | Show the useful ComfyUI-Pi chat keys and slash-command list. |
-| `/changelog` | Show the installed Pi version and point to ComfyUI-Pi release notes. |
-| `/quit` | Stop Pi for this chat without deleting the saved conversation. |
-
-### Useful examples
+Directly beneath the chat box, ComfyUI-Pi shows:
 
 ```text
-/model
-/model ollama/qwen2.5-coder:7b
-/model next
-/settings thinking low
-/settings steering one-at-a-time
-/scoped-models ollama/*,llama.cpp/*
-/session
-/tree
-/compact Preserve the workflow repair decisions and next unresolved nodes.
+Provider  [ ... ]
+Model     [ ... ]
 ```
 
-## Easy local LLM setup
+**Provider always comes first. Model always comes second.** You do not need to open Settings just to switch providers or models.
 
-Local-server discovery is **not** performed during ComfyUI startup. Nothing is contacted until you explicitly press a detection button or issue a local-provider command.
+The Provider dropdown has four groups:
 
-### The easiest method
+- **Default** — Pi's normal configured/current model.
+- **Local model hosts** — llama.cpp, Ollama, LM Studio, vLLM, and a generic OpenAI-compatible server.
+- **Pi built-in providers** — every provider ID in the Pi `KnownProvider` catalog supported by this release.
+- **Custom providers** — provider IDs found in the user's Pi `models.json` or live Pi model catalog.
 
-1. Start your local model server normally.
-2. Open **Pi Agent → Settings**.
-3. Find **Local LLM server**.
-4. Press **Detect common servers**.
-5. Select the server/model you want.
-6. Press **Use in this chat**.
-7. Send a message.
+For built-in/cloud providers, ComfyUI-Pi asks Pi for its live `get_available_models` snapshot and shows every returned model for the selected provider. The model names are **not** duplicated in a plugin hardcoded list. A provider can therefore remain visible while its Model dropdown is empty when Pi has no currently authenticated/configured model for it.
 
-ComfyUI-Pi probes these common loopback defaults only when you ask it to detect servers:
+### Pi built-in providers covered by v0.1.11
 
-| Server | Common default |
+The dropdown covers the 38 provider IDs in Pi's current public `KnownProvider` catalog:
+
+`amazon-bedrock`, `ant-ling`, `anthropic`, `google`, `google-vertex`, `openai`, `azure-openai-responses`, `openai-codex`, `radius`, `nvidia`, `deepseek`, `github-copilot`, `xai`, `groq`, `cerebras`, `openrouter`, `vercel-ai-gateway`, `zai`, `zai-coding-cn`, `mistral`, `minimax`, `minimax-cn`, `moonshotai`, `moonshotai-cn`, `huggingface`, `fireworks`, `together`, `opencode`, `opencode-go`, `kimi-coding`, `cloudflare-workers-ai`, `cloudflare-ai-gateway`, `qwen-token-plan`, `qwen-token-plan-cn`, `xiaomi`, `xiaomi-token-plan-cn`, `xiaomi-token-plan-ams`, and `xiaomi-token-plan-sgp`.
+
+The local-host entries are additional convenience providers managed by ComfyUI-Pi. Runtime/custom providers are unioned into the selector so a user-defined provider does not disappear just because it is not in that built-in list.
+
+## Local models: the normal workflow
+
+For llama.cpp, Ollama, LM Studio, vLLM, and generic OpenAI-compatible servers:
+
+1. Start the local server.
+2. Under the chat box, choose the host from **Provider**.
+3. ComfyUI-Pi contacts only that selected host using its common default endpoint.
+4. It reads the host's model list, registers those model IDs with Pi, and fills **Model**.
+5. Choose any model in **Model** and use the chat.
+
+That is the normal setup. There is no required **Pi provider ID**, no manual `models.json` editing, and no **Use in this chat** button.
+
+### What “all local models” means
+
+ComfyUI-Pi uses each host's own model-list API rather than guessing filenames:
+
+- **Ollama:** every model returned by `/api/tags`.
+- **LM Studio:** every model returned by its OpenAI-compatible `/v1/models`.
+- **vLLM:** every model returned by its OpenAI-compatible `/v1/models`.
+- **Other OpenAI-compatible:** every model returned by `/v1/models`.
+- **llama.cpp single-model server:** the served model from `/v1/models`.
+- **llama.cpp router:** every non-failed model returned by router `/models?reload=1`, including models currently marked unloaded. llama.cpp router normally autoloads a requested model; ComfyUI-Pi also makes a best-effort `/models/load` request when an unloaded router model is selected so switching still works when router autoload was disabled.
+
+A model explicitly marked failed by the llama.cpp router is not offered as a normal selectable model because the host itself says that entry failed to load.
+
+### Default endpoints
+
+| Provider | Automatic default |
 | --- | --- |
 | llama.cpp | `http://127.0.0.1:8080` |
 | Ollama | `http://127.0.0.1:11434` |
 | LM Studio | `http://127.0.0.1:1234/v1` |
 | vLLM | `http://127.0.0.1:8000/v1` |
+| Other OpenAI-compatible | `http://127.0.0.1:8000/v1` |
 
-For another OpenAI-compatible service, choose **Other OpenAI-compatible**, enter its base URL, press **Check endpoint**, select a discovered model, and then press **Use in this chat**.
+The endpoint is an **override, not a required setting**. Leave it alone when the server uses its normal address.
 
-### Configure from the chat
+When a server runs somewhere else, select that local provider, open **Settings → Local model host — advanced → Advanced: custom endpoint**, enter the endpoint, then press **Refresh models / apply endpoint**.
 
-Examples:
+No local endpoint is probed during ComfyUI startup. A probe occurs only after the user explicitly selects or refreshes a local provider.
+
+## What ComfyUI-Pi does automatically
+
+Pi supports custom/local models through `~/.pi/agent/models.json`. ComfyUI-Pi manages that integration for the user.
+
+After selecting llama.cpp with a server reporting `Qwen3.6-35B`, ComfyUI-Pi creates or safely merges an entry equivalent to:
+
+```json
+{
+  "providers": {
+    "llama.cpp": {
+      "name": "llama.cpp",
+      "baseUrl": "http://127.0.0.1:8080/v1",
+      "api": "openai-completions",
+      "apiKey": "local",
+      "compat": {
+        "supportsDeveloperRole": false,
+        "supportsReasoningEffort": false
+      },
+      "models": [
+        { "id": "Qwen3.6-35B", "name": "Qwen3.6-35B" }
+      ]
+    }
+  }
+}
+```
+
+Existing unrelated Pi providers are preserved. The harmless `local` key is only a configured-auth placeholder for keyless local servers; raw secrets are not stored by ComfyUI-Pi.
+
+The same mechanism is used for Ollama, LM Studio, vLLM, and generic OpenAI-compatible providers. This unified path is important: Pi must actually know the local model ID before its RPC `set_model` operation can select it.
+
+When a local host's registered model catalog changes, ComfyUI-Pi closes only that chat's supervised Pi RPC process so Pi reloads the updated `models.json`. ComfyUI itself does not need to restart. Ordinary switching between provider/models that Pi already reports as available uses live RPC `set_model` and keeps the active Pi process/context.
+
+## `/model` is forgiving for local providers
+
+These are both valid:
+
+```text
+/model llama.cpp
+/model llama.cpp/Qwen3.6-35B
+```
+
+`/model llama.cpp` means **switch this chat to the llama.cpp provider**. ComfyUI-Pi discovers/registers its available models and selects the previous model for that provider when possible, otherwise the first available model.
+
+It is no longer interpreted as “find a model named `llama.cpp` under whatever provider was previously active.” Endpoint URLs are also rejected/repaired as provider IDs, which prevents malformed combinations such as:
+
+```text
+http://127.0.0.1:8080/llama.cpp
+```
+
+Other examples:
+
+```text
+/model ollama
+/model ollama/qwen3:8b
+/model lm-studio
+/model vllm
+/model next
+/model
+```
+
+## llama.cpp router commands
+
+The normal Provider/Model dropdowns are enough to use llama.cpp. Router mode exposes all non-failed routable models in the Model dropdown and selected unloaded models receive a best-effort load request. The `/llama` commands remain optional explicit router-management tools:
 
 ```text
 /llama
-/llama http://127.0.0.1:8080
 /llama refresh
-/llama load my-local-model.gguf
-/llama unload my-local-model.gguf
-/llama download owner/repository:Q4_K_M
-/login ollama
-/login ollama http://127.0.0.1:11434
-/login lm-studio http://127.0.0.1:1234/v1
-/login vllm http://127.0.0.1:8000/v1
+/llama load <model-id>
+/llama unload <model-id>
+/llama download <owner/repository:quant>
 ```
 
-Successful local `/login` and `/llama load` changes automatically stop the old embedded Pi process; the next normal message starts a fresh Pi RPC process with the selected local provider/model. `/reload` is still available when you explicitly want to restart the process.
+`/llama load` also registers and selects the loaded model for the current ComfyUI-Pi chat. These router operations are never performed automatically at startup.
 
-`/llama` uses the llama.cpp router's model-management HTTP API only when you issue the command. `/llama download ...` is therefore an explicit request to the user's already-running llama.cpp router to begin that download; ComfyUI-Pi never downloads a model merely because ComfyUI started.
+## Pi slash commands in the ComfyUI chat
 
-## How provider configuration is stored
+Pi's interactive terminal owns many built-in slash commands. Sending those names as ordinary text through RPC does not reproduce the TUI behavior, so ComfyUI-Pi recognizes the built-in names before the LLM/context router and maps them to Pi RPC operations or safe ComfyUI equivalents.
 
-### llama.cpp
+Type `/` in the composer to open the command picker. Continue typing to filter it. Arrow keys and Tab can select an entry.
 
-Pi has a built-in llama.cpp provider. ComfyUI-Pi supplies the selected router URL to the Pi subprocess through `LLAMA_BASE_URL`. It does not create a duplicate custom provider for llama.cpp.
+| Command | Embedded behavior |
+| --- | --- |
+| `/login` | Local-provider convenience command; cloud OAuth still uses Pi's supported external credential flow when RPC cannot expose the TUI selector. |
+| `/logout` | Clears this chat's provider/model override without silently deleting Pi credentials. |
+| `/llama` | Optional llama.cpp router model management. |
+| `/model` | Lists models, switches provider/model, or cycles models. Local provider names can be used alone. |
+| `/scoped-models` | Shows or changes model-cycle patterns. |
+| `/settings` | Shows/changes RPC-supported settings and handoff threshold. |
+| `/resume` | Lists/switches saved ComfyUI-Pi chats. |
+| `/new` | Starts a new sidebar chat. |
+| `/name` | Renames the chat/Pi session. |
+| `/session` | Shows Pi session/context statistics. |
+| `/tree` | Displays Pi session-tree information in chat. |
+| `/trust` | Explains the supervised trust boundary; it does not silently enable project trust. |
+| `/fork` | Lists or uses Pi fork points. |
+| `/clone` | Clones the active Pi branch/chat state. |
+| `/compact` | Runs ComfyUI-Pi's durable preemptive handoff/reset rather than Pi's built-in compactor. |
+| `/copy` | Copies the previous assistant answer. |
+| `/export` | Exports the Pi session to HTML. |
+| `/import` | Loads a Pi JSONL session. |
+| `/share` | Creates a local export and can explicitly share via authenticated `gh`. |
+| `/reload` | Restarts only the lean Pi RPC process. |
+| `/hotkeys` | Shows chat shortcuts and command help. |
+| `/changelog` | Shows installed Pi version/release-note location. |
+| `/quit` | Stops Pi for the chat without deleting the conversation. |
 
-### Ollama, LM Studio, vLLM, and OpenAI-compatible servers
+## Authentication and secrets
 
-Pi supports custom providers in its `models.json`. When you explicitly press **Use in this chat**, ComfyUI-Pi safely merges the selected provider/models into that file rather than replacing the user's existing providers.
+Most local servers are keyless. Nothing extra is required.
 
-The generated provider uses Pi's broadly compatible `openai-completions` API mode. Compatibility flags disable `developer` messages and `reasoning_effort` for local servers that commonly do not implement those OpenAI features.
+For an authenticated generic OpenAI-compatible endpoint, expand **Advanced: custom endpoint** and provide the **environment-variable name** that contains the key. ComfyUI-Pi stores a `$VARIABLE_NAME` reference in Pi's configuration, not the raw key.
 
-## API keys and secrets
+## Sparse context behavior is unchanged
 
-Raw API keys are not stored in ComfyUI workflows or ComfyUI-Pi chat JSON.
+Provider/model discovery is host-side configuration, not LLM context.
 
-If a local or LAN OpenAI-compatible endpoint needs authentication:
-
-1. Put the key in an environment variable yourself.
-2. In the Local LLM settings, enter only the **environment variable name** in **API-key environment variable**.
-3. ComfyUI-Pi writes a `$VARIABLE_NAME` reference into Pi's model configuration.
-
-For ordinary keyless Ollama/local OpenAI-compatible servers, Pi requires a placeholder auth value so the model appears in its catalog; the local server can ignore that placeholder.
-
-## Sparse context is unchanged
-
-Local-provider support does not add server documentation or model lists to every LLM turn.
-
-- Server detection runs only on explicit request.
-- The slash-command catalog is host-side UI metadata, not an LLM prompt.
-- Built-in slash commands are handled before ComfyUI-Pi's task/integration context router.
-- Normal assistant requests keep the existing small operating contract, lazy procedures, workflow digest, and on-demand integration knowledge.
-- The 80%–95% preemptive handoff system remains unchanged, with 82.5% as the default.
+- No local server is contacted at plugin import/startup.
+- Model lists are not injected into ordinary LLM turns.
+- Slash commands are intercepted before workflow/integration/task-procedure context is built.
+- Node-pack integrations remain lazy.
+- The 80%–95% preemptive-handoff range remains unchanged, with 82.5% as the default.
 
 ## Troubleshooting
 
-### No server is detected
+### Selecting llama.cpp reports no models
 
-Confirm the server is running and listening on the expected host/port. Then choose the server type, enter the endpoint manually, and press **Check endpoint**.
+Confirm llama.cpp is running and exposes a model through single-model `/v1/models` or router `/models`. Router mode does **not** require a model to already be loaded; unloaded routable models are listed too. The common default is `http://127.0.0.1:8080`. Expand **Advanced: custom endpoint** only when yours differs.
 
-### Server is reachable but no models appear
+### The server is on a different host or port
 
-Make sure a model is actually loaded/available in the server. Ollama model discovery uses its native model-list endpoint; OpenAI-compatible servers use `/v1/models`.
+Select the provider, expand **Advanced: custom endpoint**, enter the actual endpoint, and press **Refresh models / apply endpoint**.
 
-### A newly configured provider does not appear in `/model`
+### An old chat contains a URL in its provider field
 
-Use `/reload` to restart the lean Pi RPC process, then run `/model` again.
+v0.1.10 and later repair the old malformed v0.1.9 state by deriving the provider from the saved local-server kind. Selecting the provider again writes the corrected state.
 
-### A cloud `/login` prompt does not open inside ComfyUI
+### `/model llama.cpp` used to fail
 
-Pi's OAuth/provider credential selector is an interactive terminal UI and is not exposed by the RPC protocol. Authenticate that cloud provider once through normal standalone Pi (or the provider's supported environment variable), then select it inside ComfyUI-Pi with `/model`.
-
-### `/trust` does not enable project resources
-
-That is intentional. The embedded ComfyUI-Pi Pi process keeps its supervised security boundary and does not silently persist project trust decisions. Explicit dynamic integrations and bundled procedures continue to be routed by ComfyUI-Pi itself.
+v0.1.9 discovered llama.cpp models but did not register them in Pi's available-model catalog. v0.1.10 uses the same supported Pi `models.json` mechanism for llama.cpp as the other local OpenAI-compatible servers, so Pi can resolve `llama.cpp/<model-id>` correctly.
 
 ## Related guides
 

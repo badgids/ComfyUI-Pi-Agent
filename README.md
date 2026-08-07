@@ -4,7 +4,7 @@ A ComfyUI custom-node package that connects **Pi Agent** reasoning with practica
 
 **Creator:** Alan D. Guice (**Badgids**)  
 **License:** GPL-3.0  
-**Release:** 0.1.9
+**Release:** 0.1.11
 
 > This project is designed to be powerful without being confusing. The documentation uses plain language, short steps, and concrete examples. Technical details are kept intact instead of being hidden or oversimplified.
 
@@ -44,7 +44,7 @@ Every major tool is available as a normal ComfyUI node. The optional sidebar is 
 
 ## Important first-release boundary
 
-Version 0.1.9 provides the working foundation, project compilers, tutorial compiler, document tools, workflow intelligence, Pi RPC connection, manifests, profiles, examples, and tests.
+Version 0.1.11 provides the working foundation, project compilers, tutorial compiler, document tools, workflow intelligence, Pi RPC connection, manifests, profiles, examples, and tests.
 
 It does **not** bundle large AI model weights, third-party custom-node packs, Pi itself, Node.js, FFmpeg, or Kdenlive. It detects those tools when they are installed. Missing optional tools do not stop ComfyUI from starting.
 
@@ -344,9 +344,9 @@ The custom node discovers Pi in this order:
 
 Pi is started with `--mode rpc`. The Python client sends one JSON object per line and reads Pi events until the agent is fully settled.
 
-Pi still needs a model provider. It can use a hosted provider or a user-configured OpenAI-compatible local service. Provider credentials and models are managed by Pi, not written into ComfyUI workflows.
+Pi still needs a model provider. In the optional sidebar, **Provider** then **Model** are directly beneath the chat box. The Provider dropdown covers Pi's current built-in provider catalog plus local/custom providers; hosted models come from Pi's live available-model catalog, while local hosts populate their own reported models on selection. Common local endpoints are automatic and endpoint editing is advanced/optional. Provider credentials and models are managed by Pi, not written into ComfyUI workflows.
 
-Read [docs/pi-runtime.md](docs/pi-runtime.md).
+Read [docs/pi-runtime.md](docs/pi-runtime.md) and [docs/local-llm-slash-commands.md](docs/local-llm-slash-commands.md).
 
 ---
 
@@ -541,7 +541,7 @@ Kdenlive is the default NLE target.
 - a Markdown assembly guide;
 - a DOCX assembly guide.
 
-The native Kdenlive writer in 0.1.9 is intentionally conservative. Complex effects, title templates, nested sequences, transitions, and version-specific features should be finished inside Kdenlive. The portable manifest and assembly guide remain available when a native project needs repair.
+The native Kdenlive writer is intentionally conservative. Complex effects, title templates, nested sequences, transitions, and version-specific features should be finished inside Kdenlive. The portable manifest and assembly guide remain available when a native project needs repair.
 
 Read [docs/kdenlive-nle.md](docs/kdenlive-nle.md).
 
@@ -549,7 +549,7 @@ Read [docs/kdenlive-nle.md](docs/kdenlive-nle.md).
 
 # Optional ComfyUI sidebar chat
 
-The sidebar accepts Pi's documented built-in slash-command names through a host-side RPC bridge and provides explicit, on-demand setup for llama.cpp, Ollama, LM Studio, vLLM, and other OpenAI-compatible local servers. Type `/` in the composer for the command picker. See [Local LLM servers and Pi slash commands](docs/local-llm-slash-commands.md).
+The sidebar accepts Pi's documented built-in slash-command names through a host-side RPC bridge. Provider/model switching is intentionally simple: directly beneath the chat box choose **Provider** first, then **Model**. Pi built-in providers use Pi's live available-model catalog; local hosts such as **llama.cpp**, **Ollama**, **LM Studio**, and **vLLM** populate the models their own server reports. Common local endpoints are automatic; open the advanced local-host settings only when your server uses a different address. Type `/` in the composer for the command picker. See [Local LLM servers and Pi slash commands](docs/local-llm-slash-commands.md).
 
 The optional sidebar is disabled by default. Enable it in ComfyUI settings:
 
