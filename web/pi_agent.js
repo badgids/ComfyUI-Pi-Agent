@@ -8,7 +8,54 @@ const CHAT_STATE = {
   sessions: [],
   commands: [],
   commandIndex: -1,
+  providers: [],
+  models: [],
+  modelCatalogLoaded: false,
+  providerModelMemory: {},
 };
+
+const LOCAL_PROVIDERS = new Set(["llama.cpp", "ollama", "lm-studio", "vllm", "openai-compatible"]);
+const LOCAL_PROVIDER_DEFAULTS = {
+  "llama.cpp": "http://127.0.0.1:8080",
+  "ollama": "http://127.0.0.1:11434",
+  "lm-studio": "http://127.0.0.1:1234/v1",
+  "vllm": "http://127.0.0.1:8000/v1",
+  "openai-compatible": "http://127.0.0.1:8000/v1",
+};
+
+function isLocalProvider(value) {
+  return LOCAL_PROVIDERS.has(String(value || ""));
+}
+
+function providerIdForSelector(selector) {
+  const value = String(selector || "");
+  if (value === "pi-default") return "";
+  if (value === "openai-compatible") return "comfyui-local";
+  const metadata = CHAT_STATE.providers.find((item) => String(item.selector || "") === value);
+  return String(metadata?.provider || value);
+}
+
+function selectedProviderPayload(ui) {
+  const selector = ui.provider.value;
+  if (selector === "pi-default") return { provider: "", model: "", local_llm: {} };
+  const provider = providerIdForSelector(selector);
+  if (!isLocalProvider(selector)) {
+    return { provider, model: ui.model.value || "", local_llm: {} };
+  }
+  return {
+    provider,
+    model: ui.model.value || "",
+    local_llm: {
+      enabled: true,
+      kind: selector,
+      base_url: ui.localBaseUrl.value.trim(),
+      provider,
+      model: ui.model.value || "",
+      models: [...ui.model.options].map((option) => option.value).filter(Boolean),
+      api_key_env: ui.localApiKeyEnv.value.trim(),
+    },
+  };
+}
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -108,6 +155,9 @@ function ensureStyles() {
     .pi-agent-copy { margin-left:auto; border:0; background:transparent; color:inherit; cursor:pointer; font-size:10px; padding:1px 3px; opacity:.8; }
     .pi-agent-composer { border-top:1px solid color-mix(in srgb, currentColor 15%, transparent); padding:8px; display:grid; gap:7px; }
     .pi-agent-textarea { width:100%; min-height:74px; max-height:220px; resize:vertical; box-sizing:border-box; border:1px solid color-mix(in srgb, currentColor 25%, transparent); background:color-mix(in srgb, currentColor 4%, transparent); color:inherit; border-radius:9px; padding:9px; font:inherit; line-height:1.4; user-select:text !important; -webkit-user-select:text !important; }
+    .pi-agent-model-switcher { display:grid; grid-template-columns:minmax(0, 1fr) minmax(0, 1.25fr); gap:7px; align-items:end; }
+    .pi-agent-model-switcher .pi-agent-field { min-width:0; }
+    .pi-agent-model-switcher select { min-width:0; }
     .pi-agent-composer-actions { display:flex; gap:7px; align-items:center; }
     .pi-agent-send { margin-left:auto; min-width:72px; }
     .pi-agent-help { font-size:10px; opacity:.6; }
@@ -190,22 +240,33 @@ async function loadSession(ui, sessionId) {
     for (const message of messages) renderMessage(ui.messages, message);
   }
   ui.project.value = data.session.project_directory || "";
-  ui.provider.value = data.session.provider || "";
-  ui.model.value = data.session.model || "";
   ui.scopedModels.value = data.session.scoped_models || "";
   const local = data.session.local_llm || {};
-  if (local.kind) ui.localKind.value = local.kind;
-  ui.localBaseUrl.value = local.base_url || "";
-  ui.localProviderId.value = local.provider || "";
-  if (local.model) {
-    ui.localModel.innerHTML = "";
-    const option = document.createElement("option");
-    option.value = local.model;
-    option.textContent = local.model;
-    ui.localModel.appendChild(option);
-    ui.localModel.value = local.model;
+  const sessionProvider = String(data.session.provider || "");
+  const providerSelector = local.kind && isLocalProvider(local.kind) ? local.kind : (sessionProvider || "pi-default");
+  if (![...ui.provider.options].some((option) => option.value === providerSelector)) {
+    const extras = [...CHAT_STATE.providers, { selector: providerSelector, provider: sessionProvider || providerSelector, label: providerSelector, source: "custom" }];
+    populateProviderOptions(ui, extras, providerSelector);
+  } else {
+    ui.provider.value = providerSelector;
   }
+  const sessionModel = String(data.session.model || local.model || "");
+  if (isLocalProvider(providerSelector)) {
+    const knownModels = Array.isArray(local.models) ? local.models : (sessionModel ? [sessionModel] : []);
+    populateModels(ui, knownModels, sessionModel, "No saved local models");
+    mergeProviderModels(sessionProvider || providerIdForSelector(providerSelector), knownModels);
+  } else if (providerSelector === "pi-default") {
+    populateModels(ui, [], "", "Pi default model");
+  } else {
+    const rows = modelsForProvider(providerSelector);
+    populateModels(ui, rows.length ? rows : (sessionModel ? [{ provider: sessionProvider, id: sessionModel, name: sessionModel }] : []), sessionModel, "Open Model to load Pi models");
+  }
+  if (sessionProvider && sessionModel) CHAT_STATE.providerModelMemory[sessionProvider] = sessionModel;
+  const defaultEndpoint = LOCAL_PROVIDER_DEFAULTS[providerSelector] || "";
+  ui.localBaseUrl.value = local.base_url && local.base_url !== defaultEndpoint ? local.base_url : "";
+  ui.localBaseUrl.placeholder = defaultEndpoint ? `Optional — default: ${defaultEndpoint}` : "Optional endpoint override";
   ui.localApiKeyEnv.value = local.api_key_env || "";
+  updateProviderControls(ui);
   const guard = data.session.context_guard || {};
   ui.preemptiveHandoff.checked = guard.enabled !== false;
   ui.handoffThreshold.value = Number((guard.threshold ?? 0.825) * 100).toFixed(1);
@@ -241,17 +302,8 @@ async function createSession(ui) {
     body: JSON.stringify({
       title: "New chat",
       project_directory: ui?.project?.value || "",
-      provider: ui?.provider?.value || "",
-      model: ui?.model?.value || "",
+      ...(ui ? selectedProviderPayload(ui) : { provider: "", model: "", local_llm: {} }),
       scoped_models: ui?.scopedModels?.value || "",
-      local_llm: ui ? {
-        enabled: Boolean(ui.localBaseUrl?.value?.trim() || ui.localProviderId?.value?.trim() || ui.localModel?.value),
-        kind: ui.localKind?.value || "",
-        base_url: ui.localBaseUrl?.value?.trim() || "",
-        provider: ui.localProviderId?.value?.trim() || "",
-        model: ui.localModel?.value || "",
-        api_key_env: ui.localApiKeyEnv?.value?.trim() || "",
-      } : {},
     }),
   });
   CHAT_STATE.sessionId = data.session.session_id;
@@ -263,6 +315,8 @@ function setBusy(ui, busy) {
   ui.send.disabled = busy;
   ui.newChat.disabled = busy;
   ui.sessionSelect.disabled = busy;
+  ui.provider.disabled = busy;
+  ui.model.disabled = busy || ui.provider.value === "pi-default";
   ui.stop.classList.toggle("pi-agent-hidden", !busy);
   ui.statusline.textContent = busy ? "Pi is working…" : "";
 }
@@ -286,17 +340,8 @@ async function sendMessage(ui) {
     session_id: CHAT_STATE.sessionId,
     message,
     project_directory: ui.project.value.trim(),
-    provider: ui.provider.value.trim(),
-    model: ui.model.value.trim(),
+    ...selectedProviderPayload(ui),
     scoped_models: ui.scopedModels.value.trim(),
-    local_llm: {
-      enabled: Boolean(ui.localBaseUrl.value.trim() || ui.localProviderId.value.trim() || ui.localModel.value),
-      kind: ui.localKind.value,
-      base_url: ui.localBaseUrl.value.trim(),
-      provider: ui.localProviderId.value.trim(),
-      model: ui.localModel.value,
-      api_key_env: ui.localApiKeyEnv.value.trim(),
-    },
     pi_executable: ui.executable.value.trim(),
     timeout_seconds: Number(ui.timeout.value || 180),
     workflow: ui.includeWorkflow.checked ? currentWorkflow() : null,
@@ -383,84 +428,244 @@ function renderCommandMenu(ui) {
   ui.commandMenu.classList.add("open");
 }
 
-function populateLocalModels(ui, models) {
-  const previous = ui.localModel.value;
-  ui.localModel.innerHTML = "";
-  for (const model of models || []) {
-    const option = document.createElement("option");
-    option.value = String(model);
-    option.textContent = String(model);
-    ui.localModel.appendChild(option);
+function populateProviderOptions(ui, providers, selected = "") {
+  const previous = selected || ui.provider.value || "pi-default";
+  CHAT_STATE.providers = Array.isArray(providers) ? providers : [];
+  ui.provider.innerHTML = "";
+  const groups = [
+    ["default", "Default"],
+    ["local", "Local model hosts"],
+    ["builtin", "Pi built-in providers"],
+    ["custom", "Custom providers"],
+  ];
+  for (const [source, label] of groups) {
+    const items = CHAT_STATE.providers.filter((item) => String(item.source || "custom") === source);
+    if (!items.length) continue;
+    const group = document.createElement("optgroup");
+    group.label = label;
+    for (const item of items) {
+      const option = document.createElement("option");
+      option.value = String(item.selector || item.provider || "");
+      option.textContent = String(item.label || item.provider || item.selector || "Provider");
+      group.appendChild(option);
+    }
+    ui.provider.appendChild(group);
   }
-  if (previous && (models || []).includes(previous)) ui.localModel.value = previous;
-  if (!ui.localModel.options.length) {
+  const values = [...ui.provider.options].map((option) => option.value);
+  if (previous && !values.includes(previous)) {
+    const group = document.createElement("optgroup");
+    group.label = "Current / custom";
+    const option = document.createElement("option");
+    option.value = previous;
+    option.textContent = previous;
+    group.appendChild(option);
+    ui.provider.appendChild(group);
+  }
+  ui.provider.value = [...ui.provider.options].some((option) => option.value === previous) ? previous : "pi-default";
+}
+
+function populateModels(ui, models, selected = "", emptyText = "No models available") {
+  const previous = selected || ui.model.value;
+  const rows = Array.isArray(models) ? models : [];
+  ui.model.innerHTML = "";
+  for (const item of rows) {
+    const modelId = typeof item === "string" ? String(item) : String(item?.id || "");
+    if (!modelId) continue;
+    const name = typeof item === "string" ? modelId : String(item?.name || modelId);
+    const option = document.createElement("option");
+    option.value = modelId;
+    option.textContent = name === modelId ? modelId : `${name} (${modelId})`;
+    ui.model.appendChild(option);
+  }
+  const values = [...ui.model.options].map((option) => option.value);
+  if (previous && values.includes(previous)) ui.model.value = previous;
+  if (!ui.model.options.length) {
     const option = document.createElement("option");
     option.value = "";
-    option.textContent = "No models detected";
-    ui.localModel.appendChild(option);
+    option.textContent = emptyText;
+    ui.model.appendChild(option);
   }
 }
 
-async function detectLocalServers(ui) {
-  ui.localStatus.textContent = "Looking for local servers on common loopback ports…";
+function modelsForProvider(selector) {
+  const provider = providerIdForSelector(selector);
+  return CHAT_STATE.models.filter((item) => String(item?.provider || "") === provider);
+}
+
+function mergeProviderModels(provider, modelIds) {
+  const providerId = String(provider || "");
+  if (!providerId) return;
+  CHAT_STATE.models = CHAT_STATE.models.filter((item) => String(item?.provider || "") !== providerId);
+  for (const modelId of modelIds || []) {
+    const value = String(modelId || "").trim();
+    if (!value) continue;
+    CHAT_STATE.models.push({ provider: providerId, id: value, name: value });
+  }
+}
+
+async function refreshProviderMetadata(ui) {
+  const data = await fetchJson("/pi-agent/model/providers");
+  populateProviderOptions(ui, data.providers || [], ui.provider.value || "pi-default");
+  return data;
+}
+
+async function refreshPiModelCatalog(ui, { force = false } = {}) {
+  if (CHAT_STATE.modelCatalogLoaded && !force) return { providers: CHAT_STATE.providers, models: CHAT_STATE.models };
+  const params = new URLSearchParams();
+  if (CHAT_STATE.sessionId) params.set("session_id", CHAT_STATE.sessionId);
+  if (ui.executable?.value?.trim()) params.set("pi_executable", ui.executable.value.trim());
+  if (ui.project?.value?.trim()) params.set("project_directory", ui.project.value.trim());
+  const data = await fetchJson(`/pi-agent/chat/model-catalog?${params.toString()}`);
+  const selectedProvider = ui.provider.value || "pi-default";
+  if (Array.isArray(data.providers) && data.providers.length) {
+    populateProviderOptions(ui, data.providers, selectedProvider);
+  }
+  CHAT_STATE.models = Array.isArray(data.models) ? data.models : [];
+  CHAT_STATE.modelCatalogLoaded = true;
+  return data;
+}
+
+function updateProviderControls(ui) {
+  const selector = ui.provider.value;
+  const local = isLocalProvider(selector);
+  const isDefault = selector === "pi-default";
+  ui.model.disabled = isDefault;
+  ui.localBox.hidden = !local;
+  ui.providerAdvanced.hidden = !local;
+  if (isDefault) {
+    populateModels(ui, [], "", "Pi default model");
+    ui.localStatus.textContent = "Pi will use its normal configured/default model.";
+    return;
+  }
+  if (!local) {
+    ui.localStatus.textContent = "";
+    return;
+  }
+  const defaultEndpoint = LOCAL_PROVIDER_DEFAULTS[selector] || "";
+  ui.localBaseUrl.placeholder = defaultEndpoint ? `Optional — default: ${defaultEndpoint}` : "Optional endpoint override";
+  ui.localApiEnvRow.hidden = selector !== "openai-compatible";
+}
+
+async function persistModelSelection(ui, provider, model) {
+  if (!CHAT_STATE.sessionId) await createSession(ui);
+  const data = await fetchJson("/pi-agent/chat/model/select", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      session_id: CHAT_STATE.sessionId,
+      provider: provider || "",
+      model: model || "",
+    }),
+  });
+  if (provider && model) CHAT_STATE.providerModelMemory[provider] = model;
+  return data;
+}
+
+async function applyProviderSelection(ui, { forceProbe = false } = {}) {
+  const selector = ui.provider.value;
+  updateProviderControls(ui);
+
+  if (selector === "pi-default") {
+    ui.provider.disabled = true;
+    try {
+      await persistModelSelection(ui, "", "");
+      ui.statusline.textContent = "Using Pi's default configured model.";
+    } finally {
+      ui.provider.disabled = false;
+      ui.model.disabled = true;
+    }
+    return;
+  }
+
+  if (isLocalProvider(selector)) {
+    if (!CHAT_STATE.sessionId) await createSession(ui);
+    ui.provider.disabled = true;
+    ui.model.disabled = true;
+    ui.localRefresh.disabled = true;
+    ui.statusline.textContent = `Connecting to ${ui.provider.options[ui.provider.selectedIndex]?.text || selector}…`;
+    try {
+      const knownModels = forceProbe ? [] : [...ui.model.options].map((option) => option.value).filter(Boolean);
+      const data = await fetchJson("/pi-agent/local-llm/configure", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          session_id: CHAT_STATE.sessionId,
+          kind: selector,
+          base_url: ui.localBaseUrl.value.trim(),
+          models: knownModels,
+          model: forceProbe ? "" : ui.model.value,
+          api_key_env: ui.localApiKeyEnv.value.trim(),
+        }),
+      });
+      populateModels(ui, data.models || [], data.model || "", "No models reported by this host");
+      mergeProviderModels(data.provider || providerIdForSelector(selector), data.models || []);
+      CHAT_STATE.providerModelMemory[data.provider || providerIdForSelector(selector)] = data.model || "";
+      const endpoint = data.base_url || LOCAL_PROVIDER_DEFAULTS[selector] || "";
+      ui.statusline.textContent = `Ready: ${data.provider}/${data.model}`;
+      ui.localStatus.textContent = `Endpoint: ${endpoint}\n${(data.models || []).length} model(s) available from this host.`;
+      const defaultEndpoint = LOCAL_PROVIDER_DEFAULTS[selector] || "";
+      ui.localBaseUrl.value = endpoint && endpoint !== defaultEndpoint ? endpoint : "";
+    } catch (error) {
+      populateModels(ui, [], "", "No models detected");
+      ui.statusline.textContent = String(error);
+      ui.localStatus.textContent = `${String(error)}\nThe endpoint is optional; expand Advanced only when your server is not on the common default.`;
+    } finally {
+      ui.provider.disabled = false;
+      ui.localRefresh.disabled = false;
+      ui.model.disabled = false;
+    }
+    return;
+  }
+
+  ui.provider.disabled = true;
+  ui.model.disabled = true;
+  ui.statusline.textContent = `Loading ${ui.provider.options[ui.provider.selectedIndex]?.text || selector} models from Pi…`;
   try {
-    const data = await fetchJson("/pi-agent/local-llm/discover");
-    const available = (data.servers || []).filter((item) => item.available);
-    if (!available.length) {
-      ui.localStatus.textContent = "No common local server was detected. Choose a server type and enter its endpoint manually.";
+    const catalog = await refreshPiModelCatalog(ui, { force: false });
+    const rows = modelsForProvider(selector);
+    const provider = providerIdForSelector(selector);
+    const current = catalog.current || {};
+    const preferred = CHAT_STATE.providerModelMemory[provider]
+      || (String(current.provider || "") === provider ? String(current.model || "") : "")
+      || rows[0]?.id
+      || "";
+    populateModels(ui, rows, preferred, "No available models for this provider");
+    if (!rows.length) {
+      ui.statusline.textContent = catalog.runtime_error
+        ? `Pi model catalog unavailable: ${catalog.runtime_error}`
+        : "No available models. Authenticate/configure this provider in Pi first.";
       return;
     }
-    const best = available[0];
-    ui.localKind.value = best.kind;
-    ui.localBaseUrl.value = best.base_url || "";
-    populateLocalModels(ui, best.models || []);
-    ui.localStatus.textContent = available.map((item) => `${item.label}: ${item.models?.length || 0} model(s) at ${item.base_url}`).join("\n");
+    const model = ui.model.value || rows[0].id;
+    ui.model.value = model;
+    await persistModelSelection(ui, provider, model);
+    ui.statusline.textContent = `Using ${provider}/${model}`;
   } catch (error) {
-    ui.localStatus.textContent = String(error);
+    populateModels(ui, [], "", "Unable to load Pi models");
+    ui.statusline.textContent = String(error);
+  } finally {
+    ui.provider.disabled = false;
+    ui.model.disabled = false;
   }
 }
 
-async function probeLocalServer(ui) {
-  ui.localStatus.textContent = "Checking local server…";
+async function selectCurrentModel(ui) {
+  const selector = ui.provider.value;
+  const model = ui.model.value;
+  if (selector === "pi-default" || !model) return;
+  const provider = providerIdForSelector(selector);
+  ui.model.disabled = true;
   try {
-    const data = await fetchJson("/pi-agent/local-llm/probe", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ kind: ui.localKind.value, base_url: ui.localBaseUrl.value.trim() }),
-    });
-    ui.localBaseUrl.value = data.base_url || ui.localBaseUrl.value;
-    populateLocalModels(ui, data.models || []);
-    ui.localStatus.textContent = data.message || "Local server detected.";
+    const data = await persistModelSelection(ui, provider, model);
+    ui.statusline.textContent = `Using ${data.provider || provider}/${data.model || model}`;
+    if (isLocalProvider(selector)) {
+      const endpoint = ui.localBaseUrl.value.trim() || LOCAL_PROVIDER_DEFAULTS[selector] || "";
+      ui.localStatus.textContent = `Endpoint: ${endpoint}\n${ui.model.options.length} model(s) available from this host.`;
+    }
   } catch (error) {
-    ui.localStatus.textContent = String(error);
-  }
-}
-
-async function enableLocalServer(ui) {
-  if (!CHAT_STATE.sessionId) await createSession(ui);
-  ui.localStatus.textContent = "Configuring Pi local provider…";
-  try {
-    const modelOptions = [...ui.localModel.options].map((option) => option.value).filter(Boolean);
-    const data = await fetchJson("/pi-agent/local-llm/configure", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        session_id: CHAT_STATE.sessionId,
-        kind: ui.localKind.value,
-        base_url: ui.localBaseUrl.value.trim(),
-        models: modelOptions,
-        model: ui.localModel.value,
-        provider_id: ui.localProviderId.value.trim(),
-        api_key_env: ui.localApiKeyEnv.value.trim(),
-      }),
-    });
-    ui.provider.value = data.provider || "";
-    ui.model.value = data.model || "";
-    ui.localProviderId.value = data.provider || ui.localProviderId.value;
-    ui.localStatus.textContent = `${data.message || "Local provider configured."}\nProvider: ${data.provider || ""}\nModel: ${data.model || ""}`;
-    await loadSession(ui, CHAT_STATE.sessionId);
-  } catch (error) {
-    ui.localStatus.textContent = String(error);
+    ui.statusline.textContent = String(error);
+  } finally {
+    ui.model.disabled = false;
   }
 }
 
@@ -517,20 +722,18 @@ function buildSidebar(el) {
         </div>
         <label class="pi-agent-check"><input id="pi-agent-include-workflow" type="checkbox" checked /> Include the current ComfyUI workflow with each message</label>
         <div class="pi-agent-help">Node-pack knowledge is loaded only when your message or attached workflow matches that integration.</div>
-        <div class="pi-agent-field"><label for="pi-agent-provider">Pi provider override</label><input id="pi-agent-provider" class="pi-agent-input" type="text" placeholder="Leave blank for Pi default" /></div>
-        <div class="pi-agent-field"><label for="pi-agent-model">Pi model override</label><input id="pi-agent-model" class="pi-agent-input" type="text" placeholder="Leave blank for Pi default" /></div>
-        <div class="pi-agent-field"><label for="pi-agent-scoped-models">Scoped model patterns (optional)</label><input id="pi-agent-scoped-models" class="pi-agent-input" type="text" placeholder="Example: llama.cpp/*,ollama/qwen*" /></div>
-        <div id="pi-agent-local-box" class="pi-agent-local-box">
-          <strong>Local LLM server</strong>
-          <div class="pi-agent-help">Nothing is probed at startup. Click Detect when you want ComfyUI-Pi to look for a running local server.</div>
-          <div class="pi-agent-field"><label for="pi-agent-local-kind">Server type</label><select id="pi-agent-local-kind" class="pi-agent-input"><option value="llama.cpp">llama.cpp</option><option value="ollama">Ollama</option><option value="lm-studio">LM Studio</option><option value="vllm">vLLM</option><option value="openai-compatible">Other OpenAI-compatible</option></select></div>
-          <div class="pi-agent-field"><label for="pi-agent-local-url">Base URL</label><input id="pi-agent-local-url" class="pi-agent-input" type="text" placeholder="Leave blank for the selected server's common local default" /></div>
-          <div class="pi-agent-field"><label for="pi-agent-local-model">Local model</label><select id="pi-agent-local-model" class="pi-agent-input"><option value="">Detect models first</option></select></div>
-          <div class="pi-agent-field"><label for="pi-agent-local-provider-id">Pi provider id (optional)</label><input id="pi-agent-local-provider-id" class="pi-agent-input" type="text" placeholder="Automatic: ollama, lm-studio, vllm, comfyui-local" /></div>
-          <div class="pi-agent-field"><label for="pi-agent-local-api-env">API-key environment variable (optional)</label><input id="pi-agent-local-api-env" class="pi-agent-input" type="text" placeholder="Example: LOCAL_LLM_API_KEY — raw keys are not stored here" /></div>
-          <div class="pi-agent-local-actions"><button id="pi-agent-local-detect" class="pi-agent-btn" type="button">Detect common servers</button><button id="pi-agent-local-probe" class="pi-agent-btn" type="button">Check endpoint</button><button id="pi-agent-local-enable" class="pi-agent-btn" type="button">Use in this chat</button></div>
+        <div id="pi-agent-local-box" class="pi-agent-local-box" hidden>
+          <strong>Local model host — advanced</strong>
+          <div class="pi-agent-help">Provider and Model are selected directly beneath the chat box. Normally you do not need anything here.</div>
+          <details id="pi-agent-provider-advanced">
+            <summary>Advanced: custom endpoint</summary>
+            <div class="pi-agent-field"><label for="pi-agent-local-url">Endpoint override (optional)</label><input id="pi-agent-local-url" class="pi-agent-input" type="text" placeholder="Optional endpoint override" /></div>
+            <div id="pi-agent-local-api-env-row" class="pi-agent-field"><label for="pi-agent-local-api-env">API-key environment variable (optional)</label><input id="pi-agent-local-api-env" class="pi-agent-input" type="text" placeholder="Example: LOCAL_LLM_API_KEY — raw keys are never stored here" /></div>
+            <div class="pi-agent-local-actions"><button id="pi-agent-local-refresh" class="pi-agent-btn" type="button">Refresh models / apply endpoint</button></div>
+          </details>
           <div id="pi-agent-local-status" class="pi-agent-local-status"></div>
         </div>
+        <div class="pi-agent-field"><label for="pi-agent-scoped-models">Scoped model patterns (optional)</label><input id="pi-agent-scoped-models" class="pi-agent-input" type="text" placeholder="Example: llama.cpp/*,ollama/qwen*" /></div>
         <div class="pi-agent-field"><label for="pi-agent-executable">Pi executable override</label><input id="pi-agent-executable" class="pi-agent-input" type="text" placeholder="Leave blank for auto-discovery" /></div>
         <label class="pi-agent-check"><input id="pi-agent-preemptive-handoff" type="checkbox" checked /> Preemptive context handoff and reset</label>
         <div class="pi-agent-help">ComfyUI-Pi disables Pi's built-in auto-compaction. At the configured threshold it writes a compact handoff, starts a fresh Pi context, and ingests the handoff automatically.</div>
@@ -542,6 +745,10 @@ function buildSidebar(el) {
       <div class="pi-agent-composer">
         <textarea id="pi-agent-chat-input" class="pi-agent-textarea" placeholder="Message Pi Agent… Type / for Pi commands. Paste text normally. Enter sends; Shift+Enter adds a new line."></textarea>
         <div id="pi-agent-command-menu" class="pi-agent-command-menu" role="listbox" aria-label="Pi slash commands"></div>
+        <div class="pi-agent-model-switcher" aria-label="Pi provider and model selection">
+          <div class="pi-agent-field"><label for="pi-agent-provider">Provider</label><select id="pi-agent-provider" class="pi-agent-input"><option value="pi-default">Pi default / current configured model</option></select></div>
+          <div class="pi-agent-field"><label for="pi-agent-model">Model</label><select id="pi-agent-model" class="pi-agent-input"><option value="">Pi default model</option></select></div>
+        </div>
         <div id="pi-agent-statusline" class="pi-agent-statusline"></div>
         <div class="pi-agent-composer-actions">
           <span class="pi-agent-help">Text in the conversation is selectable and copyable.</span>
@@ -566,14 +773,11 @@ function buildSidebar(el) {
     model: el.querySelector("#pi-agent-model"),
     scopedModels: el.querySelector("#pi-agent-scoped-models"),
     localBox: el.querySelector("#pi-agent-local-box"),
-    localKind: el.querySelector("#pi-agent-local-kind"),
+    providerAdvanced: el.querySelector("#pi-agent-provider-advanced"),
     localBaseUrl: el.querySelector("#pi-agent-local-url"),
-    localModel: el.querySelector("#pi-agent-local-model"),
-    localProviderId: el.querySelector("#pi-agent-local-provider-id"),
+    localApiEnvRow: el.querySelector("#pi-agent-local-api-env-row"),
     localApiKeyEnv: el.querySelector("#pi-agent-local-api-env"),
-    localDetect: el.querySelector("#pi-agent-local-detect"),
-    localProbe: el.querySelector("#pi-agent-local-probe"),
-    localEnable: el.querySelector("#pi-agent-local-enable"),
+    localRefresh: el.querySelector("#pi-agent-local-refresh"),
     localStatus: el.querySelector("#pi-agent-local-status"),
     executable: el.querySelector("#pi-agent-executable"),
     preemptiveHandoff: el.querySelector("#pi-agent-preemptive-handoff"),
@@ -593,9 +797,20 @@ function buildSidebar(el) {
   ui.settingsToggle.addEventListener("click", () => { ui.settings.hidden = !ui.settings.hidden; });
   ui.send.addEventListener("click", () => sendMessage(ui));
   ui.stop.addEventListener("click", () => abortMessage(ui));
-  ui.localDetect.addEventListener("click", () => detectLocalServers(ui));
-  ui.localProbe.addEventListener("click", () => probeLocalServer(ui));
-  ui.localEnable.addEventListener("click", () => enableLocalServer(ui));
+  ui.provider.addEventListener("change", () => applyProviderSelection(ui, { forceProbe: true }));
+  ui.model.addEventListener("change", () => selectCurrentModel(ui));
+  ui.model.addEventListener("focus", async () => {
+    const selector = ui.provider.value;
+    if (CHAT_STATE.busy || selector === "pi-default" || isLocalProvider(selector) || CHAT_STATE.modelCatalogLoaded) return;
+    const selected = ui.model.value;
+    try {
+      await refreshPiModelCatalog(ui, { force: false });
+      populateModels(ui, modelsForProvider(selector), selected, "No available models for this provider");
+    } catch (error) {
+      ui.statusline.textContent = String(error);
+    }
+  });
+  ui.localRefresh.addEventListener("click", () => applyProviderSelection(ui, { forceProbe: true }));
   ui.textarea.addEventListener("input", () => { CHAT_STATE.commandIndex = 0; renderCommandMenu(ui); });
   ui.textarea.addEventListener("keydown", (event) => {
     const menuOpen = ui.commandMenu.classList.contains("open");
@@ -670,6 +885,11 @@ function buildSidebar(el) {
 async function initializeSidebar(el) {
   const ui = buildSidebar(el);
   await refreshCommandCatalog(ui);
+  try {
+    await refreshProviderMetadata(ui);
+  } catch (error) {
+    ui.statusline.textContent = `Provider catalog unavailable: ${String(error)}`;
+  }
   try {
     const status = await fetchStatus();
     const pi = status.pi || {};

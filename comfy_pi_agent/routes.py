@@ -5,7 +5,8 @@ import asyncio
 from .chat import CHAT_MANAGER
 from .models import inventory_models
 from .pi_runtime import discover_pi
-from .local_llm import configure_local_provider, discover_local_servers, probe_local_server
+from .local_llm import discover_local_servers, local_provider_presets, probe_local_server
+from .provider_catalog import provider_options
 from .tutorials import compile_tutorial
 from .version import __version__
 from .workflow import analyze_workflow
@@ -253,6 +254,52 @@ def register_routes() -> bool:
         session_id = str(request.query.get("session_id", "") or "")
         return web.json_response({"commands": CHAT_MANAGER.command_catalog(session_id)})
 
+    @routes.get("/pi-agent/local-llm/presets")
+    async def pi_agent_local_llm_presets(request):
+        # Metadata only. This route never probes a server.
+        return web.json_response({"providers": local_provider_presets()})
+
+    @routes.get("/pi-agent/model/providers")
+    async def pi_agent_model_providers(request):
+        # Provider metadata only. This reads Pi's local models.json provider ids but
+        # never starts Pi and never probes local inference servers.
+        return web.json_response({"providers": provider_options()})
+
+    @routes.get("/pi-agent/chat/model-catalog")
+    async def pi_agent_chat_model_catalog(request):
+        session_id = str(request.query.get("session_id", "") or "")
+        executable = str(request.query.get("pi_executable", "") or "")
+        project_directory = str(request.query.get("project_directory", "") or "")
+        try:
+            result = await asyncio.to_thread(
+                CHAT_MANAGER.model_catalog,
+                session_id,
+                executable,
+                project_directory,
+                30,
+            )
+            return web.json_response(result)
+        except (ValueError, FileNotFoundError) as exc:
+            return web.json_response({"error": str(exc)}, status=400)
+
+    @routes.post("/pi-agent/chat/model/select")
+    async def pi_agent_chat_model_select(request):
+        payload = await request.json()
+        session_id = str(payload.get("session_id", "") or "").strip()
+        if not session_id:
+            return web.json_response({"ok": False, "error": "A chat session is required."}, status=400)
+        try:
+            result, document = await asyncio.to_thread(
+                CHAT_MANAGER.select_model,
+                session_id,
+                payload.get("provider", ""),
+                payload.get("model", ""),
+            )
+            result["session"] = document
+            return web.json_response(result)
+        except (ValueError, FileNotFoundError, RuntimeError) as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+
     @routes.get("/pi-agent/local-llm/discover")
     async def pi_agent_local_llm_discover(request):
         # Explicit route call only: no server probing happens at plugin import/startup.
@@ -273,31 +320,20 @@ def register_routes() -> bool:
     async def pi_agent_local_llm_configure(request):
         payload = await request.json()
         try:
-            result = await asyncio.to_thread(
-                configure_local_provider,
+            session_id = str(payload.get("session_id", "") or "").strip()
+            if not session_id:
+                return web.json_response({"ok": False, "error": "A chat session is required."}, status=400)
+            result, document = await asyncio.to_thread(
+                CHAT_MANAGER.activate_local_provider,
+                session_id,
                 payload.get("kind", "openai-compatible"),
                 payload.get("base_url", ""),
-                payload.get("models") if isinstance(payload.get("models"), list) else [],
                 payload.get("model", ""),
+                payload.get("models") if isinstance(payload.get("models"), list) else [],
                 payload.get("provider_id", ""),
                 payload.get("api_key_env", ""),
             )
-            session_id = str(payload.get("session_id", "") or "").strip()
-            if session_id:
-                document = CHAT_MANAGER.store.load(session_id)
-                document["provider"] = result.get("provider", "")
-                document["model"] = result.get("model", "")
-                document["local_llm"] = {
-                    "enabled": True,
-                    "kind": result.get("kind", ""),
-                    "base_url": result.get("base_url", ""),
-                    "provider": result.get("provider", ""),
-                    "model": result.get("model", ""),
-                    "api_key_env": result.get("api_key_env", ""),
-                }
-                CHAT_MANAGER.store.save(document)
-                CHAT_MANAGER.close(session_id)
-                result["session"] = document
+            result["session"] = document
             return web.json_response(result)
         except (ValueError, FileNotFoundError) as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)

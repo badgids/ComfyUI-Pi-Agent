@@ -54,7 +54,11 @@ The client:
 
 ## Model providers
 
-Configure providers and models in Pi. ComfyUI-Pi also provides an explicit Local LLM panel for llama.cpp, Ollama, LM Studio, vLLM, and other OpenAI-compatible servers. Detection happens only when the user asks for it; no endpoint probing occurs at plugin startup. Do not paste provider keys into a ComfyUI workflow.
+The sidebar exposes **Provider** then **Model** directly beneath the chat box. The Provider selector contains Pi's current built-in provider catalog, supported local hosts, and custom providers visible in Pi's runtime/configuration. Hosted-provider models are read from Pi's own `get_available_models` RPC snapshot; the plugin does not maintain a second hardcoded cloud-model catalog. Selecting another already-available hosted model uses Pi RPC `set_model`, preserving the active Pi process and context.
+
+For local use, selecting llama.cpp, Ollama, LM Studio, vLLM, or the generic OpenAI-compatible entry explicitly probes only that host, reads all models the host reports as selectable, and safely merges those IDs into Pi's supported `models.json`. llama.cpp router discovery uses the router model catalog so unloaded-but-routable models are included; selecting an unloaded router model performs a best-effort load request and is also compatible with llama.cpp's default on-demand autoload. Local catalog changes restart only the supervised Pi RPC process because Pi must reload `models.json`. Common endpoints are automatic; the endpoint field lives under **Settings → Local model host — advanced** and is optional.
+
+No local endpoint is probed at plugin startup. Provider/model UI catalogs are not copied into ordinary LLM prompts. Do not paste provider keys into a ComfyUI workflow. A built-in provider can appear in the Provider selector before it has usable models; the Model selector is populated only with models Pi currently reports as available/authenticated.
 
 See [Local LLM servers and Pi slash commands](local-llm-slash-commands.md) for setup and the embedded slash-command bridge.
 

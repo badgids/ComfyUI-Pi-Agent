@@ -35,7 +35,8 @@ The sidebar provides:
 - a **Stop** button while Pi is working;
 - optional current-workflow context;
 - optional project notes/context;
-- optional project directory, provider, model, Pi executable, and timeout overrides.
+- **Provider** then **Model** dropdowns directly beneath the message box;
+- optional project directory, Pi executable, local endpoint, and timeout overrides in Settings.
 
 ## Copy and paste
 
@@ -118,7 +119,18 @@ This chat is part of the normal ComfyUI frontend. It does not start another web 
 
 Type `/` in the composer to open the Pi command picker. ComfyUI-Pi bridges Pi's built-in interactive slash-command names to RPC/host operations so commands such as `/model`, `/session`, `/tree`, `/compact`, and `/copy` work from the ComfyUI sidebar instead of being sent to the LLM as ordinary text.
 
-The Settings panel also has explicit, on-demand detection/configuration for llama.cpp, Ollama, LM Studio, vLLM, and other OpenAI-compatible servers. No local server is probed at ComfyUI startup.
+Directly beneath the chat box are two selectors, in this order:
+
+1. **Provider**
+2. **Model**
+
+The Provider selector includes Pi's current built-in provider IDs, local model hosts, Pi's default/current model, and custom providers visible in Pi's configuration/runtime catalog. Selecting a hosted provider filters the Model selector to models Pi actually reports as available for that provider. This avoids a second hardcoded model list becoming stale.
+
+Selecting llama.cpp, Ollama, LM Studio, vLLM, or another OpenAI-compatible local host queries that host's own model list, registers the reported usable models with Pi, and fills the Model selector. llama.cpp router mode includes routable models that are currently unloaded; selecting one requests a router load when needed and also remains compatible with llama.cpp's normal on-demand autoload behavior.
+
+Local endpoints are hidden in **Settings → Local model host — advanced → Advanced: custom endpoint** because the common loopback defaults work for normal installations. No local server is probed at ComfyUI startup; probing begins only after the user selects or refreshes a local provider. Provider/model catalogs are UI/runtime data and are not injected into ordinary LLM conversation context.
+
+A built-in provider may appear in Provider while Model is empty. That means Pi does not currently report an authenticated/configured model for that provider; configure its Pi credentials/provider normally, then reopen or refresh the model selector.
 
 See [Local LLM servers and Pi slash commands](local-llm-slash-commands.md).
 

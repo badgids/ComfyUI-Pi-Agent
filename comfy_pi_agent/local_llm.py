@@ -73,14 +73,42 @@ def normalize_base_url(kind: str, base_url: str = "") -> str:
 
 
 def openai_base_url(kind: str, base_url: str = "") -> str:
+    """Return the OpenAI-compatible API root Pi should call for a local server."""
     normalized = _normalize_kind(kind)
     value = normalize_base_url(normalized, base_url)
-    if normalized == "llama.cpp":
-        # Pi has a first-class llama.cpp provider and expects the router root URL.
-        return value[:-3].rstrip("/") if value.endswith("/v1") else value
     if normalized == "ollama":
         return value + "/v1"
     return value if value.endswith("/v1") else value + "/v1"
+
+
+def local_provider_id(kind: str, provider_id: str = "") -> str:
+    """Return the stable Pi provider id for a local-server preset."""
+    normalized = _normalize_kind(kind)
+    defaults = {
+        "llama.cpp": "llama.cpp",
+        "ollama": "ollama",
+        "lm-studio": "lm-studio",
+        "vllm": "vllm",
+        "openai-compatible": "comfyui-local",
+    }
+    requested = str(provider_id or defaults.get(normalized, "comfyui-local")).strip()
+    safe = "".join(ch for ch in requested if ch.isalnum() or ch in "._-")
+    if not safe:
+        raise ValueError("Local provider id is invalid.")
+    return safe
+
+
+def local_provider_presets() -> list[dict[str, str]]:
+    """Small UI metadata only; does not contact any local server."""
+    return [
+        {
+            "kind": kind,
+            "provider": local_provider_id(kind),
+            "label": preset["label"],
+            "default_base_url": preset["base_url"],
+        }
+        for kind, preset in LOCAL_SERVER_PRESETS.items()
+    ]
 
 
 def _json_request(
@@ -120,12 +148,12 @@ def _extract_models(kind: str, payload: Any) -> list[str]:
         for item in payload.get("data") or []:
             if not isinstance(item, dict):
                 continue
-            status = item.get("status")
-            status_value = str(status.get("value") or "") if isinstance(status, dict) else ""
-            # Router /models contains unloaded entries; only loaded/sleeping models are
-            # ready for Pi when router autoload is disabled. Single-model responses have
-            # no router status and are therefore usable as-is.
-            if status_value and status_value not in {"loaded", "sleeping"}:
+            status = item.get("status") if isinstance(item.get("status"), dict) else {}
+            # Router /models is the authoritative list of models the host can route to.
+            # Include unloaded models because llama.cpp router autoloads requested models
+            # by default; omit only entries that the router has explicitly marked failed.
+            # Single-model /v1/models responses have no router status and remain usable.
+            if bool(status.get("failed", False)):
                 continue
             model_id = item.get("id") or item.get("name") or item.get("model")
             if model_id:
@@ -155,35 +183,45 @@ def probe_local_server(kind: str, base_url: str = "", timeout: float = 1.25) -> 
         normalized = "openai-compatible"
     root = normalize_base_url(normalized, base_url)
     if normalized == "ollama":
-        probe_url = root + "/api/tags"
+        probe_urls = [root + "/api/tags"]
     elif normalized == "llama.cpp":
-        probe_url = (root[:-3].rstrip("/") if root.endswith("/v1") else root) + "/models"
+        router_root = root[:-3].rstrip("/") if root.endswith("/v1") else root
+        # Router mode's /models endpoint lists every routable model, including models
+        # that are currently unloaded and can be autoloaded on demand. Single-model
+        # llama-server does not need that router endpoint, so fall back to /v1/models.
+        probe_urls = [router_root + "/models?reload=1", router_root + "/v1/models"]
     else:
-        probe_url = (root if root.endswith("/v1") else root + "/v1") + "/models"
-    try:
-        payload = _json_request(probe_url, timeout=timeout)
-        models = _extract_models(normalized, payload)
-        return {
-            "available": True,
-            "kind": normalized,
-            "label": LOCAL_SERVER_PRESETS[normalized]["label"],
-            "base_url": root,
-            "pi_base_url": openai_base_url(normalized, root),
-            "probe_url": probe_url,
-            "models": models,
-            "message": f"Detected {LOCAL_SERVER_PRESETS[normalized]['label']}" + (f" with {len(models)} model(s)." if models else "."),
-        }
-    except (urllib.error.URLError, TimeoutError, OSError, ValueError, json.JSONDecodeError) as exc:
-        return {
-            "available": False,
-            "kind": normalized,
-            "label": LOCAL_SERVER_PRESETS[normalized]["label"],
-            "base_url": root,
-            "pi_base_url": openai_base_url(normalized, root),
-            "probe_url": probe_url,
-            "models": [],
-            "message": f"Not detected: {type(exc).__name__}: {exc}",
-        }
+        probe_urls = [(root if root.endswith("/v1") else root + "/v1") + "/models"]
+    last_exc: Exception | None = None
+    for probe_url in probe_urls:
+        try:
+            payload = _json_request(probe_url, timeout=timeout)
+            models = _extract_models(normalized, payload)
+            return {
+                "available": True,
+                "kind": normalized,
+                "provider": local_provider_id(normalized),
+                "label": LOCAL_SERVER_PRESETS[normalized]["label"],
+                "base_url": root,
+                "pi_base_url": openai_base_url(normalized, root),
+                "probe_url": probe_url,
+                "models": models,
+                "message": f"Detected {LOCAL_SERVER_PRESETS[normalized]['label']}" + (f" with {len(models)} model(s)." if models else "."),
+            }
+        except (urllib.error.URLError, TimeoutError, OSError, ValueError, json.JSONDecodeError) as exc:
+            last_exc = exc
+    exc = last_exc or RuntimeError("No model endpoint responded.")
+    return {
+        "available": False,
+        "kind": normalized,
+        "provider": local_provider_id(normalized),
+        "label": LOCAL_SERVER_PRESETS[normalized]["label"],
+        "base_url": root,
+        "pi_base_url": openai_base_url(normalized, root),
+        "probe_url": probe_urls[-1],
+        "models": [],
+        "message": f"Not detected: {type(exc).__name__}: {exc}",
+    }
 
 
 def llama_router_models(base_url: str = "", reload: bool = False, timeout: float = 2.0) -> dict[str, Any]:
@@ -291,11 +329,14 @@ def configure_local_provider(
     provider_id: str = "",
     api_key_env: str = "",
 ) -> dict[str, Any]:
-    """Configure Pi for a local server without storing a raw API key.
+    """Register a discovered local server in Pi's supported models.json catalog.
 
-    llama.cpp is a Pi built-in provider and only needs LLAMA_BASE_URL at process launch.
-    Ollama/LM Studio/vLLM/generic OpenAI-compatible servers are merged into Pi's models.json.
-    Existing providers and unrelated user settings are preserved.
+    All local providers, including llama.cpp, follow the same deterministic path:
+    discover models -> merge provider/models into models.json -> restart the supervised
+    Pi RPC process -> select provider/model. This avoids relying on a special provider
+    path that may not expose the server's model ids to Pi's RPC model snapshot.
+    Existing providers and unrelated user settings are preserved. Raw API keys are never
+    stored here.
     """
     normalized = _normalize_kind(kind)
     if normalized not in LOCAL_SERVER_PRESETS:
@@ -303,48 +344,32 @@ def configure_local_provider(
     root = normalize_base_url(normalized, base_url)
     requested_models = [str(item).strip() for item in (models or []) if str(item).strip()]
     selected_model = str(model or "").strip()
-    if selected_model and selected_model not in requested_models:
-        requested_models.insert(0, selected_model)
-
-    if normalized == "llama.cpp":
-        return {
-            "ok": True,
-            "kind": normalized,
-            "provider": "llama.cpp",
-            "model": selected_model or (requested_models[0] if requested_models else ""),
-            "base_url": root,
-            "models": requested_models,
-            "models_json": "",
-            "message": "llama.cpp configured for this ComfyUI-Pi chat. Pi will receive LLAMA_BASE_URL when its RPC process starts.",
-        }
 
     if not requested_models:
         probe = probe_local_server(normalized, root)
+        if not probe.get("available"):
+            raise ValueError(str(probe.get("message") or "Local server could not be reached."))
         requested_models = list(probe.get("models") or [])
     if selected_model and selected_model not in requested_models:
         requested_models.insert(0, selected_model)
     if not selected_model and requested_models:
         selected_model = requested_models[0]
     if not requested_models:
-        raise ValueError("No local models were supplied or discovered. Start the server/load a model, then detect again.")
+        raise ValueError(
+            f"{LOCAL_SERVER_PRESETS[normalized]['label']} is reachable, but it did not report any models. "
+            "Load/start a model in that server and try again."
+        )
 
-    default_provider_ids = {
-        "ollama": "ollama",
-        "lm-studio": "lm-studio",
-        "vllm": "vllm",
-        "openai-compatible": "comfyui-local",
-    }
-    provider = str(provider_id or default_provider_ids[normalized]).strip()
-    safe_provider = "".join(ch for ch in provider if ch.isalnum() or ch in "._-")
-    if not safe_provider:
-        raise ValueError("Local provider id is invalid.")
-
+    provider = local_provider_id(normalized, provider_id)
     path = models_json_path()
     data = _read_models_json(path)
     providers = data.setdefault("providers", {})
     env_name = "".join(ch for ch in str(api_key_env or "").strip() if ch.isalnum() or ch == "_")
-    api_key_value = f"${env_name}" if env_name else ("ollama" if normalized == "ollama" else "local")
-    providers[safe_provider] = {
+    # Pi requires configured auth presence before custom models appear as available.
+    # Keyless local servers ignore this harmless placeholder.
+    api_key_value = f"${env_name}" if env_name else "local"
+    providers[provider] = {
+        "name": LOCAL_SERVER_PRESETS[normalized]["label"],
         "baseUrl": openai_base_url(normalized, root),
         "api": "openai-completions",
         "apiKey": api_key_value,
@@ -352,26 +377,30 @@ def configure_local_provider(
             "supportsDeveloperRole": False,
             "supportsReasoningEffort": False,
         },
-        "models": [{"id": item} for item in requested_models],
+        "models": [{"id": item, "name": item} for item in requested_models],
     }
     _atomic_write(path, data)
     return {
         "ok": True,
         "kind": normalized,
-        "provider": safe_provider,
+        "provider": provider,
         "model": selected_model,
         "base_url": root,
+        "pi_base_url": openai_base_url(normalized, root),
         "models": requested_models,
         "models_json": str(path),
         "api_key_env": env_name,
-        "message": f"Configured Pi provider '{safe_provider}' in models.json without storing a raw API key.",
+        "message": (
+            f"{LOCAL_SERVER_PRESETS[normalized]['label']} is ready for Pi as "
+            f"'{provider}/{selected_model}'."
+        ),
     }
 
 
 def runtime_environment(local_config: dict[str, Any] | None) -> dict[str, str]:
-    config = local_config if isinstance(local_config, dict) else {}
-    kind = _normalize_kind(str(config.get("kind") or ""))
-    base_url = str(config.get("base_url") or "").strip()
-    if kind == "llama.cpp" and base_url:
-        return {"LLAMA_BASE_URL": openai_base_url(kind, base_url)}
+    """Compatibility hook for older sessions. Local servers are catalogued in models.json.
+
+    Keeping this function means existing runtime call sites stay stable, but endpoint URLs
+    are no longer smuggled into Pi through provider/env fields.
+    """
     return {}
