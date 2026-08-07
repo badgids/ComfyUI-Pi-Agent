@@ -184,28 +184,69 @@ function closeTerminalSocket() {
   }
 }
 
-function disposePiInterface() {
-  closeTerminalSocket();
+function detachPiInterface() {
+  // ComfyUI destroys a sidebar/bottom-panel renderer when the panel is collapsed.
+  // Keep the xterm instance and its WebSocket alive so Pi continues rendering into
+  // the detached terminal and can be re-parented with its exact screen/scrollback
+  // when the panel is opened again.  Only DOM-host-specific observers/listeners are
+  // detached here. Explicit session changes still stop/reset Pi through their APIs.
   if (CHAT_STATE.terminalStatusTimer) {
     clearInterval(CHAT_STATE.terminalStatusTimer);
     CHAT_STATE.terminalStatusTimer = null;
   }
   const term = CHAT_STATE.terminal;
-  CHAT_STATE.terminal = null;
   if (term?._comfyPiResizeObserver) {
     try { term._comfyPiResizeObserver.disconnect(); } catch {}
+    term._comfyPiResizeObserver = null;
   }
   try { term?._comfyPiClipboardCleanup?.(); } catch {}
-  try { term?._comfyPiDataDisposable?.dispose?.(); } catch {}
-  try { term?._comfyPiResizeDisposable?.dispose?.(); } catch {}
-  try {
-    if (typeof term?.dispose === "function") term.dispose();
-    else if (typeof term?.destroy === "function") term.destroy();
-  } catch {}
+  try { term?._comfyPiPointerCleanup?.(); } catch {}
+}
+
+function attachTerminalHost(term, ui) {
+  if (!term) return;
+  try { term._comfyPiClipboardCleanup?.(); } catch {}
+  try { term._comfyPiPointerCleanup?.(); } catch {}
+  if (term._comfyPiResizeObserver) {
+    try { term._comfyPiResizeObserver.disconnect(); } catch {}
+    term._comfyPiResizeObserver = null;
+  }
+
+  // xterm can keep running while its former ComfyUI panel is detached. Re-parent
+  // the existing terminal DOM instead of constructing a new terminal and replaying
+  // the entire PTY byte history on every collapse/expand cycle.
+  if (term.element && term.element.parentElement !== ui.terminalHost) {
+    ui.terminalHost.appendChild(term.element);
+  }
+
+  const copyTerminalSelection = term._comfyPiCopyTerminalSelection;
+  const pasteTerminalClipboard = term._comfyPiPasteTerminalClipboard;
+  if (copyTerminalSelection) ui.terminalHost.addEventListener("keydown", copyTerminalSelection, true);
+  if (pasteTerminalClipboard) ui.terminalHost.addEventListener("paste", pasteTerminalClipboard, true);
+  term._comfyPiClipboardCleanup = () => {
+    if (copyTerminalSelection) ui.terminalHost.removeEventListener("keydown", copyTerminalSelection, true);
+    if (pasteTerminalClipboard) ui.terminalHost.removeEventListener("paste", pasteTerminalClipboard, true);
+  };
+
+  const pointerdown = () => queueMicrotask(() => term.focus());
+  ui.terminalHost.addEventListener("pointerdown", pointerdown);
+  term._comfyPiPointerCleanup = () => ui.terminalHost.removeEventListener("pointerdown", pointerdown);
+
+  if (typeof ResizeObserver !== "undefined") {
+    const observer = new ResizeObserver(() => {
+      if (typeof term.fit === "function") term.fit();
+    });
+    observer.observe(ui.terminalHost);
+    term._comfyPiResizeObserver = observer;
+  }
+  if (typeof term.fit === "function") term.fit();
 }
 
 function ensureTerminalInstance(ui) {
-  if (CHAT_STATE.terminal) return CHAT_STATE.terminal;
+  if (CHAT_STATE.terminal) {
+    attachTerminalHost(CHAT_STATE.terminal, ui);
+    return CHAT_STATE.terminal;
+  }
   const term = new window.Terminal({
     cursorBlink: true,
     scrollback: 8000,
@@ -258,24 +299,10 @@ function ensureTerminalInstance(ui) {
     if (typeof term.paste === "function") term.paste(text);
     else sendTerminalInput(text);
   };
-  ui.terminalHost.addEventListener("keydown", copyTerminalSelection, true);
-  ui.terminalHost.addEventListener("paste", pasteTerminalClipboard, true);
-  term._comfyPiClipboardCleanup = () => {
-    ui.terminalHost.removeEventListener("keydown", copyTerminalSelection, true);
-    ui.terminalHost.removeEventListener("paste", pasteTerminalClipboard, true);
-  };
-
-  ui.terminalHost.addEventListener("pointerdown", () => {
-    queueMicrotask(() => term.focus());
-  });
-  if (typeof ResizeObserver !== "undefined") {
-    const observer = new ResizeObserver(() => {
-      if (typeof term.fit === "function") term.fit();
-    });
-    observer.observe(ui.terminalHost);
-    term._comfyPiResizeObserver = observer;
-  }
+  term._comfyPiCopyTerminalSelection = copyTerminalSelection;
+  term._comfyPiPasteTerminalClipboard = pasteTerminalClipboard;
   CHAT_STATE.terminal = term;
+  attachTerminalHost(term, ui);
   return term;
 }
 
@@ -350,6 +377,33 @@ async function startTerminal(ui, { restart = false } = {}) {
   try {
     await ensureTerminalAssets();
     ensureTerminalInstance(ui);
+
+    // A normal panel collapse does not close the live WebSocket anymore. If it is
+    // still open, the detached xterm has continued receiving Pi output the entire
+    // time, so reopening is just a DOM re-parent + fit operation with zero model work.
+    if (!restart && CHAT_STATE.terminalSocket?.readyState === WebSocket.OPEN) {
+      ui.terminalStatus.textContent = "Connected to real Pi terminal.";
+      if (typeof CHAT_STATE.terminal?.fit === "function") CHAT_STATE.terminal.fit();
+      CHAT_STATE.terminal?.focus();
+      return;
+    }
+
+    // The socket may have dropped while the panel was hidden or after a browser-side
+    // remount. Ask the cheap terminal-status endpoint first. A live backend PTY can be
+    // reattached directly; do not call /terminal/start because that route may include
+    // llama.cpp readiness checks intended only for an actual process start.
+    if (!restart) {
+      try {
+        const status = await fetchJson(`/pi-agent/terminal/status/${encodeURIComponent(CHAT_STATE.sessionId)}`);
+        if (status.running) {
+          ui.terminalStatus.textContent = "Reconnecting to existing Pi terminal…";
+          CHAT_STATE.terminal?.reset();
+          await connectTerminalSocket(ui);
+          return;
+        }
+      } catch {}
+    }
+
     const endpoint = restart ? "/pi-agent/terminal/restart" : "/pi-agent/terminal/start";
     await fetchJson(endpoint, {
       method: "POST",
@@ -1332,6 +1386,16 @@ function buildSidebar(el, placement = "sidebar") {
 
 async function initializeSidebar(el, placement = "sidebar") {
   const ui = buildSidebar(el, placement);
+
+  // Restore the detached terminal before doing any provider/status/session HTTP work.
+  // This makes expanding the panel visually instantaneous: the exact xterm screen and
+  // scrollback from before collapse are visible while the lightweight UI metadata refreshes.
+  if (CHAT_STATE.terminal && CHAT_STATE.view === "terminal") {
+    ensureTerminalInstance(ui);
+    ui.terminalStatus.textContent = CHAT_STATE.terminalSocket?.readyState === WebSocket.OPEN
+      ? "Connected to real Pi terminal." : "Restoring Pi terminal connection…";
+  }
+
   await refreshCommandCatalog(ui);
   try {
     await refreshProviderMetadata(ui);
@@ -1379,6 +1443,8 @@ async function initializeSidebar(el, placement = "sidebar") {
       try {
         const status = await fetchJson(`/pi-agent/terminal/status/${encodeURIComponent(CHAT_STATE.sessionId)}`);
         const percent = Number(status.bridge?.context_percent);
+        if (!status.running) ui.terminalStatus.textContent = status.message || "Pi interactive terminal is stopped.";
+        else if (CHAT_STATE.terminalSocket?.readyState === WebSocket.OPEN) ui.terminalStatus.textContent = "Connected to real Pi terminal.";
         if (status.running && Number(status.output_bytes || 0) === 0 && Date.now() / 1000 - Number(status.started_at || 0) > 3) {
           ui.terminalStatus.textContent = status.message || "Pi is running but has not produced terminal output yet.";
         }
@@ -1454,7 +1520,7 @@ app.registerExtension({
             render: async (el) => {
               await initializeSidebar(el, "bottom");
             },
-            destroy: () => disposePiInterface()
+            destroy: () => detachPiInterface()
           }
         ]
       });
@@ -1470,7 +1536,7 @@ app.registerExtension({
       render: async (el) => {
         await initializeSidebar(el, "sidebar");
       },
-      destroy: () => disposePiInterface()
+      destroy: () => detachPiInterface()
     });
   }
 });

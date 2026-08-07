@@ -54,7 +54,9 @@ ComfyUI settings provide **Pi Agent: Interface placement** with two choices:
 
 The same Terminal/Chat UI and the same supervised Pi session are used in either location. Refresh the ComfyUI browser page after changing placement so the extension registers only the selected location.
 
-Collapsing either panel destroys only the browser renderer and its WebSocket attachment. It does **not** stop the supervised Pi PTY or create a new chat. The active ComfyUI-Pi session ID and selected Terminal/Chat view are retained for the browser tab, and reopening the panel reattaches to the existing terminal scrollback/session when it is still running.
+Collapsing either panel detaches only the ComfyUI-owned DOM host. It does **not** stop the supervised Pi PTY, close the live terminal WebSocket, dispose xterm, or create a new chat. The xterm instance continues receiving PTY output while the panel is hidden, so reopening the panel re-parents the same terminal DOM and immediately shows the exact screen/scrollback state from the ongoing conversation.
+
+If the browser-side WebSocket drops while the panel is hidden, reopening first checks the lightweight terminal status endpoint and reconnects directly to the existing PTY. It does not run local-model readiness checks or call the terminal start path unless no live terminal exists. A reconnect after a dropped socket replays the backend terminal ring buffer before live output continues.
 
 ## Provider and Model controls
 

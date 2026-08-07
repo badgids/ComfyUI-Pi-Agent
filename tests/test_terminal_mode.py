@@ -190,6 +190,19 @@ class TerminalArchitectureTests(unittest.TestCase):
                 self.assertTrue(session.handoff_marker_path.is_file())
                 self.assertEqual(writes, ["/new\r"])
 
+    def test_terminal_start_route_reattaches_before_llama_readiness_work(self):
+        routes = (ROOT / "comfy_pi_agent" / "routes.py").read_text(encoding="utf-8")
+        start = routes[
+            routes.index('async def pi_agent_terminal_start'):
+            routes.index('async def pi_agent_terminal_restart')
+        ]
+        self.assertIn("existing = TERMINAL_MANAGER.get(session_id)", start)
+        self.assertIn('"reattached": True', start)
+        self.assertLess(
+            start.index("existing = TERMINAL_MANAGER.get(session_id)"),
+            start.index("CHAT_MANAGER._ensure_llama_router_model"),
+        )
+
     def test_frontend_terminal_is_default_and_chat_reasoning_tools_default_visible(self):
         js = (ROOT / "web" / "pi_agent.js").read_text(encoding="utf-8")
         self.assertIn('view: "terminal"', js)
@@ -213,6 +226,18 @@ class TerminalArchitectureTests(unittest.TestCase):
         load_session_source = js[js.index("async function loadSession"):js.index("async function refreshSessions")]
         self.assertNotIn("applyProviderSelection(", load_session_source)
         self.assertIn('CHAT_STATE.terminalSupported ? CHAT_STATE.view : "chat"', js)
+        self.assertIn("function attachTerminalHost(term, ui)", js)
+        self.assertIn("ui.terminalHost.appendChild(term.element)", js)
+        self.assertIn('CHAT_STATE.terminalSocket?.readyState === WebSocket.OPEN', js)
+        self.assertIn('ui.terminalStatus.textContent = "Reconnecting to existing Pi terminal…"', js)
+        self.assertIn('if (CHAT_STATE.terminal && CHAT_STATE.view === "terminal")', js)
+        self.assertIn("destroy: () => detachPiInterface()", js)
+        detach_source = js[
+            js.index("function detachPiInterface"):
+            js.index("function attachTerminalHost")
+        ]
+        self.assertNotIn("closeTerminalSocket()", detach_source)
+        self.assertNotIn("term.dispose", detach_source)
         self.assertNotIn('id="pi-agent-terminal-host" class="pi-agent-terminal-host" tabindex="0"', js)
         self.assertIn('id: "PiAgent.UI.Placement"', js)
         self.assertIn('options: ["Left sidebar", "Bottom panel"]', js)

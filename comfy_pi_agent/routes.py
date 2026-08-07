@@ -263,6 +263,34 @@ def register_routes() -> bool:
         if not session_id:
             return web.json_response({"ok": False, "error": "A chat session is required."}, status=400)
         try:
+            context_settings = {
+                "preemptive_handoff": bool(payload.get("preemptive_handoff", True)),
+                "handoff_threshold": float(payload.get("handoff_threshold_percent", 82.5) or 82.5) / 100.0,
+                "handoff_max_chars": int(payload.get("handoff_max_chars", 8000) or 8000),
+                "project_context": payload.get("project_context", ""),
+            }
+
+            # Opening/collapsing ComfyUI panels is a browser-renderer lifecycle event,
+            # not a request to prepare the model or restart Pi.  If this session already
+            # owns a live PTY, return it immediately.  This must happen before llama.cpp
+            # readiness probing because a running Pi process is already attached to its
+            # configured provider/model and re-probing can take the full model timeout.
+            existing = TERMINAL_MANAGER.get(session_id)
+            if existing and existing.status().running:
+                existing.update_workflow(payload.get("workflow"))
+                existing.update_bridge_config(context_settings)
+                existing.resize(
+                    int(payload.get("cols", existing.cols) or existing.cols),
+                    int(payload.get("rows", existing.rows) or existing.rows),
+                )
+                document = CHAT_MANAGER.store.load(session_id)
+                return web.json_response({
+                    "ok": True,
+                    "reattached": True,
+                    "terminal": existing.status().to_dict(),
+                    "session": document,
+                })
+
             local = payload.get("local_llm") if isinstance(payload.get("local_llm"), dict) else {}
             document = CHAT_MANAGER.store.update_config(
                 session_id,
@@ -299,12 +327,7 @@ def register_routes() -> bool:
                 resume=bool(payload.get("resume", False)),
                 env_overrides=runtime_environment(saved_local),
                 workflow=payload.get("workflow"),
-                context_settings={
-                    "preemptive_handoff": bool(payload.get("preemptive_handoff", True)),
-                    "handoff_threshold": float(payload.get("handoff_threshold_percent", 82.5) or 82.5) / 100.0,
-                    "handoff_max_chars": int(payload.get("handoff_max_chars", 8000) or 8000),
-                    "project_context": payload.get("project_context", ""),
-                },
+                context_settings=context_settings,
             )
             return web.json_response({"ok": True, "terminal": session.status().to_dict(), "session": document})
         except (ValueError, FileNotFoundError, RuntimeError, TimeoutError, OSError) as exc:
