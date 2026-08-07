@@ -7,7 +7,7 @@
 
 ## Release
 
-- Version: 0.1.14
+- Version: 0.1.15
 - Creator: Alan D. Guice (Badgids)
 - License: GPL-3.0-only
 

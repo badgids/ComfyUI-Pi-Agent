@@ -10,6 +10,20 @@ from pathlib import Path
 from typing import Any
 
 
+class LocalLLMHTTPError(urllib.error.HTTPError):
+    """HTTP error that keeps the local-host endpoint and response body visible."""
+
+    def __init__(self, url: str, code: int, reason: str, headers: Any, body_text: str, method: str) -> None:
+        super().__init__(url, code, reason, headers, None)
+        self.body_text = str(body_text or "").strip()
+        self.method = str(method or "GET").upper()
+
+    def __str__(self) -> str:
+        detail = " ".join(self.body_text.split())[:1200]
+        suffix = f": {detail}" if detail else f": {self.reason}"
+        return f"HTTP {self.code} {self.method} {self.url}{suffix}"
+
+
 LOCAL_SERVER_PRESETS: dict[str, dict[str, str]] = {
     "llama.cpp": {
         "label": "llama.cpp",
@@ -124,9 +138,25 @@ def _json_request(
     if payload is not None:
         body = json.dumps(payload).encode("utf-8")
         merged_headers["Content-Type"] = "application/json"
-    request = urllib.request.Request(url, data=body, headers=merged_headers, method=str(method or "GET").upper())
-    with urllib.request.urlopen(request, timeout=max(0.25, float(timeout))) as response:
-        response_payload = response.read()
+    request_method = str(method or "GET").upper()
+    request = urllib.request.Request(url, data=body, headers=merged_headers, method=request_method)
+    try:
+        with urllib.request.urlopen(request, timeout=max(0.25, float(timeout))) as response:
+            response_payload = response.read()
+    except urllib.error.HTTPError as exc:
+        try:
+            error_payload = exc.read()
+            error_text = error_payload.decode("utf-8", errors="replace") if error_payload else ""
+        except Exception:
+            error_text = ""
+        raise LocalLLMHTTPError(
+            url=str(getattr(exc, "url", None) or url),
+            code=int(getattr(exc, "code", 0) or 0),
+            reason=str(getattr(exc, "reason", None) or getattr(exc, "msg", None) or "HTTP error"),
+            headers=getattr(exc, "headers", None),
+            body_text=error_text,
+            method=request_method,
+        ) from exc
     return json.loads(response_payload.decode("utf-8")) if response_payload else {}
 
 
@@ -369,15 +399,16 @@ def wait_for_llama_router_model(
     timeout: float = 180.0,
     poll_interval: float = 0.5,
 ) -> dict[str, Any]:
-    """Wait for llama.cpp router's supported load lifecycle and routed request readiness.
+    """Wait until one llama.cpp router model can accept a routed task.
 
-    Current llama.cpp's own router tests define model loading as POST /models/load followed
-    by polling GET /models until the selected model reaches ``loaded``. Once loaded, this
-    function sends the same lightweight routed POST /tokenize style used by upstream tests
-    to verify that the selected child can actually accept a model-targeted request.
+    ``unloaded`` presets are explicitly loaded by the caller before this wait begins.
+    ``sleeping`` is different: llama.cpp documents that a real incoming task wakes the
+    sleeping child automatically, while management/read-only endpoints do not. For a
+    sleeping model this function therefore sends the lightweight routed ``/tokenize``
+    task immediately and gives that wake request the caller's remaining timeout budget.
 
-    ``sleeping`` is not ready. The caller-provided timeout is the complete wait budget;
-    ComfyUI-Pi never substitutes a machine- or user-specific constant.
+    No user-specific timeout is substituted here; ``timeout`` is always the value supplied
+    by the caller (normally the sidebar's Timeout in seconds setting).
     """
     model_id = str(model or "").strip()
     if not model_id:
@@ -397,25 +428,30 @@ def wait_for_llama_router_model(
             detail = f" exit_code={entry.get('exit_code')}" if entry.get("exit_code") is not None else ""
             raise RuntimeError(f"llama.cpp failed to load '{model_id}'.{detail}")
 
-        if last_status in {"loaded", "ready"}:
+        if last_status in {"loaded", "ready", "sleeping"}:
+            # A sleeping llama.cpp child is woken by a real routed task. Give that wake
+            # request the full remaining user-configured budget because loading large local
+            # models can legitimately take minutes. A loaded child only needs a short probe.
+            probe_timeout = remaining if last_status == "sleeping" else min(5.0, remaining)
             try:
-                probe = llama_router_model_tokenize(base_url, model_id, timeout=min(5.0, remaining))
+                probe = llama_router_model_tokenize(base_url, model_id, timeout=probe_timeout)
                 return {
                     "ready": True,
                     "model": model_id,
                     "status": "loaded",
                     "entry": entry,
                     "probe": probe,
+                    "woke_from_sleep": last_status == "sleeping",
                 }
             except urllib.error.HTTPError as exc:
                 code = int(getattr(exc, "code", 0) or 0)
+                # Busy/loading conditions can be transient. A 400 is not swallowed: with
+                # LocalLLMHTTPError it now includes the exact endpoint and llama.cpp body.
                 if code not in {404, 409, 425, 429, 503}:
                     raise
                 last_probe = f"/tokenize HTTP {code}"
             except (OSError, TimeoutError) as exc:
                 last_probe = f"/tokenize {type(exc).__name__}: {exc}"
-        elif last_status == "sleeping":
-            last_probe = "model is sleeping and still needs to wake"
         else:
             last_probe = f"router status is {last_status}"
 

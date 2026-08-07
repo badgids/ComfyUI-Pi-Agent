@@ -366,11 +366,13 @@ class ChatRuntimeManager:
         if bool(entry.get("failed", False)):
             raise RuntimeError(f"llama.cpp reports model '{model_id}' as failed. Refresh or repair the router model preset.")
         attempted = False
-        if status in {"unloaded", "sleeping"}:
+        if status == "unloaded":
+            # Explicit management load is only for a genuinely unloaded preset. llama.cpp
+            # treats sleeping children differently: the next real routed task wakes them.
             llama_router_action("load", model_id, base_url, timeout=min(10.0, max(0.25, float(timeout))))
             attempted = True
-        # Even a router row that already says loaded gets a lightweight routed /tokenize
-        # confirmation before Pi is allowed to send the user's first real prompt.
+        # Loaded models get a lightweight readiness probe; sleeping models are woken by that
+        # same routed task and may consume the caller's full configured timeout while loading.
         ready = wait_for_llama_router_model(base_url, model_id, timeout=float(timeout))
         return {"attempted": attempted, **ready}
 

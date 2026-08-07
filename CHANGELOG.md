@@ -4,6 +4,14 @@
 **Navigation:** [Project README](README.md) · [Documentation home](docs/index.md) · [Previous: Third-party notices](THIRD_PARTY_NOTICES.md) · [Next: Release notes](RELEASE_NOTES.md)
 <!-- DOC_NAV_END -->
 
+## 0.1.15 — llama.cpp sleeping-model wake fix and HTTP diagnostics
+
+- Distinguished llama.cpp router `sleeping` from `unloaded`: only unloaded presets use `POST /models/load`.
+- Wake sleeping llama.cpp models with the real routed `/tokenize` task that llama.cpp documents as an incoming task, using the user's remaining configured timeout budget.
+- Added HTTP diagnostics that preserve the request method, endpoint, status, and llama.cpp response body instead of surfacing a bare `HTTP Error 400`.
+- Added regression tests proving sleeping models do not call `/models/load`, wake probes can use the full caller-provided timeout, and no personal timeout value is hardcoded.
+
+
 ## 0.1.14 — llama.cpp router readiness contract correction
 
 - Removed the invalid model-specific `/props?model=...&autoload=false` readiness request that could return HTTP 400 on current llama.cpp routers.

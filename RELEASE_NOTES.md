@@ -1,8 +1,17 @@
-# Release notes — 0.1.14
+# Release notes — 0.1.15
 
 <!-- DOC_NAV_START -->
 **Navigation:** [Project README](README.md) · [Documentation home](docs/index.md) · [Previous: Changelog](CHANGELOG.md) · [Next: Project inventory](PROJECT_INVENTORY.md)
 <!-- DOC_NAV_END -->
+
+## 0.1.15 — sleeping llama.cpp models now wake correctly
+
+- Fixed the remaining immediate HTTP 400 when a router-managed model was in `sleeping` state. Sleeping is not the same as unloaded: ComfyUI-Pi no longer sends `/models/load` for sleeping children.
+- A sleeping model is now woken with a small routed `/tokenize` task. llama.cpp documents that real incoming tasks wake sleeping models, while `/models`, `/props`, and `/health` do not.
+- The routed wake request receives the remaining value from the user's existing **Timeout in seconds** setting. No user-specific timeout value is embedded in the runtime.
+- Truly `unloaded` presets still use the router's explicit `/models/load` operation before readiness polling.
+- Local-host HTTP failures now include the exact HTTP method, endpoint, status code, and server response body, making any future incompatibility diagnosable from the chat error itself.
+
 
 ## 0.1.14 — corrected llama.cpp router readiness probe
 

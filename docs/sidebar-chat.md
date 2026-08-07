@@ -150,6 +150,10 @@ Handoffs are kept under ComfyUI user data. They contain working state and paths,
 
 See [context-handoff.md](context-handoff.md).
 
+### Sleeping llama.cpp router models
+
+A llama.cpp router can keep a model entry in `sleeping` state after idle sleep. ComfyUI-Pi treats that differently from `unloaded`: only an unloaded preset is sent to `/models/load`. A sleeping model is woken by a lightweight routed `/tokenize` task, because llama.cpp defines real incoming tasks as the wake trigger. The wait uses the current chat's configured **Timeout in seconds** value; no personal timeout value is hardcoded. HTTP failures include the method, endpoint, status, and response body for troubleshooting.
+
 ---
 
 <!-- DOC_NAV_FOOTER_START -->

@@ -217,18 +217,16 @@ class LocalLlmTests(unittest.TestCase):
         self.assertEqual(result["status"], "loaded")
         tokenize.assert_called_once_with("http://127.0.0.1:8080", "cold-model", timeout=5.0)
 
-    def test_llama_router_sleeping_is_not_treated_as_ready(self):
-        sequence = [
-            {"ok": True, "models": [{"id": "sleepy-model", "status": "sleeping", "failed": False}]},
-            {"ok": True, "models": [{"id": "sleepy-model", "status": "loading", "failed": False}]},
-            {"ok": True, "models": [{"id": "sleepy-model", "status": "loaded", "failed": False}]},
-        ]
-        with patch("comfy_pi_agent.local_llm.llama_router_models", side_effect=sequence), \
-             patch("comfy_pi_agent.local_llm.llama_router_model_tokenize", return_value={"tokens": [1]}), \
-             patch("comfy_pi_agent.local_llm.time.sleep", return_value=None):
-            result = wait_for_llama_router_model("http://127.0.0.1:8080", "sleepy-model", timeout=11, poll_interval=0.1)
+    def test_llama_router_sleeping_is_woken_by_routed_task_with_full_timeout_budget(self):
+        payload = {"ok": True, "models": [{"id": "sleepy-model", "status": "sleeping", "failed": False}]}
+        with patch("comfy_pi_agent.local_llm.llama_router_models", return_value=payload), \
+             patch("comfy_pi_agent.local_llm.llama_router_model_tokenize", return_value={"tokens": [1]}) as tokenize, \
+             patch("comfy_pi_agent.local_llm.time.monotonic", side_effect=[100.0, 100.0, 100.0]):
+            result = wait_for_llama_router_model("http://127.0.0.1:8080", "sleepy-model", timeout=37, poll_interval=0.1)
         self.assertTrue(result["ready"])
         self.assertEqual(result["status"], "loaded")
+        self.assertTrue(result["woke_from_sleep"])
+        tokenize.assert_called_once_with("http://127.0.0.1:8080", "sleepy-model", timeout=37.0)
 
     def test_llama_router_readiness_uses_supported_tokenize_probe_not_props_query(self):
         source = (ROOT / "comfy_pi_agent" / "local_llm.py").read_text(encoding="utf-8")
@@ -246,6 +244,29 @@ class LocalLlmTests(unittest.TestCase):
             result = wait_for_llama_server_health("http://127.0.0.1:8080", timeout=12, poll_interval=0.1)
         self.assertTrue(result["ready"])
 
+    def test_local_http_error_includes_method_endpoint_and_response_body(self):
+        import io
+        import urllib.error
+        from comfy_pi_agent.local_llm import _json_request
+
+        error = urllib.error.HTTPError(
+            "http://127.0.0.1:8080/models/load",
+            400,
+            "Bad Request",
+            {},
+            io.BytesIO(b'{"error":{"message":"model is sleeping"}}'),
+        )
+        with patch("comfy_pi_agent.local_llm.urllib.request.urlopen", side_effect=error):
+            with self.assertRaises(urllib.error.HTTPError) as caught:
+                _json_request(
+                    "http://127.0.0.1:8080/models/load",
+                    method="POST",
+                    payload={"model": "dynamic-model"},
+                )
+        message = str(caught.exception)
+        self.assertIn("HTTP 400 POST http://127.0.0.1:8080/models/load", message)
+        self.assertIn("model is sleeping", message)
+
     def test_llama_router_wait_surfaces_failed_load(self):
         payload = {"ok": True, "models": [{"id": "bad-model", "status": "unloaded", "failed": True, "exit_code": 9}]}
         with patch("comfy_pi_agent.local_llm.llama_router_models", return_value=payload):
@@ -258,6 +279,12 @@ class LocalLlmTests(unittest.TestCase):
         source = (ROOT / "comfy_pi_agent" / "local_llm.py").read_text(encoding="utf-8")
         self.assertIn("requested_models = [str(item).strip() for item in (models or [])", source)
         self.assertIn("probe_local_server(normalized, root, reload_catalog=reload_catalog)", source)
+
+    def test_runtime_does_not_hardcode_a_user_timeout_value(self):
+        runtime = (ROOT / "comfy_pi_agent" / "local_llm.py").read_text(encoding="utf-8")
+        chat = (ROOT / "comfy_pi_agent" / "chat.py").read_text(encoding="utf-8")
+        self.assertNotIn("660", runtime)
+        self.assertNotIn("660", chat)
 
     def test_pi_exit_diagnostic_includes_stderr(self):
         from unittest.mock import Mock
@@ -395,7 +422,7 @@ class LocalLlmTests(unittest.TestCase):
                 client.set_model.assert_called_once_with("llama.cpp", "cold-model")
                 self.assertEqual(saved["local_llm"]["model"], "cold-model")
 
-    def test_llama_router_sleeping_model_is_explicitly_woken_before_pi_switch(self):
+    def test_llama_router_sleeping_model_uses_routed_wake_not_models_load(self):
         import threading
         from types import SimpleNamespace
         from unittest.mock import Mock
@@ -419,7 +446,7 @@ class LocalLlmTests(unittest.TestCase):
                      patch("comfy_pi_agent.chat.llama_router_action", return_value={"ok": True}) as load, \
                      patch("comfy_pi_agent.chat.wait_for_llama_router_model", return_value={"ready": True, "model": "sleepy-model", "status": "loaded", "entry": {"id": "sleepy-model"}}) as ready:
                     manager.select_model(document["session_id"], "llama.cpp", "sleepy-model", wait_timeout=91)
-                load.assert_called_once()
+                load.assert_not_called()
                 ready.assert_called_once_with("http://127.0.0.1:8080", "sleepy-model", timeout=91.0)
                 client.set_model.assert_called_once_with("llama.cpp", "sleepy-model")
 
