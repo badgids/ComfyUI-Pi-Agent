@@ -27,7 +27,7 @@ The Provider dropdown has four groups:
 
 For built-in/cloud providers, ComfyUI-Pi asks Pi for its live `get_available_models` snapshot and shows every returned model for the selected provider. The model names are **not** duplicated in a plugin hardcoded list. A provider can therefore remain visible while its Model dropdown is empty when Pi has no currently authenticated/configured model for it.
 
-### Pi built-in providers covered by v0.1.11
+### Pi built-in providers covered by v0.1.12
 
 The dropdown covers the 38 provider IDs in Pi's current public `KnownProvider` catalog:
 
@@ -56,9 +56,9 @@ ComfyUI-Pi uses each host's own model-list API rather than guessing filenames:
 - **vLLM:** every model returned by its OpenAI-compatible `/v1/models`.
 - **Other OpenAI-compatible:** every model returned by `/v1/models`.
 - **llama.cpp single-model server:** the served model from `/v1/models`.
-- **llama.cpp router:** every non-failed model returned by router `/models?reload=1`, including models currently marked unloaded. llama.cpp router normally autoloads a requested model; ComfyUI-Pi also makes a best-effort `/models/load` request when an unloaded router model is selected so switching still works when router autoload was disabled.
+- **llama.cpp router:** every non-failed model returned by the router's live `/models` catalog, including presets currently marked unloaded or sleeping. The ordinary sidebar refresh uses this fast full catalog. The explicit **Refresh models / apply endpoint** button asks `/models?reload=1` to re-read the router preset source with a longer timeout, then falls back to the cached full `/models` catalog if that reload is slow or unavailable. It does not collapse to `/v1/models` after a valid router catalog is available.
 
-A model explicitly marked failed by the llama.cpp router is not offered as a normal selectable model because the host itself says that entry failed to load.
+A model explicitly marked failed by the llama.cpp router is not offered as a normal selectable model because the host itself says that entry failed to load. ComfyUI-Pi does not inspect a user's private llama.cpp INI file or hardcode preset names; the running router is the authority for what exists.
 
 ### Default endpoints
 
@@ -80,7 +80,7 @@ No local endpoint is probed during ComfyUI startup. A probe occurs only after th
 
 Pi supports custom/local models through `~/.pi/agent/models.json`. ComfyUI-Pi manages that integration for the user.
 
-After selecting llama.cpp with a server reporting `Qwen3.6-35B`, ComfyUI-Pi creates or safely merges an entry equivalent to:
+After selecting llama.cpp with a server reporting a model such as `example-model`, ComfyUI-Pi creates or safely merges an entry equivalent to:
 
 ```json
 {
@@ -95,7 +95,7 @@ After selecting llama.cpp with a server reporting `Qwen3.6-35B`, ComfyUI-Pi crea
         "supportsReasoningEffort": false
       },
       "models": [
-        { "id": "Qwen3.6-35B", "name": "Qwen3.6-35B" }
+        { "id": "example-model", "name": "example-model" }
       ]
     }
   }
@@ -106,7 +106,17 @@ Existing unrelated Pi providers are preserved. The harmless `local` key is only 
 
 The same mechanism is used for Ollama, LM Studio, vLLM, and generic OpenAI-compatible providers. This unified path is important: Pi must actually know the local model ID before its RPC `set_model` operation can select it.
 
-When a local host's registered model catalog changes, ComfyUI-Pi closes only that chat's supervised Pi RPC process so Pi reloads the updated `models.json`. ComfyUI itself does not need to restart. Ordinary switching between provider/models that Pi already reports as available uses live RPC `set_model` and keeps the active Pi process/context.
+When a local host's registered model catalog changes, ComfyUI-Pi closes only that chat's supervised Pi RPC process so Pi reloads the updated `models.json`. ComfyUI itself does not need to restart. For llama.cpp router models, selecting or sending with an unloaded model first requests `/models/load` when needed and **waits until the router reports the model ready** before Pi is launched or switched. This prevents the first chat request from racing a long model load. Ordinary switching between provider/models that Pi already reports as available uses live RPC `set_model` and keeps the active Pi process/context.
+
+## llama.cpp readiness and startup diagnostics
+
+llama.cpp router `/models/load` is an asynchronous load request. ComfyUI-Pi therefore does not treat the HTTP response as proof that inference is ready. It polls the router catalog until the selected model reports a ready state, a failure is reported, or the configured chat timeout is reached. The normal chat timeout is also the model-readiness budget, so very large local models can be given more time from Settings without changing code.
+
+Only after readiness succeeds does ComfyUI-Pi launch its supervised Pi RPC process. Pi RPC startup is separately probed with `get_state`; if Pi exits during startup, the chat error now includes the recent Pi stderr lines and process exit code instead of only `Pi exited before accepting the command`.
+
+The sidebar refreshes the selected local provider when the **Pi Agent Chat sidebar itself is opened**, which repairs stale saved one-model dropdown state from older ComfyUI-Pi releases. This is still not plugin-startup probing: no local endpoint is touched merely because ComfyUI imported the custom node package.
+
+The Provider and Model native selects also receive explicit dark-mode colors for the select, option, and optgroup elements so the expanded menus remain readable in ComfyUI's dark UI.
 
 ## `/model` is forgiving for local providers
 
@@ -114,7 +124,7 @@ These are both valid:
 
 ```text
 /model llama.cpp
-/model llama.cpp/Qwen3.6-35B
+/model llama.cpp/example-model
 ```
 
 `/model llama.cpp` means **switch this chat to the llama.cpp provider**. ComfyUI-Pi discovers/registers its available models and selects the previous model for that provider when possible, otherwise the first available model.
@@ -138,7 +148,7 @@ Other examples:
 
 ## llama.cpp router commands
 
-The normal Provider/Model dropdowns are enough to use llama.cpp. Router mode exposes all non-failed routable models in the Model dropdown and selected unloaded models receive a best-effort load request. The `/llama` commands remain optional explicit router-management tools:
+The normal Provider/Model dropdowns are enough to use llama.cpp. Router mode exposes all non-failed routable models in the Model dropdown; selecting an unloaded model requests the load and waits for the router to report it ready before Pi uses it. The `/llama` commands remain optional explicit router-management tools:
 
 ```text
 /llama

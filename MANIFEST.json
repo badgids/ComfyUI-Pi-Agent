@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
   "project": "ComfyUI Pi Agent Production Suite",
-  "version": "0.1.11",
+  "version": "0.1.12",
   "creator": "Alan D. Guice (Badgids)",
   "license": "GPL-3.0-only",
   "file_count": 168,
@@ -28,8 +28,8 @@
     },
     {
       "path": "CHANGELOG.md",
-      "size": 10386,
-      "sha256": "369a7a5a8594f06faa63a681f18bd8c175635f4e4cacf20ef225cc615dc753af"
+      "size": 11235,
+      "sha256": "ff601a1045a786dd76b6e984d6def880cdb1146b11348f02ee568687042d2358"
     },
     {
       "path": "CODE_OF_CONDUCT.md",
@@ -48,18 +48,18 @@
     },
     {
       "path": "PROJECT_INVENTORY.md",
-      "size": 7369,
-      "sha256": "22678072a2b07556baa1d301382291491abaac3582e25bd583e7c84dfda2e1ab"
+      "size": 7507,
+      "sha256": "24d7806e07e601f5214954dd0a4c0636fe04ac82927fc5fe5e95614d158e0c2a"
     },
     {
       "path": "README.md",
-      "size": 28061,
-      "sha256": "731b0b3f9066c2d112b01631af98ba154c2c02101e58a88dd7c1159c421a2e2e"
+      "size": 28560,
+      "sha256": "de0c6e75c2ae498d4da54ee565e4bfa7b5756ed42cfb25eda3174eff1f7667c3"
     },
     {
       "path": "RELEASE_NOTES.md",
-      "size": 15868,
-      "sha256": "fd81baf97b06655841e673870be3a422f7eb2a3da201ce13a9f71a4d8eaeb935"
+      "size": 17506,
+      "sha256": "f2c54503df86191836b329d0c98d8e661f06e64f0f1f3c8e3c1b304fa0ecef12"
     },
     {
       "path": "SECURITY.md",
@@ -88,8 +88,8 @@
     },
     {
       "path": "comfy_pi_agent/chat.py",
-      "size": 73955,
-      "sha256": "6b7457992a1b3f2af439694d3731721a32a668c0b63047debdd46f02a038c1a0"
+      "size": 74743,
+      "sha256": "1f7051054a73322f6eb3b8a2d4960df3eb2fec301d2bd42df6c5cb3a0673d3b9"
     },
     {
       "path": "comfy_pi_agent/compat.py",
@@ -148,8 +148,8 @@
     },
     {
       "path": "comfy_pi_agent/local_llm.py",
-      "size": 15944,
-      "sha256": "a76f33ff9b0c18f1b990ee13a859251c76385426aa7b97effa19d8f8080c5e0e"
+      "size": 19814,
+      "sha256": "539ffcdb2cb940f146986d242e8af6a6c8895c95c25fbc8b8e9b579c7401eca4"
     },
     {
       "path": "comfy_pi_agent/media_plans.py",
@@ -178,8 +178,8 @@
     },
     {
       "path": "comfy_pi_agent/pi_runtime.py",
-      "size": 21348,
-      "sha256": "595ca8abbd67a5f52de4b1a11aba519fce35a42229e22bc082290d8a19c95a15"
+      "size": 22928,
+      "sha256": "ca02bfd9e637c8327efe56b3173b22c12fb95a2b0ac83b071e7e10ec64f78946"
     },
     {
       "path": "comfy_pi_agent/projects.py",
@@ -193,8 +193,8 @@
     },
     {
       "path": "comfy_pi_agent/routes.py",
-      "size": 19504,
-      "sha256": "3524ac0386aa3fb3f8e98f7495bd6479028620148eb20acae5b083f2fbc08c64"
+      "size": 19794,
+      "sha256": "1fbc508117d60e741cf5e857e3736e355cb894c20eda76ae0ea91890d47ffb5b"
     },
     {
       "path": "comfy_pi_agent/tutorials.py",
@@ -204,7 +204,7 @@
     {
       "path": "comfy_pi_agent/version.py",
       "size": 23,
-      "sha256": "9e5943ac7d23c8284cbae62b2b4082e7989304a50d4d48de8ed730c72505d844"
+      "sha256": "2dc2251631d915f885f51778507a1a926a266ce164c48624d34235f357eb1813"
     },
     {
       "path": "comfy_pi_agent/workflow.py",
@@ -298,8 +298,8 @@
     },
     {
       "path": "docs/local-llm-slash-commands.md",
-      "size": 12183,
-      "sha256": "b7c5c5695eb4490842cb62c12ae2a35438450cbfb462e1c565df98147d16447d"
+      "size": 14136,
+      "sha256": "d2c5927d43d1120cbf9ec66d056246145f82cd0454b1a984b9140b6709a12d9b"
     },
     {
       "path": "docs/minimax-h3-director.md",
@@ -323,8 +323,8 @@
     },
     {
       "path": "docs/pi-runtime.md",
-      "size": 7283,
-      "sha256": "3e9199c02ce15463aace71b420ffa2d99f0c1b49c2c1799500545f2d1a63fb5b"
+      "size": 7727,
+      "sha256": "da2586f91ebe24476194c8505c101d4d842b51de0f23512970aaaa1d8cc5ee6b"
     },
     {
       "path": "docs/production-compiler.md",
@@ -363,8 +363,8 @@
     },
     {
       "path": "docs/sidebar-chat.md",
-      "size": 7306,
-      "sha256": "7dd12e1454ed5d4c5ebc2be4cce704d0c0cf5d870fee99cbecdd9441d297dfe7"
+      "size": 7780,
+      "sha256": "fb5b89ecb8d304c436a908f96a8cf10e61250cbff06a7799b26c69dcbdf8acde"
     },
     {
       "path": "docs/small-model-reliability.md",
@@ -622,16 +622,6 @@
       "sha256": "4d36fb7ca399fa159cc7cfc8b1788bb6760a4968a65edd1fa3cebcec5a7db343"
     },
     {
-      "path": "pi/bundled-skills/qwen-image/SKILL.md",
-      "size": 1248,
-      "sha256": "fca9ee26bc0202a5a04565270f16ad21a21f0febd452b214ac9d054ffd5ae0b4"
-    },
-    {
-      "path": "pi/bundled-skills/qwen-image/skill.json",
-      "size": 166,
-      "sha256": "552700df3a8189f419da8e6de33c12c9387067668d46c760b1d58c8bd4bdce99"
-    },
-    {
       "path": "pi/bundled-skills/qwen-image-edit/SKILL.md",
       "size": 1257,
       "sha256": "b148e91fb497737a26682c4352661a26ba6eba7f129c298ea7a001454281acc5"
@@ -640,6 +630,16 @@
       "path": "pi/bundled-skills/qwen-image-edit/skill.json",
       "size": 185,
       "sha256": "80fd84bd121a7c1c5fcc0b761e4a1916446f9a7e4fde478bacd0b6617f59802f"
+    },
+    {
+      "path": "pi/bundled-skills/qwen-image/SKILL.md",
+      "size": 1248,
+      "sha256": "fca9ee26bc0202a5a04565270f16ad21a21f0febd452b214ac9d054ffd5ae0b4"
+    },
+    {
+      "path": "pi/bundled-skills/qwen-image/skill.json",
+      "size": 166,
+      "sha256": "552700df3a8189f419da8e6de33c12c9387067668d46c760b1d58c8bd4bdce99"
     },
     {
       "path": "pi/bundled-skills/qwen3-tts/SKILL.md",
@@ -764,7 +764,7 @@
     {
       "path": "pyproject.toml",
       "size": 642,
-      "sha256": "dcaabbd0394c22f963aec33e113d9d058906ad60bbdec487d263c2d26ed8dc9a"
+      "sha256": "3397c334f1723bdf4906daa95ff004f40d36cf4ac1cdbb9bc82188e910aa9630"
     },
     {
       "path": "requirements.txt",
@@ -809,7 +809,7 @@
     {
       "path": "tests/test_license_and_release.py",
       "size": 1055,
-      "sha256": "9e92df938db9bfa8daddcb75e100f65ea5f38d6e254684ab796bf5faf5ce0a62"
+      "sha256": "30cc90f006b7f04836845edfc479d30305bab2649c58c81fb20c6f4f05a85752"
     },
     {
       "path": "tests/test_media_plans.py",
@@ -828,8 +828,8 @@
     },
     {
       "path": "tests/test_slash_commands_local_llm.py",
-      "size": 16608,
-      "sha256": "87ebdfe2cc421af03af3e90424bcd643a29198bb5ac61fc9479f4a98e494ad49"
+      "size": 21808,
+      "sha256": "c106b8485b35582cd1bfac8a0bc537671ad9ae28d2d8db763c8ea415cdb398d2"
     },
     {
       "path": "tests/test_tutorial_nle.py",
@@ -843,8 +843,8 @@
     },
     {
       "path": "web/pi_agent.js",
-      "size": 45174,
-      "sha256": "f41299837052ae5878f2e7b48e62db06e592d57e8dbf7d2f2c20650a0229ff79"
+      "size": 46398,
+      "sha256": "c0e209571fbcdac030a7a45cfbd8e92d64454d19594311a9c4184fd1f01f5078"
     }
   ]
 }

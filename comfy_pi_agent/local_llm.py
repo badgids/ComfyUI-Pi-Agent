@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -135,69 +136,98 @@ def _llama_headers() -> dict[str, str]:
     return {"Authorization": f"Bearer {key}"} if key else {}
 
 
+def _model_entries(payload: Any) -> list[Any]:
+    """Return model rows from common OpenAI/Ollama/llama.cpp payload shapes."""
+    if isinstance(payload, list):
+        return payload
+    if not isinstance(payload, dict):
+        return []
+    for key in ("data", "models"):
+        value = payload.get(key)
+        if isinstance(value, list):
+            return value
+    return []
+
+
 def _extract_models(kind: str, payload: Any) -> list[str]:
     normalized = _normalize_kind(kind)
     found: list[str] = []
-    if normalized == "ollama" and isinstance(payload, dict):
-        for item in payload.get("models") or []:
-            if isinstance(item, dict):
-                model_id = item.get("name") or item.get("model")
-                if model_id:
-                    found.append(str(model_id))
-    elif normalized == "llama.cpp" and isinstance(payload, dict):
-        for item in payload.get("data") or []:
-            if not isinstance(item, dict):
-                continue
-            status = item.get("status") if isinstance(item.get("status"), dict) else {}
-            # Router /models is the authoritative list of models the host can route to.
-            # Include unloaded models because llama.cpp router autoloads requested models
-            # by default; omit only entries that the router has explicitly marked failed.
-            # Single-model /v1/models responses have no router status and remain usable.
-            if bool(status.get("failed", False)):
-                continue
+    for item in _model_entries(payload):
+        if isinstance(item, str):
+            found.append(item)
+            continue
+        if not isinstance(item, dict):
+            continue
+        if normalized == "ollama":
+            model_id = item.get("name") or item.get("model") or item.get("id")
+        else:
+            if normalized == "llama.cpp":
+                status = item.get("status") if isinstance(item.get("status"), dict) else {}
+                # Router /models is the authoritative catalog. Keep unloaded/sleeping
+                # presets; omit only entries the router explicitly says have failed.
+                if bool(status.get("failed", False)):
+                    continue
             model_id = item.get("id") or item.get("name") or item.get("model")
-            if model_id:
-                found.append(str(model_id))
-    elif isinstance(payload, dict):
-        for item in payload.get("data") or payload.get("models") or []:
-            if isinstance(item, dict):
-                model_id = item.get("id") or item.get("name") or item.get("model")
-                if model_id:
-                    found.append(str(model_id))
-            elif isinstance(item, str):
-                found.append(item)
-    elif isinstance(payload, list):
-        for item in payload:
-            if isinstance(item, dict):
-                model_id = item.get("id") or item.get("name") or item.get("model")
-                if model_id:
-                    found.append(str(model_id))
-            elif isinstance(item, str):
-                found.append(item)
+        if model_id:
+            found.append(str(model_id))
     return sorted(dict.fromkeys(found), key=str.lower)
 
 
-def probe_local_server(kind: str, base_url: str = "", timeout: float = 1.25) -> dict[str, Any]:
+def _looks_like_llama_router_payload(payload: Any) -> bool:
+    """Detect router metadata without relying on any user's model names or files."""
+    entries = _model_entries(payload)
+    return any(
+        isinstance(item, dict)
+        and ("status" in item or "source" in item or "aliases" in item or "can_remove" in item)
+        for item in entries
+    )
+
+def probe_local_server(
+    kind: str,
+    base_url: str = "",
+    timeout: float = 2.5,
+    reload_catalog: bool = False,
+) -> dict[str, Any]:
+    """Discover a local host's full model catalog on explicit user action only.
+
+    llama.cpp router mode is handled specially: /models is queried before /v1/models
+    because the latter may expose only the currently loaded/default child model. A
+    reload is optional and receives a larger timeout because reparsing presets can be
+    noticeably slower than an ordinary catalog read.
+    """
     normalized = _normalize_kind(kind)
     if normalized not in LOCAL_SERVER_PRESETS:
         normalized = "openai-compatible"
     root = normalize_base_url(normalized, base_url)
+
+    attempts: list[tuple[str, float, str]] = []
     if normalized == "ollama":
-        probe_urls = [root + "/api/tags"]
+        attempts = [(root + "/api/tags", max(1.0, float(timeout)), "native")]
     elif normalized == "llama.cpp":
         router_root = root[:-3].rstrip("/") if root.endswith("/v1") else root
-        # Router mode's /models endpoint lists every routable model, including models
-        # that are currently unloaded and can be autoloaded on demand. Single-model
-        # llama-server does not need that router endpoint, so fall back to /v1/models.
-        probe_urls = [router_root + "/models?reload=1", router_root + "/v1/models"]
+        # Normal sidebar/session refresh uses the router's already-built complete catalog.
+        # Explicit Refresh asks llama.cpp to re-read its preset source first; that operation
+        # can be slower, so it receives a deliberately larger timeout. If reload fails or
+        # times out, fall back to the router's cached full catalog before considering the
+        # single-model OpenAI endpoint.
+        if reload_catalog:
+            attempts.append((router_root + "/models?reload=1", max(15.0, float(timeout)), "router-reload"))
+        attempts.append((router_root + "/models", max(2.5, float(timeout)), "router"))
+        # Compatibility fallback for a single-model llama-server or older builds that do
+        # not expose router metadata. Never prefer this over a successful router catalog.
+        attempts.append((router_root + "/v1/models", max(2.5, float(timeout)), "openai"))
     else:
-        probe_urls = [(root if root.endswith("/v1") else root + "/v1") + "/models"]
+        attempts = [((root if root.endswith("/v1") else root + "/v1") + "/models", max(1.0, float(timeout)), "openai")]
+
     last_exc: Exception | None = None
-    for probe_url in probe_urls:
+    best_empty: dict[str, Any] | None = None
+    for probe_url, request_timeout, mode in attempts:
         try:
-            payload = _json_request(probe_url, timeout=timeout)
+            headers = _llama_headers() if normalized == "llama.cpp" else None
+            payload = _json_request(probe_url, timeout=request_timeout, headers=headers)
             models = _extract_models(normalized, payload)
-            return {
+            router = normalized == "llama.cpp" and _looks_like_llama_router_payload(payload)
+            result = {
                 "available": True,
                 "kind": normalized,
                 "provider": local_provider_id(normalized),
@@ -206,10 +236,19 @@ def probe_local_server(kind: str, base_url: str = "", timeout: float = 1.25) -> 
                 "pi_base_url": openai_base_url(normalized, root),
                 "probe_url": probe_url,
                 "models": models,
+                "router": router,
+                "catalog_mode": mode,
                 "message": f"Detected {LOCAL_SERVER_PRESETS[normalized]['label']}" + (f" with {len(models)} model(s)." if models else "."),
             }
+            if models:
+                # Never replace a successful full router catalog with /v1/models.
+                return result
+            best_empty = best_empty or result
         except (urllib.error.URLError, TimeoutError, OSError, ValueError, json.JSONDecodeError) as exc:
             last_exc = exc
+
+    if best_empty is not None:
+        return best_empty
     exc = last_exc or RuntimeError("No model endpoint responded.")
     return {
         "available": False,
@@ -218,33 +257,77 @@ def probe_local_server(kind: str, base_url: str = "", timeout: float = 1.25) -> 
         "label": LOCAL_SERVER_PRESETS[normalized]["label"],
         "base_url": root,
         "pi_base_url": openai_base_url(normalized, root),
-        "probe_url": probe_urls[-1],
+        "probe_url": attempts[-1][0],
         "models": [],
+        "router": False,
+        "catalog_mode": "unavailable",
         "message": f"Not detected: {type(exc).__name__}: {exc}",
     }
 
-
-def llama_router_models(base_url: str = "", reload: bool = False, timeout: float = 2.0) -> dict[str, Any]:
+def llama_router_models(base_url: str = "", reload: bool = False, timeout: float = 5.0) -> dict[str, Any]:
+    """Read every model known to a llama.cpp router, including unloaded presets."""
     root = normalize_base_url("llama.cpp", base_url)
     if root.endswith("/v1"):
         root = root[:-3].rstrip("/")
     query = "?reload=1" if reload else ""
-    payload = _json_request(root + "/models" + query, timeout=timeout, headers=_llama_headers())
-    entries = payload.get("data") if isinstance(payload, dict) else []
-    entries = entries if isinstance(entries, list) else []
+    payload = _json_request(
+        root + "/models" + query,
+        timeout=max(15.0, float(timeout)) if reload else max(2.5, float(timeout)),
+        headers=_llama_headers(),
+    )
+    entries = _model_entries(payload)
     models = []
     for item in entries:
         if not isinstance(item, dict):
             continue
         status = item.get("status") if isinstance(item.get("status"), dict) else {}
+        model_id = str(item.get("id") or item.get("name") or item.get("model") or "")
+        if not model_id:
+            continue
         models.append({
-            "id": str(item.get("id") or item.get("name") or item.get("model") or ""),
+            "id": model_id,
             "status": str(status.get("value") or "unknown"),
             "failed": bool(status.get("failed", False)),
+            "exit_code": status.get("exit_code"),
+            "source": str(item.get("source") or ""),
+            "aliases": list(item.get("aliases") or []) if isinstance(item.get("aliases"), list) else [],
             "path": str(item.get("path") or ""),
         })
+    if not _looks_like_llama_router_payload(payload):
+        raise ValueError("The endpoint responded, but it is not a llama.cpp router model catalog.")
     return {"ok": True, "base_url": root, "models": models}
 
+
+def wait_for_llama_router_model(
+    base_url: str,
+    model: str,
+    timeout: float = 180.0,
+    poll_interval: float = 0.5,
+) -> dict[str, Any]:
+    """Wait until a selected router model is actually ready before Pi is launched."""
+    model_id = str(model or "").strip()
+    if not model_id:
+        raise ValueError("A llama.cpp model id is required.")
+    deadline = time.monotonic() + max(5.0, float(timeout))
+    last_status = "unknown"
+    last_entry: dict[str, Any] = {}
+    while time.monotonic() < deadline:
+        catalog = llama_router_models(base_url, timeout=min(5.0, max(2.5, float(timeout))))
+        entry = next((item for item in catalog.get("models", []) if str(item.get("id") or "") == model_id), None)
+        if entry is None:
+            raise ValueError(f"llama.cpp router no longer reports model '{model_id}'. Refresh the model list.")
+        last_entry = entry
+        last_status = str(entry.get("status") or "unknown").lower()
+        if bool(entry.get("failed", False)):
+            detail = f" exit_code={entry.get('exit_code')}" if entry.get("exit_code") is not None else ""
+            raise RuntimeError(f"llama.cpp failed to load '{model_id}'.{detail}")
+        if last_status in {"loaded", "ready", "sleeping"}:
+            return {"ready": True, "model": model_id, "status": last_status, "entry": entry}
+        time.sleep(max(0.1, float(poll_interval)))
+    raise TimeoutError(
+        f"Timed out after {float(timeout):.0f}s waiting for llama.cpp model '{model_id}' "
+        f"to become ready (last status: {last_status})."
+    )
 
 def llama_router_action(
     action: str,
@@ -328,6 +411,7 @@ def configure_local_provider(
     model: str = "",
     provider_id: str = "",
     api_key_env: str = "",
+    reload_catalog: bool = False,
 ) -> dict[str, Any]:
     """Register a discovered local server in Pi's supported models.json catalog.
 
@@ -344,14 +428,19 @@ def configure_local_provider(
     root = normalize_base_url(normalized, base_url)
     requested_models = [str(item).strip() for item in (models or []) if str(item).strip()]
     selected_model = str(model or "").strip()
+    discovered_models = not bool(requested_models)
 
     if not requested_models:
-        probe = probe_local_server(normalized, root)
+        probe = probe_local_server(normalized, root, reload_catalog=reload_catalog)
         if not probe.get("available"):
             raise ValueError(str(probe.get("message") or "Local server could not be reached."))
         requested_models = list(probe.get("models") or [])
     if selected_model and selected_model not in requested_models:
-        requested_models.insert(0, selected_model)
+        if discovered_models:
+            # Do not resurrect a stale saved model that the host no longer reports.
+            selected_model = ""
+        else:
+            requested_models.insert(0, selected_model)
     if not selected_model and requested_models:
         selected_model = requested_models[0]
     if not requested_models:

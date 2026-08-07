@@ -36,6 +36,7 @@ from .local_llm import (
     llama_router_models,
     local_provider_id,
     probe_local_server,
+    wait_for_llama_router_model,
 )
 
 
@@ -335,31 +336,39 @@ class ChatRuntimeManager:
         self._close_live(session_id)
 
     @staticmethod
-    def _ensure_llama_router_model(base_url: str, model: str) -> dict[str, Any]:
-        """Best-effort router load so model switching also works with autoload disabled."""
+    def _ensure_llama_router_model(
+        base_url: str,
+        model: str,
+        timeout: float = 180.0,
+    ) -> dict[str, Any]:
+        """Load a llama.cpp router model and wait for actual readiness.
+
+        /models/load is asynchronous in current llama.cpp. Treating its HTTP 200 as
+        "model ready" races Pi startup and the first prompt. This helper waits until
+        the router reports loaded/sleeping, or returns a precise failure/timeout.
+        """
         model_id = str(model or "").strip()
         if not model_id:
-            return {"attempted": False, "status": "no-model"}
+            return {"attempted": False, "status": "no-model", "ready": False}
         try:
-            catalog = llama_router_models(base_url, timeout=2.0)
+            catalog = llama_router_models(base_url, timeout=5.0)
         except Exception:
-            # Single-model llama-server does not need the router management API.
-            return {"attempted": False, "status": "single-model-or-router-unavailable"}
+            # A single-model llama-server has no router lifecycle to manage.
+            return {"attempted": False, "status": "single-model-or-router-unavailable", "ready": True}
         entry = next((item for item in catalog.get("models", []) if str(item.get("id") or "") == model_id), None)
         if not entry:
-            return {"attempted": False, "status": "not-in-router-catalog"}
-        status = str(entry.get("status") or "unknown")
-        if status in {"loaded", "loading", "sleeping"}:
-            return {"attempted": False, "status": status}
-        if status != "unloaded" or bool(entry.get("failed", False)):
-            return {"attempted": False, "status": status}
-        try:
-            result = llama_router_action("load", model_id, base_url, timeout=20.0)
-            return {"attempted": True, "status": "load-requested", "result": result}
-        except Exception as exc:
-            # The normal router default is autoload-on-request, so a management-route
-            # failure should not block selecting the model in Pi.
-            return {"attempted": True, "status": "load-request-failed", "error": f"{type(exc).__name__}: {exc}"}
+            raise ValueError(f"llama.cpp router does not report model '{model_id}'. Refresh the model list.")
+        status = str(entry.get("status") or "unknown").lower()
+        if bool(entry.get("failed", False)):
+            raise RuntimeError(f"llama.cpp reports model '{model_id}' as failed. Refresh or repair the router model preset.")
+        attempted = False
+        if status == "unloaded":
+            llama_router_action("load", model_id, base_url, timeout=10.0)
+            attempted = True
+        if status not in {"loaded", "ready", "sleeping"}:
+            ready = wait_for_llama_router_model(base_url, model_id, timeout=max(5.0, float(timeout)))
+            return {"attempted": attempted, **ready}
+        return {"attempted": attempted, "ready": True, "status": status, "model": model_id, "entry": entry}
 
     def activate_local_provider(
         self,
@@ -370,6 +379,7 @@ class ChatRuntimeManager:
         models: list[str] | None = None,
         provider_id: str = "",
         api_key_env: str = "",
+        reload_catalog: bool = False,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         """Probe/configure a local provider and make it the chat's active model source.
 
@@ -378,13 +388,10 @@ class ChatRuntimeManager:
         written models.json provider and selected model.
         """
         result = configure_local_provider(
-            kind, base_url, models=models, model=model, provider_id=provider_id, api_key_env=api_key_env
+            kind, base_url, models=models, model=model, provider_id=provider_id, api_key_env=api_key_env,
+            reload_catalog=reload_catalog,
         )
         document = self.store.load(session_id)
-        if str(result.get("kind") or "") == "llama.cpp" and str(result.get("model") or ""):
-            result["router_load"] = self._ensure_llama_router_model(
-                str(result.get("base_url") or ""), str(result.get("model") or "")
-            )
         document["provider"] = str(result.get("provider") or "")
         document["model"] = str(result.get("model") or "")
         document["local_llm"] = {
@@ -530,7 +537,13 @@ class ChatRuntimeManager:
             "runtime_error": runtime_error,
         }
 
-    def select_model(self, session_id: str, provider: str = "", model: str = "") -> tuple[dict[str, Any], dict[str, Any]]:
+    def select_model(
+        self,
+        session_id: str,
+        provider: str = "",
+        model: str = "",
+        wait_timeout: float = 180.0,
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
         """Persist a provider/model selection and switch the live Pi process when possible."""
         document = self.store.load(session_id)
         provider_value = str(provider or "").strip()
@@ -558,7 +571,9 @@ class ChatRuntimeManager:
             str(local.get("kind") or "") == "llama.cpp"
             and str(local.get("provider") or "") == provider_value
         ):
-            self._ensure_llama_router_model(str(local.get("base_url") or ""), model_value)
+            self._ensure_llama_router_model(
+                str(local.get("base_url") or ""), model_value, timeout=max(5.0, float(wait_timeout))
+            )
 
         with self._guard:
             live = self._live.get(session_id)
@@ -1105,6 +1120,16 @@ class ChatRuntimeManager:
                 live.client.close()
                 live = None
             if live is None:
+                if (
+                    str(local_config.get("kind") or "") == "llama.cpp"
+                    and str(local_config.get("provider") or "") == str(provider or "")
+                    and str(model or "").strip()
+                ):
+                    self._ensure_llama_router_model(
+                        str(local_config.get("base_url") or ""),
+                        str(model),
+                        timeout=max(30.0, float(timeout)),
+                    )
                 client = PiRpcClient(
                     resolved_executable,
                     project_dir=project_directory,

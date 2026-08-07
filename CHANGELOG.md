@@ -4,6 +4,17 @@
 **Navigation:** [Project README](README.md) · [Documentation home](docs/index.md) · [Previous: Third-party notices](THIRD_PARTY_NOTICES.md) · [Next: Release notes](RELEASE_NOTES.md)
 <!-- DOC_NAV_END -->
 
+## 0.1.12 — llama.cpp router readiness and complete local catalogs
+
+- Read llama.cpp router `/models` as the authoritative full preset catalog, including unloaded entries, before single-model fallback.
+- Made explicit model refresh use the slower `?reload=1` path with a larger timeout and cached-catalog fallback.
+- Wait for a selected llama.cpp router model to become ready before Pi RPC startup or live model switching.
+- Probe Pi RPC readiness before the first chat command and include stderr/exit-code diagnostics on startup failure.
+- Refresh stale local model lists when the sidebar chat is rendered, while retaining zero local-server probing at plugin import/startup.
+- Fixed dark-mode Provider/Model dropdown option colors.
+- Added tests proving the llama.cpp runtime has no static model catalog and uses discovered/supplied model IDs.
+
+
 ## 0.1.11 — Main chat provider/model switching
 
 - Added Provider → Model selectors directly beneath the chat composer.

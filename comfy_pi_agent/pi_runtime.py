@@ -126,8 +126,14 @@ class PiRpcClient:
         )
         self.events: queue.Queue[dict[str, Any]] = queue.Queue()
         self.stderr_lines: queue.Queue[str] = queue.Queue()
+        self.stderr_history: list[str] = []
+        self._stderr_lock = threading.Lock()
         threading.Thread(target=self._read_stdout, daemon=True).start()
         threading.Thread(target=self._read_stderr, daemon=True).start()
+        # Do not let the first real chat prompt double as an RPC startup probe. Wait
+        # until Pi is actually accepting JSONL commands, and surface startup stderr if
+        # it exits because a provider/model/configuration is invalid.
+        self._wait_until_rpc_ready(timeout=min(30.0, max(10.0, float(self.timeout))))
         # ComfyUI-Pi owns long-session context lifecycle. Disable Pi's built-in auto
         # compactor so it cannot race the external handoff/reset policy. Older Pi builds
         # that do not expose this RPC command remain usable, but the status is reported.
@@ -153,11 +159,34 @@ class PiRpcClient:
     def _read_stderr(self) -> None:
         assert self.process.stderr is not None
         for raw in self.process.stderr:
-            self.stderr_lines.put(raw.rstrip("\r\n"))
+            line = raw.rstrip("\r\n")
+            self.stderr_lines.put(line)
+            with self._stderr_lock:
+                self.stderr_history.append(line)
+                if len(self.stderr_history) > 120:
+                    del self.stderr_history[:-120]
+
+    def _exit_diagnostic(self, prefix: str = "Pi exited") -> RuntimeError:
+        code = self.process.poll()
+        with self._stderr_lock:
+            lines = [line for line in self.stderr_history[-20:] if line.strip()]
+        detail = "\n".join(lines).strip()
+        message = f"{prefix} (exit code {code})." if code is not None else prefix
+        if detail:
+            message += "\nPi stderr:\n" + detail
+        return RuntimeError(message)
+
+    def _wait_until_rpc_ready(self, timeout: float = 30.0) -> None:
+        try:
+            self.command({"type": "get_state"}, timeout=max(2.0, float(timeout)))
+        except Exception as exc:
+            if self.process.poll() is not None:
+                raise self._exit_diagnostic("Pi exited during RPC startup") from exc
+            raise RuntimeError(f"Pi RPC did not become ready: {exc}") from exc
 
     def send(self, payload: dict[str, Any]) -> None:
         if self.process.poll() is not None:
-            raise RuntimeError("Pi exited before accepting the command.")
+            raise self._exit_diagnostic("Pi exited before accepting the command")
         assert self.process.stdin is not None
         self.process.stdin.write(json.dumps(payload, ensure_ascii=False) + "\n")
         self.process.stdin.flush()
@@ -171,7 +200,7 @@ class PiRpcClient:
         deadline = time.monotonic() + max(1.0, float(timeout))
         while time.monotonic() < deadline:
             if self.process.poll() is not None and self.events.empty():
-                break
+                raise self._exit_diagnostic(f"Pi exited while handling RPC command {body.get('type')}")
             try:
                 event = self.events.get(timeout=0.2)
             except queue.Empty:
