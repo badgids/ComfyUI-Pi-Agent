@@ -4,6 +4,14 @@
 **Navigation:** [Project README](README.md) · [Documentation home](docs/index.md) · [Previous: Third-party notices](THIRD_PARTY_NOTICES.md) · [Next: Release notes](RELEASE_NOTES.md)
 <!-- DOC_NAV_END -->
 
+## 0.1.14 — llama.cpp router readiness contract correction
+
+- Removed the invalid model-specific `/props?model=...&autoload=false` readiness request that could return HTTP 400 on current llama.cpp routers.
+- Match llama.cpp's own router test lifecycle: request `/models/load`, poll `/models` until the selected preset is `loaded`, then verify routing with a lightweight model-targeted `POST /tokenize`.
+- Keep sleeping/unloaded models non-ready until the router completes their load/wake transition.
+- Continue using the user's configured chat timeout as the complete readiness budget; no personal timeout is hardcoded.
+- Preserve the compact gear settings control and all existing lazy-context/local-provider behavior.
+
 ## 0.1.13 — Reliable llama.cpp wake/readiness
 
 - Treat llama.cpp router `sleeping` as not-ready and explicitly wake it before Pi is allowed to send a prompt.

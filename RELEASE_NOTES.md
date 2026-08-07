@@ -1,8 +1,16 @@
-# Release notes — 0.1.13
+# Release notes — 0.1.14
 
 <!-- DOC_NAV_START -->
 **Navigation:** [Project README](README.md) · [Documentation home](docs/index.md) · [Previous: Changelog](CHANGELOG.md) · [Next: Project inventory](PROJECT_INVENTORY.md)
 <!-- DOC_NAV_END -->
+
+## 0.1.14 — corrected llama.cpp router readiness probe
+
+- Removed the unsupported model-routed `/props?model=...&autoload=false` readiness probe that could immediately return HTTP 400.
+- After an unloaded or sleeping model is requested through `/models/load`, ComfyUI-Pi now follows llama.cpp's own tested router sequence: poll `/models` until the selected model is `loaded`, then send a tiny `POST /tokenize` with that model ID to prove the routed child server accepts requests.
+- The `/tokenize` readiness check performs no text generation and adds nothing to Pi's conversation context.
+- The existing user-configured chat timeout remains the entire readiness budget; no user's timeout value is embedded in the code.
+- The gear-only chat settings button from 0.1.13 remains unchanged.
 
 ## 0.1.13 — llama.cpp load/wake readiness and compact settings control
 

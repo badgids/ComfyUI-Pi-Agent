@@ -4,7 +4,7 @@ A ComfyUI custom-node package that connects **Pi Agent** reasoning with practica
 
 **Creator:** Alan D. Guice (**Badgids**)  
 **License:** GPL-3.0  
-**Release:** 0.1.13
+**Release:** 0.1.14
 
 > This project is designed to be powerful without being confusing. The documentation uses plain language, short steps, and concrete examples. Technical details are kept intact instead of being hidden or oversimplified.
 
@@ -44,7 +44,7 @@ Every major tool is available as a normal ComfyUI node. The optional sidebar is 
 
 ## Important first-release boundary
 
-Version 0.1.13 provides the working foundation, project compilers, tutorial compiler, document tools, workflow intelligence, Pi RPC connection, manifests, profiles, examples, and tests.
+Version 0.1.14 provides the working foundation, project compilers, tutorial compiler, document tools, workflow intelligence, Pi RPC connection, manifests, profiles, examples, and tests.
 
 It does **not** bundle large AI model weights, third-party custom-node packs, Pi itself, Node.js, FFmpeg, or Kdenlive. It detects those tools when they are installed. Missing optional tools do not stop ComfyUI from starting.
 
@@ -344,7 +344,7 @@ The custom node discovers Pi in this order:
 
 Pi is started with `--mode rpc`. The Python client sends one JSON object per line and reads Pi events until the agent is fully settled.
 
-Pi still needs a model provider. In the optional sidebar, **Provider** then **Model** are directly beneath the chat box. The Provider dropdown covers Pi's current built-in provider catalog plus local/custom providers; hosted models come from Pi's live available-model catalog, while local hosts populate their own reported models on selection. For llama.cpp router mode, ComfyUI-Pi reads the router's live `/models` catalog so configured-but-unloaded presets remain selectable. Unloaded or sleeping router models are explicitly woken, and ComfyUI-Pi waits for the routed model endpoint to become usable before launching Pi, using the user's configured chat timeout as the readiness budget. No private model name or personal timeout is hardcoded. Common local endpoints are automatic and endpoint editing is advanced/optional. Provider credentials and models are managed by Pi, not written into ComfyUI workflows.
+Pi still needs a model provider. In the optional sidebar, **Provider** then **Model** are directly beneath the chat box. The Provider dropdown covers Pi's current built-in provider catalog plus local/custom providers; hosted models come from Pi's live available-model catalog, while local hosts populate their own reported models on selection. For llama.cpp router mode, ComfyUI-Pi reads the router's live `/models` catalog so configured-but-unloaded presets remain selectable. Unloaded or sleeping router models are explicitly woken. ComfyUI-Pi follows llama.cpp's router lifecycle by polling `/models` until the selected preset is `loaded`, then performs a lightweight routed `/tokenize` probe for that exact model before launching Pi. The user's configured chat timeout is the complete readiness budget. No private model name or personal timeout is hardcoded. Common local endpoints are automatic and endpoint editing is advanced/optional. Provider credentials and models are managed by Pi, not written into ComfyUI workflows.
 
 Read [docs/pi-runtime.md](docs/pi-runtime.md) and [docs/local-llm-slash-commands.md](docs/local-llm-slash-commands.md).
 

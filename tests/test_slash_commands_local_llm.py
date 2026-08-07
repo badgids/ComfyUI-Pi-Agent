@@ -210,12 +210,12 @@ class LocalLlmTests(unittest.TestCase):
             {"ok": True, "models": [{"id": "cold-model", "status": "loaded", "failed": False}]},
         ]
         with patch("comfy_pi_agent.local_llm.llama_router_models", side_effect=sequence), \
-             patch("comfy_pi_agent.local_llm.llama_router_model_props", return_value={"is_sleeping": False, "model_path": "/dynamic/path.gguf"}) as props, \
+             patch("comfy_pi_agent.local_llm.llama_router_model_tokenize", return_value={"tokens": [1, 2, 3]}) as tokenize, \
              patch("comfy_pi_agent.local_llm.time.sleep", return_value=None):
             result = wait_for_llama_router_model("http://127.0.0.1:8080", "cold-model", timeout=10, poll_interval=0.1)
         self.assertTrue(result["ready"])
         self.assertEqual(result["status"], "loaded")
-        props.assert_called_once()
+        tokenize.assert_called_once_with("http://127.0.0.1:8080", "cold-model", timeout=5.0)
 
     def test_llama_router_sleeping_is_not_treated_as_ready(self):
         sequence = [
@@ -224,11 +224,17 @@ class LocalLlmTests(unittest.TestCase):
             {"ok": True, "models": [{"id": "sleepy-model", "status": "loaded", "failed": False}]},
         ]
         with patch("comfy_pi_agent.local_llm.llama_router_models", side_effect=sequence), \
-             patch("comfy_pi_agent.local_llm.llama_router_model_props", return_value={"is_sleeping": False}), \
+             patch("comfy_pi_agent.local_llm.llama_router_model_tokenize", return_value={"tokens": [1]}), \
              patch("comfy_pi_agent.local_llm.time.sleep", return_value=None):
             result = wait_for_llama_router_model("http://127.0.0.1:8080", "sleepy-model", timeout=11, poll_interval=0.1)
         self.assertTrue(result["ready"])
         self.assertEqual(result["status"], "loaded")
+
+    def test_llama_router_readiness_uses_supported_tokenize_probe_not_props_query(self):
+        source = (ROOT / "comfy_pi_agent" / "local_llm.py").read_text(encoding="utf-8")
+        self.assertIn('root + "/tokenize"', source)
+        self.assertNotIn('/props?" + query', source)
+        self.assertNotIn('autoload": "false"', source)
 
     def test_single_model_health_waits_through_503(self):
         import urllib.error

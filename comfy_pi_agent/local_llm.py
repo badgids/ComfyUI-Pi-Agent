@@ -5,7 +5,6 @@ import os
 import tempfile
 import time
 import urllib.error
-import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Any
@@ -298,26 +297,32 @@ def llama_router_models(base_url: str = "", reload: bool = False, timeout: float
     return {"ok": True, "base_url": root, "models": models}
 
 
-def llama_router_model_props(
+def llama_router_model_tokenize(
     base_url: str,
     model: str,
     timeout: float = 5.0,
 ) -> dict[str, Any]:
-    """Ask the router for the selected model's child-server properties without autoloading it."""
+    """Send llama.cpp router's lightweight routed tokenize probe to one model.
+
+    Upstream llama.cpp router tests use POST /tokenize with a model id to prove that
+    requests are actually reaching the selected child server. This does not generate
+    assistant text and does not add anything to Pi's conversation context.
+    """
     model_id = str(model or "").strip()
     if not model_id:
         raise ValueError("A llama.cpp model id is required.")
     root = normalize_base_url("llama.cpp", base_url)
     if root.endswith("/v1"):
         root = root[:-3].rstrip("/")
-    query = urllib.parse.urlencode({"model": model_id, "autoload": "false"})
     payload = _json_request(
-        root + "/props?" + query,
+        root + "/tokenize",
         timeout=max(0.25, float(timeout)),
+        method="POST",
+        payload={"model": model_id, "content": "ComfyUI-Pi readiness"},
         headers=_llama_headers(),
     )
     if not isinstance(payload, dict):
-        raise ValueError("llama.cpp returned an invalid /props response.")
+        raise ValueError("llama.cpp returned an invalid /tokenize response.")
     return payload
 
 
@@ -364,12 +369,15 @@ def wait_for_llama_router_model(
     timeout: float = 180.0,
     poll_interval: float = 0.5,
 ) -> dict[str, Any]:
-    """Wait until the router reports the child loaded *and* its routed /props endpoint answers.
+    """Wait for llama.cpp router's supported load lifecycle and routed request readiness.
 
-    A router entry in ``sleeping`` state is intentionally not ready: sleeping releases the
-    model weights, so the first real request would otherwise race the wake/reload cycle.
-    The caller-provided timeout is the complete wait budget; ComfyUI-Pi does not replace it
-    with a machine-specific timeout.
+    Current llama.cpp's own router tests define model loading as POST /models/load followed
+    by polling GET /models until the selected model reaches ``loaded``. Once loaded, this
+    function sends the same lightweight routed POST /tokenize style used by upstream tests
+    to verify that the selected child can actually accept a model-targeted request.
+
+    ``sleeping`` is not ready. The caller-provided timeout is the complete wait budget;
+    ComfyUI-Pi never substitutes a machine- or user-specific constant.
     """
     model_id = str(model or "").strip()
     if not model_id:
@@ -378,44 +386,41 @@ def wait_for_llama_router_model(
     deadline = time.monotonic() + budget
     last_status = "unknown"
     last_probe = "not attempted"
-    last_entry: dict[str, Any] = {}
     while time.monotonic() < deadline:
         remaining = max(0.1, deadline - time.monotonic())
         catalog = llama_router_models(base_url, timeout=min(5.0, remaining))
         entry = next((item for item in catalog.get("models", []) if str(item.get("id") or "") == model_id), None)
         if entry is None:
             raise ValueError(f"llama.cpp router no longer reports model '{model_id}'. Refresh the model list.")
-        last_entry = entry
         last_status = str(entry.get("status") or "unknown").lower()
         if bool(entry.get("failed", False)):
             detail = f" exit_code={entry.get('exit_code')}" if entry.get("exit_code") is not None else ""
             raise RuntimeError(f"llama.cpp failed to load '{model_id}'.{detail}")
+
         if last_status in {"loaded", "ready"}:
             try:
-                props = llama_router_model_props(base_url, model_id, timeout=min(5.0, remaining))
-                if bool(props.get("is_sleeping", False)):
-                    last_status = "sleeping"
-                    last_probe = "/props reports sleeping"
-                else:
-                    return {
-                        "ready": True,
-                        "model": model_id,
-                        "status": last_status,
-                        "entry": entry,
-                        "props": props,
-                    }
+                probe = llama_router_model_tokenize(base_url, model_id, timeout=min(5.0, remaining))
+                return {
+                    "ready": True,
+                    "model": model_id,
+                    "status": "loaded",
+                    "entry": entry,
+                    "probe": probe,
+                }
             except urllib.error.HTTPError as exc:
                 code = int(getattr(exc, "code", 0) or 0)
                 if code not in {404, 409, 425, 429, 503}:
                     raise
-                last_probe = f"/props HTTP {code}"
+                last_probe = f"/tokenize HTTP {code}"
             except (OSError, TimeoutError) as exc:
-                last_probe = f"/props {type(exc).__name__}: {exc}"
+                last_probe = f"/tokenize {type(exc).__name__}: {exc}"
         elif last_status == "sleeping":
             last_probe = "model is sleeping and still needs to wake"
         else:
             last_probe = f"router status is {last_status}"
+
         time.sleep(min(max(0.1, float(poll_interval)), max(0.1, deadline - time.monotonic())))
+
     raise TimeoutError(
         f"Timed out after {budget:.0f}s waiting for llama.cpp model '{model_id}' to become ready "
         f"(last router status: {last_status}; last readiness probe: {last_probe})."

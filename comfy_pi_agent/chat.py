@@ -341,11 +341,12 @@ class ChatRuntimeManager:
         model: str,
         timeout: float = 180.0,
     ) -> dict[str, Any]:
-        """Load/wake a llama.cpp router model and wait for its routed child to be usable.
+        """Load/wake a llama.cpp router model and wait for routed request readiness.
 
-        /models/load is asynchronous. ``sleeping`` is also not considered ready because
-        llama.cpp has released the model weights in that state. The caller's configured
-        timeout is passed through as the model-readiness budget.
+        /models/load is asynchronous. ``sleeping`` is not ready because llama.cpp has
+        released the model weights in that state. The wait follows llama.cpp's supported
+        router lifecycle: request load, poll /models until loaded, then verify a lightweight
+        routed /tokenize request. The caller's configured timeout is the entire budget.
         """
         model_id = str(model or "").strip()
         if not model_id:
@@ -368,9 +369,8 @@ class ChatRuntimeManager:
         if status in {"unloaded", "sleeping"}:
             llama_router_action("load", model_id, base_url, timeout=min(10.0, max(0.25, float(timeout))))
             attempted = True
-        # Even a router row that already says loaded gets one routed /props confirmation.
-        # This prevents Pi from starting against a stale catalog row or a child that has not
-        # reached its usable HTTP state yet.
+        # Even a router row that already says loaded gets a lightweight routed /tokenize
+        # confirmation before Pi is allowed to send the user's first real prompt.
         ready = wait_for_llama_router_model(base_url, model_id, timeout=float(timeout))
         return {"attempted": attempted, **ready}
 
