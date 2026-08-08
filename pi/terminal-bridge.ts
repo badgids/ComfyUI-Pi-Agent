@@ -234,6 +234,151 @@ export default function comfyUiPiTerminalBridge(pi: ExtensionAPI) {
     },
   });
 
+  const runMarkdownDiagramCli = async (mode: "flowchart" | "node", payload: Record<string, unknown>) => {
+    const configPath = process.env.COMFYUI_PI_BRIDGE_CONFIG || "";
+    if (!configPath) throw new Error("ComfyUI-Pi bridge config is unavailable.");
+    const python = process.env.COMFYUI_PI_PYTHON || "python3";
+    const requestPath = `${configPath}.diagram-${Date.now()}-${Math.random().toString(16).slice(2)}.json`;
+    try {
+      writeFileSync(requestPath, JSON.stringify(payload));
+      const result = await pi.exec(python, [
+        "-m", "comfy_pi_agent.markdown_diagram_cli",
+        mode,
+        "--request", requestPath,
+      ]);
+      const raw = String(result.stdout || "").trim();
+      if (!raw) throw new Error("Markdown diagram helper returned no result.");
+      return JSON.parse(raw);
+    } finally {
+      try { unlinkSync(requestPath); } catch {}
+    }
+  };
+
+  pi.registerTool({
+    name: "comfyui_markdown_flowchart",
+    label: "Markdown ASCII Flowchart + Image",
+    description:
+      "Create/update a deterministic ASCII flowchart in Markdown and render that same diagram as a project-relative SVG. " +
+      "Use layered/hierarchical layout, orthogonal connectors, and consistent +-|><^v ASCII grammar. Existing ASCII can be vectorized directly.",
+    parameters: Type.Object({
+      markdown_path: Type.String(),
+      diagram_id: Type.String(),
+      alt_text: Type.Optional(Type.String()),
+      direction: Type.Optional(Type.String()),
+      nodes: Type.Optional(Type.Array(Type.Object({
+        id: Type.String(),
+        label: Type.String(),
+        shape: Type.Optional(Type.String()),
+      }))),
+      edges: Type.Optional(Type.Array(Type.Object({
+        from: Type.String(),
+        to: Type.String(),
+        label: Type.Optional(Type.String()),
+      }))),
+      ascii_text: Type.Optional(Type.String()),
+      include_ascii: Type.Optional(Type.Boolean()),
+    }),
+    async execute(_toolCallId, params) {
+      const markdownPath = String(params.markdown_path || "");
+      if (!markdownPath || !workflowPathAllowed(markdownPath)) {
+        return {
+          content: [{ type: "text", text: "ERROR: Markdown path is outside the current project/cwd safety boundary." }],
+          details: { ok: false, error: "path_outside_allowed_roots" },
+        };
+      }
+      const asciiText = String(params.ascii_text || "");
+      const nodes = Array.isArray(params.nodes) ? params.nodes : [];
+      if (!asciiText.trim() && !nodes.length) {
+        return {
+          content: [{ type: "text", text: "ERROR: provide either ascii_text or at least one flowchart node." }],
+          details: { ok: false, error: "empty_diagram" },
+        };
+      }
+      const direction = String(params.direction || "TB").toUpperCase() === "LR" ? "LR" : "TB";
+      try {
+        const result = await runMarkdownDiagramCli("flowchart", {
+          markdown_path: markdownPath,
+          diagram_id: String(params.diagram_id || "flowchart"),
+          alt_text: String(params.alt_text || "Flowchart"),
+          include_ascii: params.include_ascii !== false,
+          ascii_text: asciiText,
+          spec: {
+            direction,
+            nodes,
+            edges: Array.isArray(params.edges) ? params.edges : [],
+          },
+        });
+        return {
+          content: [{ type: "text", text:
+            `Markdown flowchart written.\nMarkdown: ${result.markdown_path}\nImage: ${result.image_path}\nRenderer: ${result.renderer}` }],
+          details: result,
+        };
+      } catch (error) {
+        return {
+          content: [{ type: "text", text: `ERROR: ${String(error)}` }],
+          details: { ok: false, error: String(error) },
+        };
+      }
+    },
+  });
+
+  pi.registerTool({
+    name: "comfyui_markdown_node_image",
+    label: "Markdown ComfyUI v2 Node Image",
+    description:
+      "Render a current ComfyUI Nodes 2.0 documentation image into Markdown. " +
+      "Resolve the real workflow node or exact node_type and require the CURRENT ComfyUI /object_info schema. " +
+      "Never fabricate a generic or legacy LiteGraph node.",
+    parameters: Type.Object({
+      markdown_path: Type.String(),
+      workflow_path: Type.Optional(Type.String()),
+      node_id: Type.Optional(Type.String()),
+      node_type: Type.Optional(Type.String()),
+      image_id: Type.Optional(Type.String()),
+      alt_text: Type.Optional(Type.String()),
+    }),
+    async execute(_toolCallId, params) {
+      const markdownPath = String(params.markdown_path || "");
+      const workflowPath = String(params.workflow_path || "");
+      if (!markdownPath || !workflowPathAllowed(markdownPath) ||
+          (workflowPath && !workflowPathAllowed(workflowPath))) {
+        return {
+          content: [{ type: "text", text: "ERROR: Markdown/workflow path is outside the current project/cwd safety boundary." }],
+          details: { ok: false, error: "path_outside_allowed_roots" },
+        };
+      }
+      const config = workflowToolConfig();
+      const base = String(config.comfyui_base_url || "").replace(/\/+$/, "");
+      if (!base) {
+        return {
+          content: [{ type: "text", text: "ERROR: current ComfyUI base URL is unavailable; a live v2 node image will not be guessed." }],
+          details: { ok: false, error: "missing_comfyui_base_url" },
+        };
+      }
+      try {
+        const result = await runMarkdownDiagramCli("node", {
+          markdown_path: markdownPath,
+          workflow_path: workflowPath,
+          node_id: String(params.node_id || ""),
+          node_type: String(params.node_type || ""),
+          image_id: String(params.image_id || ""),
+          alt_text: String(params.alt_text || ""),
+          comfyui_base_url: base,
+        });
+        return {
+          content: [{ type: "text", text:
+            `Live-schema Nodes 2.0 image written.\nMarkdown: ${result.markdown_path}\nImage: ${result.image_path}\nNode: ${result.node_type}` }],
+          details: result,
+        };
+      } catch (error) {
+        return {
+          content: [{ type: "text", text: `ERROR: ${String(error)}` }],
+          details: { ok: false, error: String(error) },
+        };
+      }
+    },
+  });
+
   const createDurableCheckpoint = async (
     ctx: any,
     reason: string,

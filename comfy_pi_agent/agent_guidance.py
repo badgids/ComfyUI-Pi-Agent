@@ -130,7 +130,11 @@ _RULES: dict[str, dict[str, Any]] = {
         "weight": 9,
     },
     "document-export": {
-        "phrases": ["docx", "markdown export", "save markdown", "export document", "export text"],
+        "phrases": [
+            "docx", "markdown export", "save markdown", "export document", "export text",
+            "diagram", "flowchart", "ascii flowchart", "markdown diagram",
+            "diagram image", "node image", "comfyui node image",
+        ],
         "weight": 8,
     },
 }
@@ -226,6 +230,8 @@ def task_kind(message: str, selected: list[SkillMatch]) -> str:
     if names & {"fountain-screenplay", "story-to-screenplay", "screenplay-breakdown", "shot-planning", "storyboard"}:
         return "screenplay-production"
     if "narrative-project" in names:
+        return "writing"
+    if "document-export" in names:
         return "writing"
     if names & {"image-generation-router", "qwen-image", "qwen-image-edit", "krea-2-image", "krea-2-edit", "flux-2-klein-image", "z-image"}:
         return "image"

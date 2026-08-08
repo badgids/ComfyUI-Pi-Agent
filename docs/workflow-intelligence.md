@@ -28,6 +28,16 @@ The current live node registry and `/object_info` schemas are authoritative. Com
 
 A generated workflow is not complete when it has missing live nodes, bad socket indexes/types, broken link back-references, cycles, insufficient node clearance, no live `OUTPUT_NODE`, or failed native prompt validation.
 
+## Markdown diagrams and Nodes 2.0 documentation images
+
+ComfyUI-Pi includes a dependency-free documentation renderer inspired by PHART's deterministic hierarchical/layered layouts and orthogonal routing, and by Ascidia's ASCII line/box/arrow conventions. PHART and Ascidia are references, not required runtime dependencies; the renderer emits SVG using the Python standard library.
+
+`comfyui_markdown_flowchart` creates stable ASCII flowcharts and project-relative SVG images, backs up the Markdown file, and inserts or updates an owned Markdown block. Existing ASCII flowcharts can also be vectorized directly.
+
+`comfyui_markdown_node_image` is specifically for ComfyUI nodes. It resolves the actual workflow node when supplied, queries the connected ComfyUI instance's live `/object_info/<node_type>` schema, and renders a deterministic Nodes 2.0 documentation image with rounded body, separate header/body surfaces, left inputs, right outputs, widgets, socket names/types, and current v2 dark-theme design tokens. It fails instead of drawing a guessed node type.
+
+The SVG is a deterministic documentation rendering, not a browser screenshot. Its node structure and palette track current ComfyUI Nodes 2.0 while socket/widget content comes from the live schema and serialized workflow node.
+
 ## Repair
 
 The first release repairs safe container-level problems such as missing API `inputs` objects and invalid top-level arrays. It does not silently replace missing custom nodes.
