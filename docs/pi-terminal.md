@@ -99,21 +99,24 @@ The user's visible terminal input remains unchanged.
 
 ## In-place compaction and durable handoff in Terminal mode
 
-The terminal bridge reads Pi's actual `getContextUsage()` values and applies the configured 80–95% threshold range (82.5% by default). Pi remains the compaction engine, but ComfyUI-Pi must reach the compaction lifecycle **before** Pi's later host threshold check so the durable continuity state exists first.
+The terminal bridge reads Pi's actual `getContextUsage()` values and applies the configured 80–95% threshold range (82.5% by default). Pi remains the compaction engine; ComfyUI-Pi prepares bounded continuity state and asks Pi to compact the **current session** before the context reaches the hard limit.
 
-The ordering follows the proven Comfy-Media-Director pattern, with one important Pi 0.83 safety rule:
+The normal ordering is:
 
-1. at Pi's `agent_end` boundary, ComfyUI-Pi checks the current context percentage and **prepares** the bounded durable handoff plus hidden compaction anchor;
-2. it does **not** call `ctx.compact()` from `agent_end`, because Pi 0.83 exposes that API as fire-and-forget and Pi immediately performs its own post-agent compaction check afterward; starting both there can race two compactions;
-3. if Pi's own threshold/overflow compactor runs next, `session_before_compact` injects the prepared handoff as the `CompactionEntry` summary in the current session;
-4. if Pi's own compactor does not run because ComfyUI-Pi's configured threshold is earlier, `agent_settled` is the safe point where ComfyUI-Pi requests one native `ctx.compact()` operation;
-5. `session_compact` verifies that the Pi session file and session ID are unchanged and that the durable handoff path is present in the resulting `CompactionEntry`;
-6. normal threshold/manual compaction then schedules one hidden continuation **turn** in that same Pi session; overflow recovery uses Pi's own retry path;
-7. any attempted session switch or fork while compaction continuity is active is cancelled.
+1. `turn_end` reads the just-completed turn's context usage;
+2. when usage reaches the configured threshold, ComfyUI-Pi writes/verifies the bounded durable checkpoint and a hidden compaction anchor tied to the current session file/session ID;
+3. before anything else can request another compaction, the bridge sets its one-shot `compactionRequested` guard and immediately calls native `ctx.compact()`;
+4. `session_before_compact` supplies/verifies the checkpoint continuity state for Pi's normal same-session `CompactionEntry`;
+5. `session_compact` verifies the session file and session ID did not change and records handoff-ingestion evidence;
+6. one hidden continuation turn may be queued when needed so the current task continues without requiring the user to type `continue`.
 
-No `/new` command is sent during compaction, and compaction never intentionally launches or resumes another Pi session. If the Pi process itself exits unexpectedly, the Terminal supervisor relaunches with Pi's explicit `--session <exact-jsonl-path>` whenever the bridge recorded that path, rather than relying on `--continue` to guess which saved session is newest.
+`agent_end` is **prepare-only fallback state**. If context pressure was unavailable at `turn_end`, it can prepare the checkpoint but does not start a competing compaction beside Pi's own post-agent check. `agent_settled` is used only when a prepared checkpoint still needs the one safe fallback request.
 
-The bridge records the guard phase, ratio, handoff path, anchor, before/after session file, before/after session ID, handoff-ingestion verification, and same-session result in `bridge-state.json`. A one-time marker left by an older reset-based ComfyUI-Pi build is accepted only as backward-compatible recovery state.
+Manual `/compact` and Pi overflow recovery keep Pi's native same-session lifecycle while ComfyUI-Pi applies the durable-checkpoint continuity rules. No `/new` command is sent for context-pressure compaction, and compaction never intentionally launches or resumes a different Pi session.
+
+If the Pi process itself exits unexpectedly, that is process recovery rather than compaction. The Terminal supervisor reopens the exact recorded `--session <jsonl-path>` whenever available instead of relying on `--continue` to guess the newest saved session.
+
+The bridge records guard phase, ratio, checkpoint path, anchor, session file/ID before and after compaction, handoff-ingestion verification, and the same-session result in `bridge-state.json`. A one-time marker from an older reset-based build is read only as backward-compatible recovery data.
 
 ## Platform support
 

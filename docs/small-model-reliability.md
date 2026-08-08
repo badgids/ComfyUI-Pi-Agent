@@ -141,9 +141,9 @@ The same policy is used for node-pack manuals and long project artifacts.
 
 ## Long-session handoffs
 
-At **82.5% by default**, configurable from **80% through 95%**, ComfyUI-Pi writes a compact continuity handoff and resets Pi before normal compaction is allowed to take over.
+At **82.5% by default**, configurable from **80% through 95%**, ComfyUI-Pi writes a bounded durable continuity checkpoint and immediately requests Pi's native **same-session** compaction at the completed-turn threshold. It does not use `/new` merely because context is full.
 
-The handoff preserves the current objective, constraints, decisions, artifacts, completed work, blockers, and next actions. It references large files instead of embedding them.
+The checkpoint preserves the current objective, constraints, decisions, artifacts, completed work, blockers, and next actions. It references large files instead of embedding them.
 
 Task procedures and node-pack integrations are recorded by ID so they can be reloaded only when the next task actually needs them.
 

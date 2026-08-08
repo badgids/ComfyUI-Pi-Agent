@@ -74,26 +74,30 @@ On POSIX systems the Terminal path is `browser xterm.js → ComfyUI WebSocket �
 
 ## Context lifecycle
 
-Both sidebar modes use a host-controlled context lifecycle:
+Context pressure and hidden-scope isolation are two different lifecycle operations. Context pressure uses Pi's native **same-session compaction**; it does not create a new Pi session:
 
 ```text
-Pi usage + get_state contextWindow
+Pi context usage
         ↓
 82.5% default threshold (configurable 80–95%)
         ↓
-bounded Markdown handoff on disk
+write + verify bounded durable checkpoint
         ↓
-Chat: active Pi RPC new_session
-Terminal: native Pi /new through PTY
+Terminal turn_end: immediately request ctx.compact()
+Structured Chat guard: request native in-place compaction
         ↓
-hidden one-time handoff ingestion
+Pi session_before_compact / CompactionEntry / session_compact
         ↓
-dynamic workflow/integration context reloads only when needed
+verify same session + durable continuity
+        ↓
+continue work in the compacted session
 ```
 
-The structured Chat transcript remains durable in ComfyUI-Pi's session store, while Terminal uses Pi's own session JSONL under a per-sidebar terminal directory. The handoff is the compact continuity state. Large workflow JSON remains an on-demand file. Pi's RPC auto-compactor is disabled when supported; the terminal bridge cancels threshold-triggered auto-compaction while leaving manual `/compact` and overflow recovery intact.
+The structured Chat transcript remains durable in ComfyUI-Pi's session store, while Terminal uses Pi's own session JSONL under a private per-sidebar-session directory. Large workflow JSON remains an on-demand file and handoffs/checkpoints stay bounded. Manual `/compact` and Pi overflow recovery keep Pi's native same-session lifecycle.
 
-See [context-handoff.md](context-handoff.md).
+A **structured Chat hidden-scope change** is separate: when integration/project/workflow guidance changes, Chat may intentionally use Pi RPC `new_session`, rehydrate bounded visible history, and inject the newly relevant hidden scope. That operation removes stale hidden instructions; it is not context-window compaction.
+
+See [context-handoff.md](context-handoff.md) and [dynamic-integration-context.md](dynamic-integration-context.md).
 
 ---
 

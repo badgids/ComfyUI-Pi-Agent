@@ -4,6 +4,19 @@
 **Navigation:** [Project README](README.md) · [Documentation home](docs/index.md) · [Previous: Third-party notices](THIRD_PARTY_NOTICES.md) · [Next: Release notes](RELEASE_NOTES.md)
 <!-- DOC_NAV_END -->
 
+## 0.1.18 — continuity, documentation capture, and Pi Agent UI refresh
+
+- Reworked context-pressure protection around Pi native **same-session compaction**. At the configured threshold (82.5% default, 80–95% range), Terminal writes/verifies the durable checkpoint at `turn_end` and immediately requests `ctx.compact()` instead of waiting until Pi reaches 100%; `/new` is not used for context-pressure compaction.
+- Added exact saved-Terminal-session recovery and stronger same-session/session-file verification around compaction/reconnect paths.
+- Hardened workflow creation against the running ComfyUI instance: live `/object_info` schemas, installed node types/templates, typed sockets/widgets, current Nodes 2.0 serialization, validation, and minimum 6px layout separation are authoritative.
+- Added deterministic semantic flowcharts, polished independent SVG rendering, current Nodes 2.0 schematic node images, and optional Ascidia parsing for existing hand-authored ASCII diagrams.
+- Replaced synthetic workflow screenshot reconstruction with optional **Playwright** capture of the real running ComfyUI frontend. Node captures use the real Vue node bounding box and enforce at least 300 CSS pixels of surrounding capture area on every side.
+- Refreshed the Pi Agent session UI: Terminal/Chat tabs, JSON session import/export, rename, plus-icon New Session, delete-only destructive session action, no Copy Chat/Clear/Send buttons, Provider/Model footer placement, full-height terminal geometry, and scrollable Settings on constrained screens.
+- Added explicit optional-install documentation for `.[diagrams]`, `.[screenshots]`, combined extras, and Playwright Chromium installation.
+- Synchronized the built-in Provider selector with Pi's current 38-ID `KnownProvider` union; removed stale built-in Baseten and Qwen Token Plan Individual entries while preserving runtime/custom provider discovery.
+- Added `tools/regenerate_manifest.py` so release manifests are regenerated from the exact checkout instead of hand-editing a version while leaving stale sizes/hashes.
+- Updated public documentation to remove the obsolete reset/bootstrap compaction design and accurately distinguish structured-Chat hidden-scope `new_session` from context-pressure compaction.
+
 ## 0.1.17 — controlling PTY terminal and selectable ComfyUI placement
 
 - Fixed the real Pi terminal launch so POSIX Pi runs under a genuine controlling terminal through a tiny single-threaded PTY child that calls `setsid()` + `TIOCSCTTY` before `exec`. v0.1.16 provided TTY file descriptors but started a new session after opening the slave PTY, which could leave modern Pi TUI raw-mode/job-control initialization without a controlling terminal.

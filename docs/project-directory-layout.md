@@ -1,7 +1,7 @@
 # Project directory layout
 
 <!-- DOC_NAV_START -->
-**Navigation:** [Project README](../README.md) · [Documentation home](index.md) · [Previous: Preemptive context handoff](context-handoff.md) · [Next: References, mood boards, storyboards, and bibles](references-bibles.md)
+**Navigation:** [Project README](../README.md) · [Documentation home](index.md) · [Previous: Preemptive same-session context compaction](context-handoff.md) · [Next: References, mood boards, storyboards, and bibles](references-bibles.md)
 <!-- DOC_NAV_END -->
 
 
@@ -137,5 +137,5 @@ Do not reuse the same filename for unrelated versions. Do not keep approved file
 ---
 
 <!-- DOC_NAV_FOOTER_START -->
-**Navigate:** [Project README](../README.md) · [Documentation home](index.md) · [Previous: Preemptive context handoff](context-handoff.md) · [Next: References, mood boards, storyboards, and bibles](references-bibles.md)
+**Navigate:** [Project README](../README.md) · [Documentation home](index.md) · [Previous: Preemptive same-session context compaction](context-handoff.md) · [Next: References, mood boards, storyboards, and bibles](references-bibles.md)
 <!-- DOC_NAV_FOOTER_END -->

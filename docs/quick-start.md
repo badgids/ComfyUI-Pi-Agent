@@ -5,9 +5,9 @@
 <!-- DOC_NAV_END -->
 
 
-## Chat without a node
+## Use Pi without a node
 
-Enable `Pi Agent: Show optional sidebar after restart` in ComfyUI settings, reload the frontend, then open the **Pi Agent** sidebar tab. You can chat with Pi directly, paste text or error logs, select and copy any response text, attach the current workflow as context, and keep separate chat sessions. See [sidebar-chat.md](sidebar-chat.md).
+Enable the optional Pi Agent interface in ComfyUI settings, choose **Left sidebar** or **Bottom panel** placement, then reload the frontend. On POSIX/WSL systems the **Terminal** tab is the default and renders Pi's real interactive TUI; **Chat** is the structured fallback/secondary view. The session toolbar provides New, JSON Load, JSON Save, Rename, and Delete actions. Provider and Model selectors stay in the lower footer. See [sidebar-chat.md](sidebar-chat.md).
 
 ## Step 1: Status
 
@@ -42,12 +42,12 @@ Provide one workflow or a JSON list of workflow paths to **Pi Compile Tutorial**
 
 ## Check MiniMax H3 Director integration
 
-When `ComfyUI-MiniMaxH3-Director` is installed, add **Pi MiniMax H3 Director Status** to see whether ComfyUI-Pi found the pack, its registered nodes, and its installed example workflows. You can also open the Pi Agent sidebar and ask `Explain this MiniMax H3 Director workflow.` No Pi node is required for sidebar chat.
+When `ComfyUI-MiniMaxH3-Director` is installed, add **Pi MiniMax H3 Director Status** to see whether ComfyUI-Pi found the pack, its registered nodes, and its installed example workflows. You can also open the Pi Agent interface and ask `Explain this MiniMax H3 Director workflow.` No Pi node is required for sidebar chat.
 
 
 ## Check WhatDreamsCost integration
 
-When `WhatDreamsCost-ComfyUI` is installed, add **Pi WhatDreamsCost Status** to see registered nodes and installed example workflows. In sidebar chat you can attach the active workflow and ask `Explain this LTX Director workflow.`
+When `WhatDreamsCost-ComfyUI` is installed, add **Pi WhatDreamsCost Status** to see registered nodes and installed example workflows. In the Pi Agent interface you can attach/use the active workflow context and ask `Explain this LTX Director workflow.`
 
 ## See what context Pi will load
 

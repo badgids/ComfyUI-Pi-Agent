@@ -15,13 +15,18 @@ The release uses the widely supported node registration mapping plus current fro
 
 ## Platforms
 
-Windows, Linux, macOS, WSL, Docker, and portable installations are supported when the underlying ComfyUI instance can read the repository and write the selected output directory.
+Windows, Linux, macOS, WSL, Docker, and portable installations are supported when the underlying ComfyUI instance can read the repository and write the selected output directory. The real controlling-PTY Terminal backend is available on POSIX environments (including WSL). Native Windows without a POSIX PTY falls back to structured Chat until a ConPTY backend is provided.
 
-## Optional tools
+## Optional tools and Python extras
 
 Pi, FFmpeg, Kdenlive, KJNodes, SageAttention, GGUF loaders, LTXVideo, model-specific custom nodes, and the supported third-party director packs are detected or documented but not bundled.
 
-Missing optional integrations do not prevent ComfyUI-Pi from loading.
+Two documentation features have packaged Python extras:
+
+- `python -m pip install -e '.[diagrams]'` installs Ascidia for conversion of **existing hand-authored ASCII diagrams**. Generated semantic flowcharts and Nodes 2.0 schematic node images do not require it.
+- `python -m pip install -e '.[screenshots]'` installs Playwright for real browser-rendered ComfyUI workflow/node screenshots. When no suitable system Chromium/Chrome is available, also run `python -m playwright install chromium`.
+
+Install optional extras with the same Python interpreter/environment that runs ComfyUI. Missing optional integrations or extras do not prevent ComfyUI-Pi's core features from loading.
 
 ## ComfyUI-MiniMaxH3-Director
 

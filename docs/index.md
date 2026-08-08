@@ -37,7 +37,7 @@ Every documentation page has a navigation bar near the top and bottom:
 - [Workflow intelligence](workflow-intelligence.md)
 - [Model discovery, safetensors, and GGUF](model-formats-gguf.md)
 - [Dynamic integration context](dynamic-integration-context.md)
-- [Preemptive context handoff](context-handoff.md)
+- [Preemptive same-session context compaction](context-handoff.md)
 
 ## Image, audio, and production
 

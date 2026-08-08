@@ -354,9 +354,9 @@ class LocalLlmTests(unittest.TestCase):
             "deepseek", "github-copilot", "xai", "groq", "cerebras", "openrouter",
             "vercel-ai-gateway", "zai", "zai-coding-cn", "mistral", "minimax",
             "minimax-cn", "moonshotai", "moonshotai-cn", "huggingface", "fireworks",
-            "together", "baseten", "opencode", "opencode-go", "kimi-coding",
+            "together", "opencode", "opencode-go", "kimi-coding",
             "cloudflare-workers-ai", "cloudflare-ai-gateway", "qwen-token-plan",
-            "qwen-token-plan-cn", "qwen-token-plan-individual", "xiaomi",
+            "qwen-token-plan-cn", "xiaomi",
             "xiaomi-token-plan-cn", "xiaomi-token-plan-ams", "xiaomi-token-plan-sgp",
         }
         self.assertEqual({provider_id for provider_id, _label in PI_BUILTIN_PROVIDERS}, expected)
