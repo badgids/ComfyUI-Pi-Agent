@@ -679,7 +679,9 @@ export default function comfyUiPiTerminalBridge(pi: ExtensionAPI) {
       compactionPrepared = true;
       ctx.ui.setStatus(
         "comfyui-pi-compaction",
-        `Checkpoint saved at ${(ratio * 100).toFixed(1)}%; waiting for the safe same-session compaction boundary...`,
+        phase === "turn-end"
+          ? `Checkpoint saved at ${(ratio * 100).toFixed(1)}%; compacting now in the same Pi session...`
+          : `Checkpoint saved at ${(ratio * 100).toFixed(1)}%; prepared for same-session compaction...`,
       );
       writeBridgeState(ctx, {
         source: latestSource,
@@ -696,22 +698,31 @@ export default function comfyUiPiTerminalBridge(pi: ExtensionAPI) {
       });
     }
 
-    if (phase !== "agent-settled") return true;
-
-    // Safe point: Pi's post-agent automatic threshold/overflow check has completed.
-    // If Pi already compacted, session_compact cleared compactionPrepared and this
-    // function will not be called with prepared state. Otherwise request one manual
-    // Pi compaction in the SAME session.
+    // Pi's official trigger-compact extension calls ctx.compact() directly from turn_end.
+    // That is the correct preemptive boundary: the turn is complete, the durable handoff
+    // has been written and anchored, and we have not yet reached Pi's later agent_end
+    // automatic-compaction check. Do NOT wait for agent_settled, because a long-running
+    // agent loop can keep consuming context until Pi's native overflow compaction wins.
+    //
+    // agent_end remains prepare-only as a race-avoidance fallback. If context usage was
+    // unavailable at turn_end and the checkpoint is first prepared at agent_end, the
+    // existing agent_settled hook performs the manual same-session fallback.
+    if (phase === "agent-end") return true;
     if (!compactionPrepared) return false;
+
     compactionRequested = true;
-    ctx.ui.setStatus("comfyui-pi-compaction", "Compacting prepared context in place...");
+    if (phase !== "turn-end") {
+      ctx.ui.setStatus("comfyui-pi-compaction", "Compacting prepared context in place...");
+    }
     writeBridgeState(ctx, {
       source: latestSource,
       last_guard: {
         phase,
         ratio,
         threshold,
-        action: "compaction-requested-safe",
+        action: phase === "turn-end"
+          ? "compaction-requested-threshold"
+          : "compaction-requested-settled-fallback",
         handoff_path: String(pendingHandoff?.path || ""),
         anchor_id: compactionAnchorId,
         session_file: compactionSessionFile,
@@ -1019,22 +1030,23 @@ export default function comfyUiPiTerminalBridge(pi: ExtensionAPI) {
     return { systemPrompt: event.systemPrompt + "\n\n" + additions.join("\n\n") };
   });
 
-  // Pi's own reference trigger-compact extension observes context usage at turn_end.
-  // Prepare continuity there too so long tool-driven work does not have to wait for the
-  // whole agent run to finish before the durable checkpoint exists.
+  // Match Pi's official trigger-compact extension: when turn_end crosses the configured
+  // threshold, create/verify the durable checkpoint and request ctx.compact() immediately.
+  // compactionRequested is set before ctx.compact(), so later lifecycle hooks cannot
+  // launch a duplicate compaction while this one is in flight.
   pi.on("turn_end", async (_event, ctx) => {
     await maybeRequestEarlyCompaction(ctx, "turn-end");
   });
 
-  // Pi performs its host automatic-compaction check after extension agent_end handlers
-  // and before agent_settled. Keep agent_end as a fallback preparation boundary.
+  // Pi performs its native automatic-compaction check after extension agent_end handlers.
+  // Keep agent_end prepare-only for the unusual case where turn_end usage was unavailable.
   pi.on("agent_end", async (_event, ctx) => {
     writeBridgeState(ctx, { source: latestSource });
     await maybeRequestEarlyCompaction(ctx, "agent-end");
   });
 
-  // If Pi did not compact on its own, this is the safe boundary for the one manual
-  // same-session ctx.compact() fallback.
+  // Fallback only: if the checkpoint could not be requested from turn_end and Pi did not
+  // compact natively, request the already-prepared same-session compaction once settled.
   pi.on("agent_settled", async (_event, ctx) => {
     await maybeRequestEarlyCompaction(ctx, "agent-settled");
   });
