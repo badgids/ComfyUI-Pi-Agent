@@ -212,7 +212,7 @@ class PiRpcClient:
         return self.command({"type": "new_session"})
 
     def set_auto_compaction(self, enabled: bool) -> dict[str, Any]:
-        """Enable/disable Pi's own compactor. ComfyUI-Pi normally keeps this disabled."""
+        """Enable/disable Pi's own automatic compactor for the current RPC session."""
         return self.command({"type": "set_auto_compaction", "enabled": bool(enabled)})
 
     def get_state(self) -> dict[str, Any]:

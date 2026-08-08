@@ -709,6 +709,16 @@ class ChatRuntimeManager:
             summarizer=summarizer,
         )
         instructions = COMFYUI_PI_COMPACTION_INSTRUCTIONS
+        try:
+            handoff_text = Path(str(handoff.get("path") or "")).read_text(encoding="utf-8").strip()
+        except Exception:
+            handoff_text = ""
+        if handoff_text:
+            instructions += (
+                "\n\nAUTHORITATIVE COMFYUI-PI DURABLE HANDOFF:\n"
+                "Use this bounded state as the continuity source for the compaction summary. "
+                "Do not restart the task or discard approved work.\n\n" + handoff_text
+            )
         if focus.strip():
             instructions += "\n\nUser /compact focus: " + focus.strip()
         compaction = live.client.compact(instructions)
@@ -1375,9 +1385,21 @@ class ChatRuntimeManager:
             summarizer=summarizer,
         )
 
-        # Keep the current Pi session. The durable handoff is a recovery checkpoint; Pi's
-        # own CompactionEntry is the active continuity state and preserves recent messages.
-        compaction = live.client.compact(COMFYUI_PI_COMPACTION_INSTRUCTIONS)
+        # Keep the current Pi session. The durable handoff is the specialized continuity
+        # checkpoint; feed it directly into Pi's native compactor so the same-session
+        # CompactionEntry preserves our objective/constraints/artifact state as well.
+        instructions = COMFYUI_PI_COMPACTION_INSTRUCTIONS
+        try:
+            handoff_text = Path(str(handoff.get("path") or "")).read_text(encoding="utf-8").strip()
+        except Exception:
+            handoff_text = ""
+        if handoff_text:
+            instructions += (
+                "\n\nAUTHORITATIVE COMFYUI-PI DURABLE HANDOFF:\n"
+                "Use this bounded state as the continuity source for the compaction summary. "
+                "Do not restart the task or discard approved work.\n\n" + handoff_text
+            )
+        compaction = live.client.compact(instructions)
         post_pressure = self._pressure_from_session_stats(live, threshold).to_dict()
         handoff = dict(handoff)
         handoff.update({
@@ -1433,6 +1455,21 @@ class ChatRuntimeManager:
                 document.get("local_llm", {}),
                 executable, timeout,
             )
+            # Structured RPC cannot run our Terminal extension's agent_end gate. When the
+            # preemptive guard is enabled, temporarily disable Pi's automatic threshold
+            # compactor so the host can first write the durable handoff and then invoke
+            # Pi's native compact RPC in this same session. If the guard is disabled, leave
+            # Pi's normal automatic compaction enabled.
+            try:
+                live.client.set_auto_compaction(not preemptive_handoff)
+                live.client.auto_compaction_disabled = bool(preemptive_handoff)
+                live.client.auto_compaction_warning = ""
+            except Exception as compaction_exc:
+                live.client.auto_compaction_disabled = False
+                live.client.auto_compaction_warning = (
+                    "Could not configure Pi auto-compaction for the ComfyUI-Pi handoff gate: "
+                    f"{type(compaction_exc).__name__}: {compaction_exc}"
+                )
         except Exception as exc:
             error = f"{type(exc).__name__}: {exc}"
             document = self.store.append(session_id, "assistant", error, error=True)

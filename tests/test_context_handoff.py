@@ -194,6 +194,8 @@ class ChatHandoffLifecycleTests(unittest.TestCase):
                 self.assertEqual(client.prompts, [])
                 self.assertEqual(len(client.compact_calls), 1)
                 self.assertIn("Continue the same task after compaction", client.compact_calls[0])
+                self.assertIn("AUTHORITATIVE COMFYUI-PI DURABLE HANDOFF", client.compact_calls[0])
+                self.assertIn("Continue the movie project", client.compact_calls[0])
                 self.assertFalse(handoff["ingested"])
                 self.assertEqual(handoff["continuity_method"], "pi_compaction")
                 self.assertEqual(handoff["reset_method"], "none")
@@ -202,9 +204,13 @@ class ChatHandoffLifecycleTests(unittest.TestCase):
                 self.assertEqual(updated["context_guard"]["handoff_count"], 1)
                 self.assertLess(updated["context_guard"]["last_pressure"]["ratio"], 0.10)
 
-    def test_rpc_runtime_does_not_disable_pi_native_auto_compaction(self):
-        source = (Path(__file__).resolve().parents[1] / "comfy_pi_agent" / "pi_runtime.py").read_text(encoding="utf-8")
-        self.assertNotIn("self.set_auto_compaction(False)", source)
+    def test_structured_rpc_preemptive_guard_controls_pi_auto_compaction(self):
+        root = Path(__file__).resolve().parents[1]
+        runtime_source = (root / "comfy_pi_agent" / "pi_runtime.py").read_text(encoding="utf-8")
+        chat_source = (root / "comfy_pi_agent" / "chat.py").read_text(encoding="utf-8")
+        self.assertNotIn("self.set_auto_compaction(False)", runtime_source)
+        self.assertIn("live.client.set_auto_compaction(not preemptive_handoff)", chat_source)
+        self.assertIn("live.client.auto_compaction_disabled = bool(preemptive_handoff)", chat_source)
 
 
 if __name__ == "__main__":
