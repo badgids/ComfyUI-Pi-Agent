@@ -258,8 +258,9 @@ export default function comfyUiPiTerminalBridge(pi: ExtensionAPI) {
     name: "comfyui_markdown_flowchart",
     label: "Markdown ASCII Flowchart + Image",
     description:
-      "Create/update a deterministic ASCII flowchart in Markdown and render that same diagram as a project-relative SVG. " +
-      "Use layered/hierarchical layout, orthogonal connectors, and consistent +-|><^v ASCII grammar. Existing ASCII can be vectorized directly.",
+      "Create/update a Markdown flowchart from one semantic graph. For GENERATED diagrams, always provide semantic nodes and edges; " +
+      "ComfyUI-Pi independently renders canonical ASCII and a polished vector SVG from that graph, so the image is never a tracing or screenshot of the ASCII. " +
+      "Use ascii_text only for EXISTING hand-authored ASCII, which is parsed through Ascidia when available.",
     parameters: Type.Object({
       markdown_path: Type.String(),
       diagram_id: Type.String(),

@@ -8,6 +8,11 @@ license = { text = "GPL-3.0-only" }
 authors = [{ name = "Alan D. Guice (Badgids)" }]
 dependencies = []
 
+[project.optional-dependencies]
+diagrams = [
+    "ascidia>=2.0.1,<3",
+]
+
 [project.urls]
 Homepage = "https://github.com/Badgids/ComfyUI-Pi-Agent"
 Documentation = "https://github.com/Badgids/ComfyUI-Pi-Agent/tree/main/docs"
