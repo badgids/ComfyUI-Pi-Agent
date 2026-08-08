@@ -968,7 +968,9 @@ function ensureStyles() {
   const style = document.createElement("style");
   style.id = "pi-agent-chat-styles";
   style.textContent = `
-    .pi-agent-shell { height: 100%; min-height: 420px; display: flex; flex-direction: column; color: var(--fg-color, inherit); background: var(--comfy-menu-bg, transparent); }
+    .pi-agent-interface-root { height:100%; min-height:0; width:100%; display:flex; flex-direction:column; overflow:hidden; }
+    .pi-agent-interface-root > .pi-agent-shell { flex:1 1 0; height:auto; min-height:0; width:100%; overflow:hidden; }
+    .pi-agent-shell { height: 100%; min-height: 0; display: flex; flex-direction: column; color: var(--fg-color, inherit); background: var(--comfy-menu-bg, transparent); }
     .pi-agent-toolbar { display:flex; align-items:center; gap:6px; padding:8px; border-bottom:1px solid color-mix(in srgb, currentColor 15%, transparent); flex-wrap:wrap; }
     .pi-agent-title { font-weight:600; margin-right:auto; }
     .pi-agent-pill { font-size:11px; padding:2px 7px; border-radius:999px; border:1px solid color-mix(in srgb, currentColor 20%, transparent); opacity:.9; }
@@ -1007,8 +1009,8 @@ function ensureStyles() {
     .pi-agent-model-switcher { display:grid; grid-template-columns:minmax(0, 1fr) minmax(0, 1.25fr); gap:7px; align-items:end; }
     .pi-agent-model-switcher .pi-agent-field { min-width:0; }
     .pi-agent-model-switcher select { min-width:0; }
-    .pi-agent-composer-actions { display:flex; gap:7px; align-items:center; justify-content:flex-end; }
-    .pi-agent-send { min-width:72px; }
+    .pi-agent-composer-actions { display:flex; gap:7px; align-items:center; justify-content:flex-end; padding:0 8px 8px; }
+    .pi-agent-composer-actions[hidden] { display:none !important; }
     .pi-agent-help { font-size:10px; opacity:.6; }
     .pi-agent-statusline { font-size:11px; min-height:16px; padding:0 2px; opacity:.72; }
     .pi-agent-statusline:empty { display:none; }
@@ -1226,7 +1228,6 @@ async function createSession(ui) {
 
 function setBusy(ui, busy) {
   CHAT_STATE.busy = busy;
-  ui.send.disabled = busy;
   for (const control of [
     ui.newChat,
     ui.loadSessionButton,
@@ -1741,6 +1742,7 @@ async function renameCurrentSession(ui) {
 
 function buildSidebar(el, placement = "sidebar") {
   ensureStyles();
+  el.classList.add("pi-agent-interface-root");
   const placementClass = placement === "bottom" ? "pi-agent-placement-bottom" : "pi-agent-placement-sidebar";
   el.innerHTML = `
     <div class="pi-agent-shell ${placementClass}">
@@ -1810,13 +1812,12 @@ function buildSidebar(el, placement = "sidebar") {
           <textarea id="pi-agent-chat-input" class="pi-agent-textarea" placeholder="Message Pi Agent… Type / for Pi commands. Paste text normally. Enter sends; Shift+Enter adds a new line."></textarea>
           <div id="pi-agent-command-menu" class="pi-agent-command-menu" role="listbox" aria-label="Pi slash commands"></div>
         </div>
+        <div id="pi-agent-chat-actions" class="pi-agent-composer-actions" hidden>
+          <button id="pi-agent-stop" class="pi-agent-btn pi-agent-hidden" type="button">Stop</button>
+        </div>
       </div>
       <div class="pi-agent-shared-controls">
         <div id="pi-agent-statusline" class="pi-agent-statusline"></div>
-        <div id="pi-agent-chat-actions" class="pi-agent-composer-actions" hidden>
-          <button id="pi-agent-stop" class="pi-agent-btn pi-agent-hidden" type="button">Stop</button>
-          <button id="pi-agent-send" class="pi-agent-btn pi-agent-send" type="button">Send</button>
-        </div>
         <div class="pi-agent-model-switcher" aria-label="Pi provider and model selection">
           <div class="pi-agent-field"><label for="pi-agent-provider">Provider</label><select id="pi-agent-provider" class="pi-agent-input"><option value="pi-default">Pi default / current configured model</option></select></div>
           <div class="pi-agent-field"><label for="pi-agent-model">Model</label><select id="pi-agent-model" class="pi-agent-input"><option value="">Pi default model</option></select></div>
@@ -1866,7 +1867,6 @@ function buildSidebar(el, placement = "sidebar") {
     textarea: el.querySelector("#pi-agent-chat-input"),
     commandMenu: el.querySelector("#pi-agent-command-menu"),
     statusline: el.querySelector("#pi-agent-statusline"),
-    send: el.querySelector("#pi-agent-send"),
     stop: el.querySelector("#pi-agent-stop"),
     runtimePill: el.querySelector("#pi-agent-runtime-pill"),
     contextPill: el.querySelector("#pi-agent-context-pill"),
@@ -1905,7 +1905,6 @@ function buildSidebar(el, placement = "sidebar") {
     localStorage.setItem("ComfyUIPi.ShowTools", String(CHAT_STATE.showTools));
     if (CHAT_STATE.sessionId) await loadSession(ui, CHAT_STATE.sessionId);
   });
-  ui.send.addEventListener("click", () => sendMessage(ui));
   ui.stop.addEventListener("click", () => abortMessage(ui));
   ui.provider.addEventListener("change", () => applyProviderSelection(ui, { forceProbe: true, reloadCatalog: false }));
   ui.model.addEventListener("change", () => selectCurrentModel(ui));

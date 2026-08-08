@@ -117,7 +117,16 @@ class SidebarChatFrontendTests(unittest.TestCase):
         self.assertIn("/rename", js)
         self.assertIn('@routes.post("/pi-agent/chat/import")', routes)
         self.assertIn('/pi-agent/chat/session/{session_id}/rename', routes)
-        self.assertLess(js.index('id="pi-agent-chat-actions"'), js.index('class="pi-agent-model-switcher"'))
+        self.assertNotIn('id="pi-agent-send"', js)
+        self.assertNotIn("ui.send", js)
+        self.assertIn('el.classList.add("pi-agent-interface-root")', js)
+        self.assertIn(".pi-agent-interface-root { height:100%; min-height:0;", js)
+        self.assertIn(".pi-agent-composer-actions[hidden] { display:none !important;", js)
+        chat_pane_at = js.index('id="pi-agent-chat-pane"')
+        chat_actions_at = js.index('id="pi-agent-chat-actions"')
+        shared_controls_at = js.index('class="pi-agent-shared-controls"')
+        self.assertLess(chat_pane_at, chat_actions_at)
+        self.assertLess(chat_actions_at, shared_controls_at)
         self.assertIn(".pi-agent-terminal-pane { flex:1 1 0; min-height:0;", js)
 
 
