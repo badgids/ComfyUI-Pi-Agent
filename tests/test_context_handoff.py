@@ -195,7 +195,7 @@ class ChatHandoffLifecycleTests(unittest.TestCase):
                 self.assertEqual(len(client.compact_calls), 1)
                 self.assertIn("Continue the same task after compaction", client.compact_calls[0])
                 self.assertIn("AUTHORITATIVE COMFYUI-PI DURABLE HANDOFF", client.compact_calls[0])
-                self.assertIn("Continue the movie project", client.compact_calls[0])
+                self.assertIn("Continue the current movie project", client.compact_calls[0])
                 self.assertFalse(handoff["ingested"])
                 self.assertEqual(handoff["continuity_method"], "pi_compaction")
                 self.assertEqual(handoff["reset_method"], "none")

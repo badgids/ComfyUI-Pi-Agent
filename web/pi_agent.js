@@ -20,6 +20,7 @@ const CHAT_STATE = {
   terminalAssetsPromise: null,
   terminalStarting: false,
   terminalStatusTimer: null,
+  terminalRecoveryAttempts: 0,
   showReasoning: localStorage.getItem("ComfyUIPi.ShowReasoning") !== "false",
   showTools: localStorage.getItem("ComfyUIPi.ShowTools") !== "false",
 };
@@ -318,6 +319,7 @@ async function connectTerminalSocket(ui) {
   const ws = new WebSocket(terminalWebSocketUrl(CHAT_STATE.sessionId));
   CHAT_STATE.terminalSocket = ws;
   ws.addEventListener("open", () => {
+    CHAT_STATE.terminalRecoveryAttempts = 0;
     ui.terminalStatus.textContent = "Connected to real Pi terminal.";
     const term = CHAT_STATE.terminal;
     if (term) {
@@ -336,7 +338,20 @@ async function connectTerminalSocket(ui) {
     if (payload.type === "output") CHAT_STATE.terminal?.write(normalizePiTerminalOutput(payload.data));
     if (payload.type === "exit") {
       const code = payload.status?.exit_code;
-      ui.terminalStatus.textContent = `Pi terminal exited${code == null ? "" : ` with code ${code}`}.`;
+      const resumable = Boolean(payload.status?.resumable);
+      ui.terminalStatus.textContent = resumable
+        ? `Pi terminal exited${code == null ? "" : ` with code ${code}`}; automatically resuming saved session…`
+        : `Pi terminal exited${code == null ? "" : ` with code ${code}`}.`;
+      if (resumable && CHAT_STATE.terminalRecoveryAttempts < 3) {
+        CHAT_STATE.terminalRecoveryAttempts += 1;
+        const recoverySession = CHAT_STATE.sessionId;
+        closeTerminalSocket();
+        setTimeout(() => {
+          if (CHAT_STATE.sessionId === recoverySession && CHAT_STATE.view === "terminal") {
+            startTerminal(ui);
+          }
+        }, 300 * CHAT_STATE.terminalRecoveryAttempts);
+      }
     }
   });
   ws.addEventListener("close", () => {
@@ -392,15 +407,19 @@ async function startTerminal(ui, { restart = false } = {}) {
     // remount. Ask the cheap terminal-status endpoint first. A live backend PTY can be
     // reattached directly; do not call /terminal/start because that route may include
     // llama.cpp readiness checks intended only for an actual process start.
+    let resumeSaved = false;
     if (!restart) {
       try {
         const status = await fetchJson(`/pi-agent/terminal/status/${encodeURIComponent(CHAT_STATE.sessionId)}`);
-        if (status.running) {
-          ui.terminalStatus.textContent = "Reconnecting to existing Pi terminal…";
+        if (status.running || status.recovering) {
+          ui.terminalStatus.textContent = status.recovering
+            ? (status.message || "Pi is automatically resuming the saved session…")
+            : "Reconnecting to existing Pi terminal…";
           CHAT_STATE.terminal?.reset();
           await connectTerminalSocket(ui);
           return;
         }
+        resumeSaved = Boolean(status.resumable);
       } catch {}
     }
 
@@ -408,13 +427,14 @@ async function startTerminal(ui, { restart = false } = {}) {
     await fetchJson(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(terminalStartPayload(ui, { resume: restart })),
+      body: JSON.stringify(terminalStartPayload(ui, { resume: restart || resumeSaved })),
     });
     CHAT_STATE.terminal?.reset();
     await connectTerminalSocket(ui);
   } catch (error) {
     ui.terminalStatus.textContent = String(error);
-    if (!restart) switchView(ui, "chat");
+    // Stay in Terminal view even when Pi is stopped. New session and the session
+    // dropdown must remain usable, and reopening Terminal can retry a saved session.
   } finally {
     CHAT_STATE.terminalStarting = false;
   }
@@ -1443,8 +1463,21 @@ async function initializeSidebar(el, placement = "sidebar") {
       try {
         const status = await fetchJson(`/pi-agent/terminal/status/${encodeURIComponent(CHAT_STATE.sessionId)}`);
         const percent = Number(status.bridge?.context_percent);
-        if (!status.running) ui.terminalStatus.textContent = status.message || "Pi interactive terminal is stopped.";
-        else if (CHAT_STATE.terminalSocket?.readyState === WebSocket.OPEN) ui.terminalStatus.textContent = "Connected to real Pi terminal.";
+        if (status.title) {
+          const option = [...ui.sessionSelect.options].find((item) => item.value === CHAT_STATE.sessionId);
+          if (option) option.textContent = String(status.title);
+          const sessionMeta = CHAT_STATE.sessions.find((item) => item.session_id === CHAT_STATE.sessionId);
+          if (sessionMeta) sessionMeta.title = String(status.title);
+        }
+        if (status.recovering) {
+          ui.terminalStatus.textContent = status.message || "Pi is automatically resuming the saved session…";
+        } else if (!status.running) {
+          ui.terminalStatus.textContent = status.message || "Pi interactive terminal is stopped.";
+        } else if (CHAT_STATE.terminalSocket?.readyState === WebSocket.OPEN) {
+          ui.terminalStatus.textContent = Number(status.resume_count || 0) > 0
+            ? `Connected to real Pi terminal. Automatic recoveries: ${status.resume_count}.`
+            : "Connected to real Pi terminal.";
+        }
         if (status.running && Number(status.output_bytes || 0) === 0 && Date.now() / 1000 - Number(status.started_at || 0) > 3) {
           ui.terminalStatus.textContent = status.message || "Pi is running but has not produced terminal output yet.";
         }

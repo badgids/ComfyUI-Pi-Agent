@@ -4,6 +4,7 @@ import errno
 import json
 import os
 import queue
+import re
 import subprocess
 import shutil
 import signal
@@ -59,6 +60,45 @@ def terminal_session_root(session_id: str) -> Path:
     root = get_comfy_user_directory() / "pi-agent" / "terminal-sessions" / safe
     root.mkdir(parents=True, exist_ok=True)
     return root
+
+
+def _terminal_session_path(session_id: str) -> Path:
+    safe = "".join(ch for ch in str(session_id or "") if ch.isalnum() or ch in "-_")
+    if not safe:
+        raise ValueError("Invalid terminal session id.")
+    return get_comfy_user_directory() / "pi-agent" / "terminal-sessions" / safe
+
+
+def _has_persisted_pi_session(session_id: str) -> bool:
+    """Return True when this sidebar session already owns a saved Pi JSONL session."""
+    root = _terminal_session_path(session_id) / "pi-sessions"
+    if not root.is_dir():
+        return False
+    try:
+        return any(path.is_file() for path in root.rglob("*.jsonl"))
+    except OSError:
+        return False
+
+
+def _sidebar_session_path(session_id: str) -> Path:
+    safe = "".join(ch for ch in str(session_id or "") if ch.isalnum() or ch in "-_")
+    if not safe:
+        raise ValueError("Invalid terminal session id.")
+    return get_comfy_user_directory() / "pi-agent" / "chat-sessions" / f"{safe}.json"
+
+
+def _sidebar_session_title(session_id: str) -> str:
+    path = _sidebar_session_path(session_id)
+    if not path.is_file():
+        return "New chat"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return "New chat"
+    if not isinstance(data, dict):
+        return "New chat"
+    title = " ".join(str(data.get("title") or "").strip().split())
+    return title[:80] or "New chat"
 
 
 def _winsize(rows: int, cols: int) -> bytes:
@@ -123,6 +163,11 @@ class TerminalStatus:
     input_bytes: int = 0
     output_bytes: int = 0
     last_output_at: float = 0.0
+    recovering: bool = False
+    resumable: bool = False
+    resume_count: int = 0
+    recovery_error: str = ""
+    title: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -220,13 +265,41 @@ class PiTerminalSession:
     def _start(self, resume: bool, env_overrides: dict[str, str]) -> None:
         if pty is None or fcntl is None or termios is None or not hasattr(termios, "TIOCSCTTY"):
             raise RuntimeError("A controlling-terminal PTY backend is not available on this platform.")
+
+        # Initialize crash-recovery state here instead of relying on constructor layout.
+        # _start() is also the single entry point used by automatic same-session recovery.
+        if not hasattr(self, "_intentional_stop"):
+            self._intentional_stop = threading.Event()
+        if not hasattr(self, "_recovering"):
+            self._recovering = threading.Event()
+        if not hasattr(self, "_recovery_lock"):
+            self._recovery_lock = threading.Lock()
+        if not hasattr(self, "_resume_count"):
+            self._resume_count = 0
+        if not hasattr(self, "_last_recovery_error"):
+            self._last_recovery_error = ""
+        if not hasattr(self, "_terminal_input_buffer"):
+            self._terminal_input_buffer = ""
+        if not hasattr(self, "_terminal_named"):
+            self._terminal_named = _sidebar_session_title(self.session_id) not in {"", "New chat", "Chat"}
+        self._recovery_env = {
+            str(key): str(value)
+            for key, value in (env_overrides or {}).items()
+            if key and value is not None
+        }
+
+        if self._intentional_stop.is_set():
+            raise RuntimeError("Pi terminal is intentionally stopping.")
+
+        saved_title = _sidebar_session_title(self.session_id)
+        session_name = saved_title if saved_title not in {"", "New chat", "Chat"} else f"ComfyUI-Pi {self.session_id[:8]}"
         command = build_terminal_command(
             self.executable,
             provider=self.provider,
             model=self.model,
             scoped_models=self.scoped_models,
             session_dir=str(self.pi_session_dir),
-            session_name=f"ComfyUI-Pi {self.session_id[:8]}",
+            session_name=session_name,
             resume=resume,
         )
         cwd = Path(self.project_directory).expanduser().resolve() if self.project_directory.strip() else get_comfy_user_directory()
@@ -271,6 +344,7 @@ class PiTerminalSession:
                 pass
         self.master_fd = master_fd
         self.process = process
+        self.started_at = time.time()
         try:
             os.kill(process.pid, signal.SIGWINCH)
         except Exception:
@@ -291,6 +365,7 @@ class PiTerminalSession:
 
     def _reader_loop(self) -> None:
         fd = self.master_fd
+        process = self.process
         if fd is None:
             return
         while not self._closed.is_set():
@@ -311,7 +386,120 @@ class PiTerminalSession:
                 self._last_output_at = time.time()
                 self._append_ring(data)
                 self.output_queue.put(data)
-        self._closed.set()
+
+        with self._state_lock:
+            if self.master_fd == fd:
+                try:
+                    os.close(fd)
+                except OSError:
+                    pass
+                self.master_fd = None
+
+        # If a newer recovery attempt already replaced self.process, this was an old reader.
+        if process is not self.process:
+            return
+        if self._intentional_stop.is_set():
+            self._closed.set()
+            return
+        if self._recovering.is_set():
+            # The recovery controller owns retries/failure state for this attempt.
+            return
+        if not _has_persisted_pi_session(self.session_id):
+            self._closed.set()
+            return
+
+        self._recovering.set()
+        self._emit_host_notice(
+            "Pi exited unexpectedly. Automatically reopening and resuming the saved Pi session."
+        )
+        threading.Thread(
+            target=self._auto_resume_loop,
+            daemon=True,
+            name=f"comfy-pi-recover-{self.session_id[:8]}",
+        ).start()
+
+    def _auto_resume_loop(self) -> None:
+        success = False
+        with self._recovery_lock:
+            for attempt in range(1, 4):
+                if self._intentional_stop.is_set():
+                    break
+                if attempt > 1:
+                    time.sleep(min(1.5, 0.35 * attempt))
+                try:
+                    self._start(resume=True, env_overrides=getattr(self, "_recovery_env", {}))
+                    time.sleep(0.25)
+                    if self.process is None or self.process.poll() is not None:
+                        code = self.process.poll() if self.process is not None else "unknown"
+                        raise RuntimeError(f"resumed Pi exited immediately with code {code}")
+                    self._resume_count = int(getattr(self, "_resume_count", 0)) + 1
+                    self._last_recovery_error = ""
+                    success = True
+                    self._emit_host_notice(
+                        f"Recovered saved Pi session automatically (recovery {self._resume_count})."
+                    )
+                    break
+                except Exception as exc:
+                    self._last_recovery_error = f"{type(exc).__name__}: {exc}"
+
+        self._recovering.clear()
+        if not success and not self._intentional_stop.is_set():
+            self._closed.set()
+            self._emit_host_notice(
+                "Automatic Pi recovery failed after 3 attempts. Reopening the selected "
+                "session or clicking Terminal will retry the saved Pi session."
+                + (f" Last error: {self._last_recovery_error}" if self._last_recovery_error else "")
+            )
+
+    def _record_terminal_title(self, raw_line: str) -> None:
+        if getattr(self, "_terminal_named", False):
+            return
+        clean = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", str(raw_line or ""))
+        clean = "".join(ch for ch in clean if ch.isprintable() or ch in {" ", "\t"})
+        clean = " ".join(clean.strip().split())
+        if not clean or clean.startswith("/") or clean.startswith("!"):
+            return
+        path = _sidebar_session_path(self.session_id)
+        if not path.is_file():
+            return
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            return
+        if not isinstance(data, dict):
+            return
+        current = " ".join(str(data.get("title") or "").strip().split())
+        if current not in {"", "New chat", "Chat"}:
+            self._terminal_named = True
+            return
+        data["title"] = clean[:80]
+        data["updated_at"] = time.time()
+        try:
+            path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+            self._terminal_named = True
+        except Exception:
+            pass
+
+    def _track_terminal_input(self, payload: bytes) -> None:
+        if getattr(self, "_terminal_named", False):
+            return
+        text = payload.decode("utf-8", errors="ignore")
+        buffer = str(getattr(self, "_terminal_input_buffer", ""))
+        for ch in text:
+            if ch == "\x03":
+                buffer = ""
+                continue
+            if ch in {"\x7f", "\b"}:
+                buffer = buffer[:-1]
+                continue
+            if ch in {"\r", "\n"}:
+                line = buffer
+                buffer = ""
+                self._record_terminal_title(line)
+                continue
+            if len(buffer) < 8192:
+                buffer += ch
+        self._terminal_input_buffer = buffer
 
     def snapshot(self) -> bytes:
         with self._state_lock:
@@ -357,6 +545,7 @@ class PiTerminalSession:
         with self._write_lock:
             written = os.write(fd, payload)
             self._input_bytes += max(0, int(written))
+        self._track_terminal_input(payload[:max(0, int(written))])
 
     def resize(self, cols: int, rows: int) -> None:
         self.cols = max(20, int(cols or self.cols))
@@ -517,11 +706,19 @@ class PiTerminalSession:
     def status(self) -> TerminalStatus:
         process = self.process
         code = process.poll() if process else None
+        recovering = bool(getattr(self, "_recovering", None) and self._recovering.is_set())
         running = process is not None and code is None and not self._closed.is_set()
-        if running and self._output_bytes == 0 and time.time() - self.started_at > 3.0:
+        resumable = _has_persisted_pi_session(self.session_id)
+        if recovering and not running:
+            message = "Pi exited unexpectedly; automatically resuming the saved session…"
+        elif running and self._output_bytes == 0 and time.time() - self.started_at > 3.0:
             message = "Pi process is running, but the PTY has not produced terminal output yet."
+        elif running:
+            message = "Pi interactive terminal is running."
+        elif resumable:
+            message = "Pi terminal is stopped. A saved Pi session is available and will resume automatically."
         else:
-            message = "Pi interactive terminal is running." if running else "Pi interactive terminal is stopped."
+            message = "Pi interactive terminal is stopped."
         return TerminalStatus(
             session_id=self.session_id,
             supported=True,
@@ -539,11 +736,21 @@ class PiTerminalSession:
             input_bytes=self._input_bytes,
             output_bytes=self._output_bytes,
             last_output_at=self._last_output_at,
+            recovering=recovering,
+            resumable=resumable,
+            resume_count=int(getattr(self, "_resume_count", 0)),
+            recovery_error=str(getattr(self, "_last_recovery_error", "")),
+            title=_sidebar_session_title(self.session_id),
         )
 
     def stop(self, graceful: bool = True) -> None:
+        # Session switches/deletes/model restarts are deliberate and must never trigger
+        # the unexpected-exit recovery loop.
+        if hasattr(self, "_intentional_stop"):
+            self._intentional_stop.set()
         process = self.process
         if process is None:
+            self._closed.set()
             return
         if process.poll() is None and graceful:
             try:
@@ -616,9 +823,11 @@ class PiTerminalManager:
         status = discover_pi(executable)
         if not status.available or not status.executable:
             raise RuntimeError(status.message)
+        resume_saved = bool(resume or _has_persisted_pi_session(session_id))
         with self._lock:
             existing = self._sessions.get(str(session_id))
-            if existing and existing.status().running:
+            existing_status = existing.status() if existing else None
+            if existing and existing_status and (existing_status.running or existing_status.recovering):
                 existing.update_workflow(workflow)
                 existing.update_bridge_config(context_settings or {})
                 existing.resize(cols, rows)
@@ -635,7 +844,7 @@ class PiTerminalManager:
                 timeout=timeout,
                 cols=cols,
                 rows=rows,
-                resume=resume,
+                resume=resume_saved,
                 env_overrides=env_overrides,
                 workflow=workflow,
                 context_settings=context_settings,
@@ -692,12 +901,22 @@ class PiTerminalManager:
         session = self.get(session_id)
         if not session:
             cap = self.capability()
+            resumable = _has_persisted_pi_session(session_id)
             return {
                 "session_id": str(session_id),
                 "supported": cap["supported"],
                 "backend": cap["backend"],
                 "running": False,
-                "message": cap["message"],
+                "recovering": False,
+                "resumable": resumable,
+                "resume_count": 0,
+                "recovery_error": "",
+                "title": _sidebar_session_title(session_id),
+                "message": (
+                    "Pi terminal is stopped. A saved Pi session is available and will resume automatically."
+                    if resumable
+                    else cap["message"]
+                ),
             }
         data = session.status().to_dict()
         if session.bridge_state_path.exists():

@@ -86,6 +86,22 @@ class TerminalArchitectureTests(unittest.TestCase):
         self.assertEqual(command[command.index("--provider") + 1], "llama.cpp")
         self.assertEqual(command[command.index("--model") + 1], "test-model")
 
+    def test_terminal_saved_session_recovery_architecture_is_present(self):
+        terminal_source = (ROOT / "comfy_pi_agent" / "terminal.py").read_text(encoding="utf-8")
+        self.assertIn("def _has_persisted_pi_session", terminal_source)
+        self.assertIn("self._start(resume=True", terminal_source)
+        self.assertIn("Automatically reopening and resuming the saved Pi session", terminal_source)
+        self.assertIn("resume_saved = bool(resume or _has_persisted_pi_session(session_id))", terminal_source)
+        self.assertIn("def _record_terminal_title", terminal_source)
+
+        route_source = (ROOT / "comfy_pi_agent" / "routes.py").read_text(encoding="utf-8")
+        self.assertIn("if not status.running and status.recovering", route_source)
+
+        frontend_source = (ROOT / "web" / "pi_agent.js").read_text(encoding="utf-8")
+        self.assertIn("terminalRecoveryAttempts", frontend_source)
+        self.assertIn("resumeSaved = Boolean(status.resumable)", frontend_source)
+        self.assertIn("option.textContent = String(status.title)", frontend_source)
+
 
     @unittest.skipUnless(os.name == "posix", "requires POSIX controlling PTY")
     def test_real_terminal_child_has_controlling_tty_and_accepts_input(self):
@@ -257,7 +273,9 @@ class TerminalArchitectureTests(unittest.TestCase):
         self.assertIn("function attachTerminalHost(term, ui)", js)
         self.assertIn("ui.terminalHost.appendChild(term.element)", js)
         self.assertIn('CHAT_STATE.terminalSocket?.readyState === WebSocket.OPEN', js)
-        self.assertIn('ui.terminalStatus.textContent = "Reconnecting to existing Pi terminal…"', js)
+        self.assertIn("status.running || status.recovering", js)
+        self.assertIn('"Reconnecting to existing Pi terminal…"', js)
+        self.assertIn("resumeSaved = Boolean(status.resumable)", js)
         self.assertIn('if (CHAT_STATE.terminal && CHAT_STATE.view === "terminal")', js)
         self.assertIn("destroy: () => detachPiInterface()", js)
         detach_source = js[

@@ -397,6 +397,10 @@ def register_routes() -> bool:
                 if chunk:
                     await ws.send_str(json.dumps({"type": "output", "data": chunk.decode("utf-8", errors="replace")}))
                 status = session.status()
+                if not status.running and status.recovering:
+                    # Keep the browser attached while this same PiTerminalSession object
+                    # reopens the persisted Pi session.
+                    continue
                 if not status.running:
                     await ws.send_str(json.dumps({"type": "exit", "status": status.to_dict()}))
                     break
