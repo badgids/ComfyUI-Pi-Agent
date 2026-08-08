@@ -228,6 +228,75 @@ class ChatSessionStore:
         document["title"] = "New chat"
         return self.save(document)
 
+    def rename(self, session_id: str, title: str) -> dict[str, Any]:
+        clean = _safe_title(title, fallback="")
+        if not clean:
+            raise ValueError("Session title cannot be empty.")
+        document = self.load(session_id)
+        document["title"] = clean
+        return self.save(document)
+
+    def import_document(self, source: dict[str, Any]) -> dict[str, Any]:
+        if not isinstance(source, dict):
+            raise ValueError("Imported chat session must be a JSON object.")
+
+        local = source.get("local_llm") if isinstance(source.get("local_llm"), dict) else {}
+        clean_local = {
+            key: value
+            for key, value in local.items()
+            if key not in {"api_key", "token", "secret"}
+        }
+        provider, model = _normalized_provider_model(
+            str(source.get("provider") or ""),
+            str(source.get("model") or ""),
+            clean_local,
+        )
+        document = _new_document(
+            title=_safe_title(source.get("title"), fallback="Imported chat"),
+            project_directory=str(source.get("project_directory") or ""),
+            provider=provider,
+            model=model,
+        )
+        document["scoped_models"] = str(source.get("scoped_models") or "")
+        document["local_llm"] = clean_local if clean_local.get("enabled") else {}
+
+        imported_messages: list[dict[str, Any]] = []
+        source_messages = source.get("messages") if isinstance(source.get("messages"), list) else []
+        for item in source_messages:
+            if not isinstance(item, dict):
+                continue
+            role = str(item.get("role") or "").strip().lower()
+            if role not in {"user", "assistant"}:
+                continue
+            try:
+                created_at = float(item.get("created_at") or _now())
+            except (TypeError, ValueError):
+                created_at = _now()
+            message = {
+                "id": uuid.uuid4().hex,
+                "role": role,
+                "content": str(item.get("content") or ""),
+                "created_at": created_at,
+            }
+            for key in ("reasoning", "activity", "error", "slash_command"):
+                if key in item:
+                    message[key] = item[key]
+            imported_messages.append(message)
+        document["messages"] = imported_messages
+
+        imported_guard = source.get("context_guard") if isinstance(source.get("context_guard"), dict) else {}
+        guard = document.setdefault("context_guard", {})
+        guard["enabled"] = bool(imported_guard.get("enabled", True))
+        guard["threshold"] = clamp_threshold(imported_guard.get("threshold", DEFAULT_HANDOFF_THRESHOLD))
+        guard["handoff_max_chars"] = clamp_handoff_chars(
+            imported_guard.get("handoff_max_chars", DEFAULT_HANDOFF_MAX_CHARS)
+        )
+        # Imported sessions get fresh continuity bookkeeping; old paths may be invalid here.
+        guard["handoff_count"] = 0
+        guard["last_pressure"] = {}
+        guard["last_handoff"] = {}
+        return self.save(document)
+
     def append(self, session_id: str, role: str, content: str, **extra: Any) -> dict[str, Any]:
         document = self.load(session_id)
         message = {

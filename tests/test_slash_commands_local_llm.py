@@ -333,12 +333,12 @@ class LocalLlmTests(unittest.TestCase):
         self.assertEqual(source.count('id="pi-agent-provider"'), 1)
         self.assertEqual(source.count('id="pi-agent-model"'), 1)
         textarea_at = source.index('id="pi-agent-chat-input"')
+        status_at = source.index('id="pi-agent-statusline"')
         provider_at = source.index('id="pi-agent-provider"')
         model_at = source.index('id="pi-agent-model"')
-        status_at = source.index('id="pi-agent-statusline"')
-        self.assertLess(textarea_at, provider_at)
+        self.assertLess(textarea_at, status_at)
+        self.assertLess(status_at, provider_at)
         self.assertLess(provider_at, model_at)
-        self.assertLess(model_at, status_at)
         for obsolete in (
             "Pi provider override",
             "Pi provider id (optional)",

@@ -675,6 +675,16 @@ def register_routes() -> bool:
         session = CHAT_MANAGER.store.save(session)
         return web.json_response({"session": session})
 
+    @routes.post("/pi-agent/chat/import")
+    async def pi_agent_chat_import(request):
+        payload = await request.json()
+        source = payload.get("session") if isinstance(payload.get("session"), dict) else payload
+        try:
+            session = CHAT_MANAGER.store.import_document(source)
+            return web.json_response({"session": session})
+        except ValueError as exc:
+            return web.json_response({"error": str(exc)}, status=400)
+
     @routes.get(r"/pi-agent/chat/session/{session_id}")
     async def pi_agent_chat_get(request):
         try:
@@ -682,6 +692,20 @@ def register_routes() -> bool:
             return web.json_response({"session": session})
         except FileNotFoundError as exc:
             return web.json_response({"error": str(exc)}, status=404)
+
+    @routes.post(r"/pi-agent/chat/session/{session_id}/rename")
+    async def pi_agent_chat_rename(request):
+        payload = await request.json()
+        try:
+            session = CHAT_MANAGER.store.rename(
+                request.match_info["session_id"],
+                str(payload.get("title") or ""),
+            )
+            return web.json_response({"session": session})
+        except FileNotFoundError as exc:
+            return web.json_response({"error": str(exc)}, status=404)
+        except ValueError as exc:
+            return web.json_response({"error": str(exc)}, status=400)
 
     @routes.delete(r"/pi-agent/chat/session/{session_id}")
     async def pi_agent_chat_delete(request):

@@ -274,8 +274,10 @@ class TerminalArchitectureTests(unittest.TestCase):
     def test_frontend_terminal_is_default_and_chat_reasoning_tools_default_visible(self):
         js = (ROOT / "web" / "pi_agent.js").read_text(encoding="utf-8")
         self.assertIn('view: sessionStorage.getItem("ComfyUIPi.ActiveView") === "chat" ? "chat" : "terminal"', js)
-        self.assertIn('>Terminal</button>', js)
-        self.assertIn('>Chat</button>', js)
+        self.assertIn('<div id="pi-agent-terminal-tab" class="pi-agent-view-tab active" role="tab"', js)
+        self.assertIn('<div id="pi-agent-chat-tab" class="pi-agent-view-tab" role="tab"', js)
+        self.assertNotIn('id="pi-agent-terminal-tab" class="pi-agent-btn', js)
+        self.assertNotIn('id="pi-agent-chat-tab" class="pi-agent-btn', js)
         self.assertIn('id="pi-agent-show-reasoning" type="checkbox" checked', js)
         self.assertIn('id="pi-agent-show-tools" type="checkbox" checked', js)
         self.assertIn("/pi-agent/terminal/ws/", js)

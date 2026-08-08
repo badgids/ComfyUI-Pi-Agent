@@ -25,6 +25,15 @@ class ChatSessionStoreTests(unittest.TestCase):
                 self.assertEqual(listing[0]["session_id"], sid)
                 self.assertEqual(listing[0]["message_count"], 2)
 
+                renamed = store.rename(sid, "Workflow repair")
+                self.assertEqual(renamed["title"], "Workflow repair")
+
+                imported = store.import_document(store.load(sid))
+                self.assertNotEqual(imported["session_id"], sid)
+                self.assertEqual(imported["title"], "Workflow repair")
+                self.assertEqual(len(imported["messages"]), 2)
+                self.assertEqual(imported["messages"][0]["role"], "user")
+
                 cleared = store.clear(sid)
                 self.assertEqual(cleared["messages"], [])
                 self.assertEqual(cleared["title"], "New chat")
@@ -88,6 +97,28 @@ class SidebarChatFrontendTests(unittest.TestCase):
         self.assertIn("handoff_threshold_percent", js)
         self.assertIn('max="95"', js)
         self.assertIn("Context --", js)
+
+    def test_sidebar_session_management_and_terminal_layout(self):
+        root = Path(__file__).parents[1]
+        js = (root / "web" / "pi_agent.js").read_text(encoding="utf-8")
+        routes = (root / "comfy_pi_agent" / "routes.py").read_text(encoding="utf-8")
+        self.assertNotIn('id="pi-agent-copy-chat"', js)
+        self.assertIn('id="pi-agent-load-session"', js)
+        self.assertIn('id="pi-agent-save-session"', js)
+        self.assertIn('id="pi-agent-rename-session"', js)
+        self.assertIn('aria-label="Clear session"', js)
+        self.assertIn("🧹", js)
+        self.assertIn("pi pi-trash", js)
+        self.assertIn('<div id="pi-agent-terminal-tab"', js)
+        self.assertIn('<div id="pi-agent-chat-tab"', js)
+        self.assertNotIn("Text, reasoning, and tool activity are selectable and copyable.", js)
+        self.assertIn("new Blob", js)
+        self.assertIn("/pi-agent/chat/import", js)
+        self.assertIn("/rename", js)
+        self.assertIn('@routes.post("/pi-agent/chat/import")', routes)
+        self.assertIn('/pi-agent/chat/session/{session_id}/rename', routes)
+        self.assertLess(js.index('id="pi-agent-chat-actions"'), js.index('class="pi-agent-model-switcher"'))
+        self.assertIn(".pi-agent-terminal-pane { flex:1 1 0; min-height:0;", js)
 
 
 if __name__ == "__main__":

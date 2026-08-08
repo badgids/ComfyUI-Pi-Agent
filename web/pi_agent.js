@@ -920,7 +920,10 @@ async function restartTerminalIfActive(ui) {
 }
 
 function switchView(ui, view) {
-  const target = view === "chat" ? "chat" : "terminal";
+  const requested = view === "chat" ? "chat" : "terminal";
+  const target = requested === "terminal" && ui.terminalTab.getAttribute("aria-disabled") === "true"
+    ? "chat"
+    : requested;
   CHAT_STATE.view = target;
   sessionStorage.setItem("ComfyUIPi.ActiveView", target);
   ui.terminalPane.hidden = target !== "terminal";
@@ -974,7 +977,11 @@ function ensureStyles() {
     .pi-agent-btn:disabled { opacity:.45; cursor:not-allowed; }
     .pi-agent-icon-btn { width:32px; height:32px; display:inline-grid; place-items:center; padding:0; line-height:1; font-size:17px; border-radius:7px; }
     .pi-agent-icon-btn .pi { font-size:16px; pointer-events:none; }
-    .pi-agent-sessions { min-width:120px; max-width:210px; border:1px solid color-mix(in srgb, currentColor 22%, transparent); background:var(--comfy-menu-bg, inherit); color:inherit; border-radius:7px; padding:5px 7px; }
+    .pi-agent-session-toolbar { flex-wrap:nowrap; }
+    .pi-agent-sessions { min-width:0; max-width:none; flex:1 1 auto; border:1px solid color-mix(in srgb, currentColor 22%, transparent); background:var(--comfy-menu-bg, inherit); color:inherit; border-radius:7px; padding:5px 7px; }
+    .pi-agent-session-actions { display:flex; align-items:center; gap:4px; flex:0 0 auto; }
+    .pi-agent-session-actions .pi-agent-icon-btn { width:30px; height:30px; font-size:15px; }
+    .pi-agent-emoji-icon { font-size:16px; line-height:1; pointer-events:none; }
     .pi-agent-settings { padding:8px; border-bottom:1px solid color-mix(in srgb, currentColor 15%, transparent); display:grid; gap:7px; }
     .pi-agent-settings[hidden] { display:none; }
     .pi-agent-field { display:grid; gap:3px; }
@@ -1000,10 +1007,11 @@ function ensureStyles() {
     .pi-agent-model-switcher { display:grid; grid-template-columns:minmax(0, 1fr) minmax(0, 1.25fr); gap:7px; align-items:end; }
     .pi-agent-model-switcher .pi-agent-field { min-width:0; }
     .pi-agent-model-switcher select { min-width:0; }
-    .pi-agent-composer-actions { display:flex; gap:7px; align-items:center; }
-    .pi-agent-send { margin-left:auto; min-width:72px; }
+    .pi-agent-composer-actions { display:flex; gap:7px; align-items:center; justify-content:flex-end; }
+    .pi-agent-send { min-width:72px; }
     .pi-agent-help { font-size:10px; opacity:.6; }
     .pi-agent-statusline { font-size:11px; min-height:16px; padding:0 2px; opacity:.72; }
+    .pi-agent-statusline:empty { display:none; }
     .pi-agent-command-menu { display:none; max-height:220px; overflow:auto; border:1px solid color-mix(in srgb, currentColor 22%, transparent); border-radius:8px; background:var(--comfy-menu-bg, #222); }
     .pi-agent-command-menu.open { display:block; }
     .pi-agent-command-item { padding:7px 9px; cursor:pointer; display:grid; gap:2px; }
@@ -1013,11 +1021,15 @@ function ensureStyles() {
     .pi-agent-local-box { border:1px solid color-mix(in srgb, currentColor 16%, transparent); border-radius:8px; padding:8px; display:grid; gap:7px; }
     .pi-agent-local-actions { display:flex; gap:6px; flex-wrap:wrap; }
     .pi-agent-local-status { font-size:10px; opacity:.72; white-space:pre-wrap; }
-    .pi-agent-view-tabs { display:flex; gap:6px; padding:7px 8px; border-bottom:1px solid color-mix(in srgb, currentColor 15%, transparent); }
-    .pi-agent-view-tab.active { background:color-mix(in srgb, #4f8cff 18%, transparent); border-color:color-mix(in srgb, #4f8cff 45%, currentColor 15%); }
-    .pi-agent-terminal-pane { flex:1 1 auto; min-height:260px; display:flex; flex-direction:column; overflow:hidden; background:#0f1115; }
+    .pi-agent-view-tabs { display:flex; gap:0; padding:0 8px; border-bottom:1px solid color-mix(in srgb, currentColor 15%, transparent); }
+    .pi-agent-view-tab { position:relative; padding:8px 14px 7px; cursor:pointer; opacity:.7; user-select:none; border-bottom:2px solid transparent; margin-bottom:-1px; }
+    .pi-agent-view-tab:hover { opacity:1; background:color-mix(in srgb, currentColor 6%, transparent); }
+    .pi-agent-view-tab:focus-visible { outline:1px solid color-mix(in srgb, #4f8cff 70%, white 10%); outline-offset:-2px; }
+    .pi-agent-view-tab.active { opacity:1; font-weight:600; border-bottom-color:#4f8cff; background:transparent; }
+    .pi-agent-view-tab[aria-disabled="true"] { opacity:.35; cursor:not-allowed; pointer-events:none; }
+    .pi-agent-terminal-pane { flex:1 1 0; min-height:0; display:flex; flex-direction:column; overflow:hidden; background:#0f1115; }
     .pi-agent-terminal-pane[hidden], .pi-agent-chat-pane[hidden] { display:none !important; }
-    .pi-agent-terminal-host { flex:1 1 auto; min-height:260px; width:100%; overflow:hidden; padding:4px; box-sizing:border-box; background:#0f1115; }
+    .pi-agent-terminal-host { flex:1 1 0; min-height:0; width:100%; overflow:hidden; padding:4px; box-sizing:border-box; background:#0f1115; }
     .pi-agent-terminal-host .terminal { height:100%; }
     .pi-agent-terminal-status { font-size:10px; padding:4px 8px; min-height:16px; border-top:1px solid #2a2d34; color:#c8ccd4; background:#15181e; }
     .pi-agent-terminal-host .xterm, .pi-agent-terminal-host .xterm-viewport, .pi-agent-terminal-host .xterm-screen { height:100%; }
@@ -1026,7 +1038,7 @@ function ensureStyles() {
     .pi-agent-shell.pi-agent-placement-bottom .pi-agent-terminal-pane, .pi-agent-shell.pi-agent-placement-bottom .pi-agent-terminal-host { min-height:150px; }
     .pi-agent-shell.pi-agent-placement-bottom .pi-agent-messages { min-height:120px; }
     .pi-agent-chat-pane { flex:1 1 auto; min-height:0; display:flex; flex-direction:column; }
-    .pi-agent-shared-controls { border-top:1px solid color-mix(in srgb, currentColor 15%, transparent); padding:8px; display:grid; gap:7px; }
+    .pi-agent-shared-controls { flex:0 0 auto; border-top:1px solid color-mix(in srgb, currentColor 15%, transparent); padding:6px 8px 8px; display:grid; gap:5px; }
     .pi-agent-activity-block { margin-top:8px; border-top:1px solid color-mix(in srgb, currentColor 14%, transparent); padding-top:6px; font-size:11px; }
     .pi-agent-activity-block summary { cursor:pointer; font-weight:600; opacity:.8; }
     .pi-agent-activity-block pre { max-height:280px; overflow:auto; white-space:pre-wrap; margin:6px 0 0; padding:7px; border-radius:6px; background:color-mix(in srgb, currentColor 7%, transparent); }
@@ -1215,7 +1227,16 @@ async function createSession(ui) {
 function setBusy(ui, busy) {
   CHAT_STATE.busy = busy;
   ui.send.disabled = busy;
-  ui.newChat.disabled = busy;
+  for (const control of [
+    ui.newChat,
+    ui.loadSessionButton,
+    ui.saveSessionButton,
+    ui.renameSessionButton,
+    ui.clearChat,
+    ui.deleteChat,
+  ]) {
+    if (control) control.disabled = busy;
+  }
   ui.sessionSelect.disabled = busy;
   ui.provider.disabled = busy;
   ui.model.disabled = busy || ui.provider.value === "pi-default";
@@ -1626,6 +1647,98 @@ async function clearChat(ui) {
   await refreshSessions(ui, CHAT_STATE.sessionId);
 }
 
+function sessionFilename(session) {
+  const title = String(session?.title || "comfyui-pi-session")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 64) || "comfyui-pi-session";
+  const suffix = String(session?.session_id || "").slice(0, 8);
+  return `${title}${suffix ? `-${suffix}` : ""}.comfyui-pi-session.json`;
+}
+
+async function saveSessionFile(ui) {
+  if (!CHAT_STATE.sessionId || CHAT_STATE.busy) return;
+  const data = await fetchJson(`/pi-agent/chat/session/${encodeURIComponent(CHAT_STATE.sessionId)}`);
+  const session = data.session || {};
+  const blob = new Blob([`${JSON.stringify(session, null, 2)}\n`], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  try {
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = sessionFilename(session);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    ui.statusline.textContent = `Saved session: ${session.title || "Chat"}`;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+async function loadSessionFile(ui, file) {
+  if (!file || CHAT_STATE.busy) return;
+  let parsed;
+  try {
+    parsed = JSON.parse(await file.text());
+  } catch (error) {
+    ui.statusline.textContent = `Unable to load session JSON: ${String(error)}`;
+    return;
+  }
+  const source = parsed?.session && typeof parsed.session === "object" ? parsed.session : parsed;
+  const data = await fetchJson("/pi-agent/chat/import", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ session: source }),
+  });
+  const previous = CHAT_STATE.sessionId;
+  const importedId = data.session?.session_id;
+  if (!importedId) throw new Error("Imported session did not return a session id.");
+
+  if (previous && previous !== importedId && CHAT_STATE.view === "terminal") {
+    try {
+      await fetchJson("/pi-agent/terminal/stop", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: previous }),
+      });
+    } catch {}
+  }
+  await refreshSessions(ui, importedId);
+  await refreshCommandCatalog(ui);
+  if (CHAT_STATE.terminal) CHAT_STATE.terminal.reset();
+  ui.statusline.textContent = `Loaded session: ${data.session.title || "Chat"}`;
+  if (CHAT_STATE.view === "terminal") await startTerminal(ui);
+  else ui.textarea.focus();
+}
+
+async function renameCurrentSession(ui) {
+  if (!CHAT_STATE.sessionId || CHAT_STATE.busy) return;
+  const current = CHAT_STATE.sessions.find((item) => item.session_id === CHAT_STATE.sessionId);
+  const previousTitle = String(current?.title || "Chat");
+  const requested = window.prompt("Rename chat session", previousTitle);
+  if (requested == null) return;
+  const title = requested.trim();
+  if (!title) {
+    ui.statusline.textContent = "Session name cannot be empty.";
+    return;
+  }
+  const data = await fetchJson(
+    `/pi-agent/chat/session/${encodeURIComponent(CHAT_STATE.sessionId)}/rename`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title }),
+    },
+  );
+  const savedTitle = String(data.session?.title || title);
+  const option = [...ui.sessionSelect.options].find((item) => item.value === CHAT_STATE.sessionId);
+  if (option) option.textContent = savedTitle;
+  if (current) current.title = savedTitle;
+  ui.statusline.textContent = `Renamed session to: ${savedTitle}`;
+}
+
 function buildSidebar(el, placement = "sidebar") {
   ensureStyles();
   const placementClass = placement === "bottom" ? "pi-agent-placement-bottom" : "pi-agent-placement-sidebar";
@@ -1637,16 +1750,21 @@ function buildSidebar(el, placement = "sidebar") {
         <span id="pi-agent-context-pill" class="pi-agent-pill" title="Context pressure and in-place compaction checkpoint status">Context --</span>
         <button id="pi-agent-settings-toggle" class="pi-agent-btn pi-agent-icon-btn" type="button" title="Pi Agent settings" aria-label="Chat settings"><i class="pi pi-cog" aria-hidden="true"></i></button>
       </div>
-      <div class="pi-agent-toolbar">
-        <select id="pi-agent-session-select" class="pi-agent-sessions" aria-label="Pi session"></select>
+      <div class="pi-agent-toolbar pi-agent-session-toolbar">
+        <select id="pi-agent-session-select" class="pi-agent-sessions" aria-label="Saved Pi session"></select>
         <button id="pi-agent-new-chat" class="pi-agent-btn" type="button">New session</button>
-        <button id="pi-agent-copy-chat" class="pi-agent-btn" type="button">Copy chat</button>
-        <button id="pi-agent-clear-chat" class="pi-agent-btn" type="button">Clear</button>
-        <button id="pi-agent-delete-chat" class="pi-agent-btn" type="button">Delete</button>
+        <div class="pi-agent-session-actions" aria-label="Session actions">
+          <button id="pi-agent-load-session" class="pi-agent-btn pi-agent-icon-btn" type="button" title="Load session JSON" aria-label="Load session JSON"><i class="pi pi-folder-open" aria-hidden="true"></i></button>
+          <input id="pi-agent-load-session-file" type="file" accept=".json,application/json" hidden />
+          <button id="pi-agent-save-session" class="pi-agent-btn pi-agent-icon-btn" type="button" title="Save session JSON" aria-label="Save session JSON"><i class="pi pi-save" aria-hidden="true"></i></button>
+          <button id="pi-agent-rename-session" class="pi-agent-btn pi-agent-icon-btn" type="button" title="Rename session" aria-label="Rename session"><i class="pi pi-pencil" aria-hidden="true"></i></button>
+          <button id="pi-agent-clear-chat" class="pi-agent-btn pi-agent-icon-btn" type="button" title="Clear session" aria-label="Clear session"><span class="pi-agent-emoji-icon" aria-hidden="true">🧹</span></button>
+          <button id="pi-agent-delete-chat" class="pi-agent-btn pi-agent-icon-btn" type="button" title="Delete session" aria-label="Delete session"><i class="pi pi-trash" aria-hidden="true"></i></button>
+        </div>
       </div>
       <div class="pi-agent-view-tabs" role="tablist" aria-label="Pi Agent view">
-        <button id="pi-agent-terminal-tab" class="pi-agent-btn pi-agent-view-tab active" type="button" role="tab" aria-selected="true">Terminal</button>
-        <button id="pi-agent-chat-tab" class="pi-agent-btn pi-agent-view-tab" type="button" role="tab" aria-selected="false">Chat</button>
+        <div id="pi-agent-terminal-tab" class="pi-agent-view-tab active" role="tab" tabindex="0" aria-selected="true" aria-controls="pi-agent-terminal-pane">Terminal</div>
+        <div id="pi-agent-chat-tab" class="pi-agent-view-tab" role="tab" tabindex="0" aria-selected="false" aria-controls="pi-agent-chat-pane">Chat</div>
       </div>
       <div id="pi-agent-chat-settings" class="pi-agent-settings" hidden>
         <div class="pi-agent-field">
@@ -1682,11 +1800,11 @@ function buildSidebar(el, placement = "sidebar") {
         <div class="pi-agent-field"><label for="pi-agent-handoff-max-chars">Maximum handoff size (characters)</label><input id="pi-agent-handoff-max-chars" class="pi-agent-input" type="number" min="4000" max="16000" step="500" value="8000" /></div>
         <div class="pi-agent-field"><label for="pi-agent-timeout">Timeout in seconds</label><input id="pi-agent-timeout" class="pi-agent-input" type="number" min="10" max="3600" value="180" /></div>
       </div>
-      <div id="pi-agent-terminal-pane" class="pi-agent-terminal-pane" role="tabpanel">
+      <div id="pi-agent-terminal-pane" class="pi-agent-terminal-pane" role="tabpanel" aria-labelledby="pi-agent-terminal-tab">
         <div id="pi-agent-terminal-host" class="pi-agent-terminal-host" role="application" aria-label="Real Pi interactive terminal"></div>
         <div id="pi-agent-terminal-status" class="pi-agent-terminal-status">Terminal starts when this view opens.</div>
       </div>
-      <div id="pi-agent-chat-pane" class="pi-agent-chat-pane" role="tabpanel" hidden>
+      <div id="pi-agent-chat-pane" class="pi-agent-chat-pane" role="tabpanel" aria-labelledby="pi-agent-chat-tab" hidden>
         <div id="pi-agent-messages" class="pi-agent-messages" aria-live="polite"></div>
         <div class="pi-agent-composer">
           <textarea id="pi-agent-chat-input" class="pi-agent-textarea" placeholder="Message Pi Agent… Type / for Pi commands. Paste text normally. Enter sends; Shift+Enter adds a new line."></textarea>
@@ -1694,15 +1812,14 @@ function buildSidebar(el, placement = "sidebar") {
         </div>
       </div>
       <div class="pi-agent-shared-controls">
+        <div id="pi-agent-statusline" class="pi-agent-statusline"></div>
+        <div id="pi-agent-chat-actions" class="pi-agent-composer-actions" hidden>
+          <button id="pi-agent-stop" class="pi-agent-btn pi-agent-hidden" type="button">Stop</button>
+          <button id="pi-agent-send" class="pi-agent-btn pi-agent-send" type="button">Send</button>
+        </div>
         <div class="pi-agent-model-switcher" aria-label="Pi provider and model selection">
           <div class="pi-agent-field"><label for="pi-agent-provider">Provider</label><select id="pi-agent-provider" class="pi-agent-input"><option value="pi-default">Pi default / current configured model</option></select></div>
           <div class="pi-agent-field"><label for="pi-agent-model">Model</label><select id="pi-agent-model" class="pi-agent-input"><option value="">Pi default model</option></select></div>
-        </div>
-        <div id="pi-agent-statusline" class="pi-agent-statusline"></div>
-        <div id="pi-agent-chat-actions" class="pi-agent-composer-actions" hidden>
-          <span class="pi-agent-help">Text, reasoning, and tool activity are selectable and copyable.</span>
-          <button id="pi-agent-stop" class="pi-agent-btn pi-agent-hidden" type="button">Stop</button>
-          <button id="pi-agent-send" class="pi-agent-btn pi-agent-send" type="button">Send</button>
         </div>
       </div>
     </div>`;
@@ -1710,7 +1827,10 @@ function buildSidebar(el, placement = "sidebar") {
   const ui = {
     sessionSelect: el.querySelector("#pi-agent-session-select"),
     newChat: el.querySelector("#pi-agent-new-chat"),
-    copyChat: el.querySelector("#pi-agent-copy-chat"),
+    loadSessionButton: el.querySelector("#pi-agent-load-session"),
+    loadSessionFile: el.querySelector("#pi-agent-load-session-file"),
+    saveSessionButton: el.querySelector("#pi-agent-save-session"),
+    renameSessionButton: el.querySelector("#pi-agent-rename-session"),
     clearChat: el.querySelector("#pi-agent-clear-chat"),
     deleteChat: el.querySelector("#pi-agent-delete-chat"),
     settingsToggle: el.querySelector("#pi-agent-settings-toggle"),
@@ -1757,8 +1877,24 @@ function buildSidebar(el, placement = "sidebar") {
   ui.terminalHost.addEventListener("keydown", (event) => event.stopPropagation());
   ui.terminalHost.addEventListener("keyup", (event) => event.stopPropagation());
   ui.settingsToggle.addEventListener("click", () => { ui.settings.hidden = !ui.settings.hidden; });
-  ui.terminalTab.addEventListener("click", () => switchView(ui, "terminal"));
-  ui.chatTab.addEventListener("click", () => switchView(ui, "chat"));
+  const activateTab = (view) => (event) => {
+    if (event.type === "keydown" && !["Enter", " ", "ArrowLeft", "ArrowRight"].includes(event.key)) return;
+    if (event.type === "keydown") event.preventDefault();
+    if (view === "terminal" && ui.terminalTab.getAttribute("aria-disabled") === "true") return;
+    if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+      const nextView = view === "terminal" ? "chat" : "terminal";
+      const target = nextView === "terminal" ? ui.terminalTab : ui.chatTab;
+      if (target.getAttribute("aria-disabled") === "true") return;
+      target.focus();
+      switchView(ui, nextView);
+      return;
+    }
+    switchView(ui, view);
+  };
+  ui.terminalTab.addEventListener("click", activateTab("terminal"));
+  ui.terminalTab.addEventListener("keydown", activateTab("terminal"));
+  ui.chatTab.addEventListener("click", activateTab("chat"));
+  ui.chatTab.addEventListener("keydown", activateTab("chat"));
   ui.showReasoning.addEventListener("change", async () => {
     CHAT_STATE.showReasoning = ui.showReasoning.checked;
     localStorage.setItem("ComfyUIPi.ShowReasoning", String(CHAT_STATE.showReasoning));
@@ -1837,18 +1973,24 @@ function buildSidebar(el, placement = "sidebar") {
     if (CHAT_STATE.terminal) CHAT_STATE.terminal.reset();
     if (CHAT_STATE.view === "terminal") await startTerminal(ui); else ui.textarea.focus();
   });
-  ui.copyChat.addEventListener("click", async () => {
-    if (!CHAT_STATE.sessionId) return;
-    if (CHAT_STATE.view === "terminal" && CHAT_STATE.terminal?.hasSelection?.()) {
-      await copyText(CHAT_STATE.terminal.getSelection());
-      ui.statusline.textContent = "Terminal selection copied.";
-      return;
+  ui.loadSessionButton.addEventListener("click", () => {
+    if (!CHAT_STATE.busy) ui.loadSessionFile.click();
+  });
+  ui.loadSessionFile.addEventListener("change", async () => {
+    const [file] = ui.loadSessionFile.files || [];
+    try {
+      if (file) await loadSessionFile(ui, file);
+    } catch (error) {
+      ui.statusline.textContent = String(error);
+    } finally {
+      ui.loadSessionFile.value = "";
     }
-    const data = await fetchJson(`/pi-agent/chat/session/${encodeURIComponent(CHAT_STATE.sessionId)}`);
-    const transcript = (data.session.messages || []).map((message) => `${message.role === "user" ? "You" : "Pi Agent"}:\n${message.content || ""}`).join("\n\n");
-    await copyText(transcript);
-    ui.statusline.textContent = "Chat copied.";
-    setTimeout(() => { if (!CHAT_STATE.busy) ui.statusline.textContent = ""; }, 1200);
+  });
+  ui.saveSessionButton.addEventListener("click", async () => {
+    try { await saveSessionFile(ui); } catch (error) { ui.statusline.textContent = String(error); }
+  });
+  ui.renameSessionButton.addEventListener("click", async () => {
+    try { await renameCurrentSession(ui); } catch (error) { ui.statusline.textContent = String(error); }
   });
   ui.clearChat.addEventListener("click", () => clearChat(ui));
   ui.deleteChat.addEventListener("click", async () => {
@@ -1904,7 +2046,8 @@ async function initializeSidebar(el, placement = "sidebar") {
   try {
     const terminalCapability = await fetchJson("/pi-agent/terminal/capability");
     CHAT_STATE.terminalSupported = Boolean(terminalCapability.supported);
-    ui.terminalTab.disabled = !CHAT_STATE.terminalSupported;
+    ui.terminalTab.setAttribute("aria-disabled", String(!CHAT_STATE.terminalSupported));
+    ui.terminalTab.tabIndex = CHAT_STATE.terminalSupported ? 0 : -1;
     ui.terminalTab.title = terminalCapability.message || "Real Pi terminal";
     if (!CHAT_STATE.terminalSupported) {
       ui.terminalStatus.textContent = terminalCapability.message || "Native terminal unavailable; using structured Chat.";
@@ -1912,7 +2055,8 @@ async function initializeSidebar(el, placement = "sidebar") {
     }
   } catch (error) {
     CHAT_STATE.terminalSupported = false;
-    ui.terminalTab.disabled = true;
+    ui.terminalTab.setAttribute("aria-disabled", "true");
+    ui.terminalTab.tabIndex = -1;
     ui.terminalStatus.textContent = `Terminal unavailable: ${String(error)}`;
     CHAT_STATE.view = "chat";
   }
