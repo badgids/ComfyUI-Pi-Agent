@@ -589,8 +589,26 @@ class PiTerminalSession:
             return
         try:
             fcntl.ioctl(fd, termios.TIOCSWINSZ, _winsize(self.rows, self.cols))
+
+            # Signal the PTY's actual foreground process group as well as Pi's original
+            # process group. Interactive tool execution can temporarily make them differ.
+            process_groups: set[int] = set()
+            try:
+                foreground = int(os.tcgetpgrp(fd))
+                if foreground > 0:
+                    process_groups.add(foreground)
+            except (AttributeError, OSError):
+                pass
             if self.process and self.process.poll() is None:
-                os.killpg(os.getpgid(self.process.pid), signal.SIGWINCH)
+                try:
+                    process_groups.add(int(os.getpgid(self.process.pid)))
+                except OSError:
+                    pass
+            for process_group in process_groups:
+                try:
+                    os.killpg(process_group, signal.SIGWINCH)
+                except OSError:
+                    pass
         except Exception:
             pass
 

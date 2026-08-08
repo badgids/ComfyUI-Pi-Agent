@@ -664,14 +664,84 @@ function terminalNotifyPtySize(term) {
   }));
 }
 
+function terminalCellGeometry(term) {
+  const legacy = term?.renderer?.dimensions;
+  const legacyWidth = Number(legacy?.actualCellWidth || 0);
+  const legacyHeight = Number(legacy?.actualCellHeight || 0);
+  if (legacyWidth > 0 && legacyHeight > 0) {
+    return { width: legacyWidth, height: legacyHeight };
+  }
+
+  const modern = term?._core?._renderService?.dimensions?.css?.cell;
+  const modernWidth = Number(modern?.width || 0);
+  const modernHeight = Number(modern?.height || 0);
+  if (modernWidth > 0 && modernHeight > 0) {
+    return { width: modernWidth, height: modernHeight };
+  }
+
+  const row = term?.element?.querySelector?.(".xterm-rows > div");
+  const rowRect = row?.getBoundingClientRect?.();
+  const span = row?.querySelector?.("span");
+  const spanRect = span?.getBoundingClientRect?.();
+  const width = Number(spanRect?.width || 0);
+  const height = Number(rowRect?.height || 0);
+  if (width > 0 && height > 0) {
+    return { width, height };
+  }
+  return null;
+}
+
+function terminalScrollbarWidth(term) {
+  const viewport = term?.element?.querySelector?.(".xterm-viewport");
+  if (viewport) {
+    const width = Math.max(0, Number(viewport.offsetWidth || 0) - Number(viewport.clientWidth || 0));
+    if (width > 0) return width;
+  }
+  return Math.max(0, Number(term?.viewport?.scrollBarWidth || 0));
+}
+
+function resizeTerminalToElement(term) {
+  const element = term?.element;
+  if (!term || !element) return false;
+
+  const rect = element.getBoundingClientRect();
+  if (rect.width < 20 || rect.height < 20) return false;
+
+  const cell = terminalCellGeometry(term);
+  if (!cell) {
+    if (typeof term.fit === "function") term.fit();
+    return true;
+  }
+
+  const style = getComputedStyle(element);
+  const paddingX =
+    Number.parseFloat(style.paddingLeft || "0") +
+    Number.parseFloat(style.paddingRight || "0");
+  const paddingY =
+    Number.parseFloat(style.paddingTop || "0") +
+    Number.parseFloat(style.paddingBottom || "0");
+  const availableWidth = Math.max(1, rect.width - paddingX - terminalScrollbarWidth(term));
+  const availableHeight = Math.max(1, rect.height - paddingY);
+  const cols = Math.max(20, Math.floor(availableWidth / cell.width));
+  const rows = Math.max(6, Math.floor(availableHeight / cell.height));
+
+  if (Number(term.cols) !== cols || Number(term.rows) !== rows) {
+    term.resize(cols, rows);
+  }
+  if (typeof term.refresh === "function" && term.rows > 0) {
+    term.refresh(0, term.rows - 1);
+  }
+  return true;
+}
+
 function fitTerminalToHost(term, ui, { notifyPty = true, focus = false } = {}) {
   if (!term || !ui?.terminalHost || ui.terminalPane?.hidden) return;
-  const rect = ui.terminalHost.getBoundingClientRect();
-  if (rect.width < 20 || rect.height < 20) return;
-  if (typeof term.fit === "function") term.fit();
-  // fit() only fires xterm's onResize when its geometry changes. Pi still needs a
-  // final SIGWINCH after ComfyUI's flex layout settles, even if xterm already adopted
-  // those rows during an earlier intermediate frame.
+  const hostRect = ui.terminalHost.getBoundingClientRect();
+  if (hostRect.width < 20 || hostRect.height < 20) return;
+
+  // Bypass the bundled legacy fit addon's parent-computed-height path. Size the
+  // actual rendered terminal element directly so xterm rows fill the flex host.
+  resizeTerminalToElement(term);
   if (notifyPty) terminalNotifyPtySize(term);
   if (focus) term.focus();
 }
