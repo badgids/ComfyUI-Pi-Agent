@@ -114,6 +114,7 @@ class FakeClient:
         self.timeout = 180
         self.new_session_calls = 0
         self.prompts = []
+        self.compact_calls = []
 
     def new_session(self):
         self.new_session_calls += 1
@@ -121,10 +122,22 @@ class FakeClient:
 
     def prompt(self, text):
         self.prompts.append(text)
+        return {"text": "unexpected bootstrap"}
+
+    def compact(self, custom_instructions=""):
+        self.compact_calls.append(custom_instructions)
         return {
-            "text": "HANDOFF_READY",
-            "usage": {"totalTokens": 2200},
-            "context_window": 100000,
+            "summary": "Pi native compaction summary",
+            "tokensBefore": 83000,
+            "firstKeptEntryId": "entry-42",
+        }
+
+    def get_session_stats(self):
+        return {
+            "contextUsage": {
+                "tokens": 2200,
+                "contextWindow": 100000,
+            }
         }
 
     def close(self):
@@ -132,7 +145,7 @@ class FakeClient:
 
 
 class ChatHandoffLifecycleTests(unittest.TestCase):
-    def test_preemptive_handoff_resets_and_ingests(self):
+    def test_preemptive_handoff_compacts_in_place_and_keeps_durable_backup(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             session_root = root / "sessions"
@@ -177,15 +190,27 @@ class ChatHandoffLifecycleTests(unittest.TestCase):
                         max_chars=8000,
                     )
                 self.assertIsNotNone(handoff)
-                self.assertEqual(client.new_session_calls, 1)
-                self.assertTrue(any("Durable handoff file:" in p for p in client.prompts))
-                self.assertTrue(any("BEGIN CONTINUITY HANDOFF" in p for p in client.prompts))
-                self.assertTrue(handoff["ingested"])
-                self.assertEqual(handoff["reset_method"], "new_session")
-                self.assertTrue(live.handoff_ingested)
-                self.assertIsNone(live.context_signature)
+                self.assertEqual(client.new_session_calls, 0)
+                self.assertEqual(client.prompts, [])
+                self.assertEqual(len(client.compact_calls), 1)
+                self.assertIn("Continue the same task after compaction", client.compact_calls[0])
+                self.assertIn("AUTHORITATIVE COMFYUI-PI DURABLE HANDOFF", client.compact_calls[0])
+                self.assertIn("Continue the current movie project", client.compact_calls[0])
+                self.assertFalse(handoff["ingested"])
+                self.assertEqual(handoff["continuity_method"], "pi_compaction")
+                self.assertEqual(handoff["reset_method"], "none")
+                self.assertFalse(live.handoff_ingested)
+                self.assertEqual(live.context_signature, "old-scope")
                 self.assertEqual(updated["context_guard"]["handoff_count"], 1)
                 self.assertLess(updated["context_guard"]["last_pressure"]["ratio"], 0.10)
+
+    def test_structured_rpc_preemptive_guard_controls_pi_auto_compaction(self):
+        root = Path(__file__).resolve().parents[1]
+        runtime_source = (root / "comfy_pi_agent" / "pi_runtime.py").read_text(encoding="utf-8")
+        chat_source = (root / "comfy_pi_agent" / "chat.py").read_text(encoding="utf-8")
+        self.assertNotIn("self.set_auto_compaction(False)", runtime_source)
+        self.assertIn("live.client.set_auto_compaction(not preemptive_handoff)", chat_source)
+        self.assertIn("live.client.auto_compaction_disabled = bool(preemptive_handoff)", chat_source)
 
 
 if __name__ == "__main__":

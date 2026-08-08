@@ -1,15 +1,20 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import uuid
 
 from .chat import CHAT_MANAGER
 from .models import inventory_models
 from .pi_runtime import discover_pi
-from .local_llm import discover_local_servers, local_provider_presets, probe_local_server
+from .local_llm import discover_local_servers, local_provider_presets, probe_local_server, runtime_environment
 from .provider_catalog import provider_options
+from .terminal import TERMINAL_MANAGER
 from .tutorials import compile_tutorial
 from .version import __version__
 from .workflow import analyze_workflow
+from .workflow_guard import finalize_generated_workflow, finalize_workflow_result, live_node_catalog
+from .workflow_screenshots import SCREENSHOT_BROKER, capture_with_playwright
 from .integrations.router import (
     build_dynamic_integration_context,
     integration_status,
@@ -66,6 +71,158 @@ def register_routes() -> bool:
         workflow = payload.get("workflow", {})
         return web.json_response(analyze_workflow(workflow).to_dict())
 
+    @routes.get("/pi-agent/workflow/capabilities")
+    async def pi_agent_workflow_capabilities(request):
+        return web.json_response(live_node_catalog())
+
+    @routes.post("/pi-agent/workflow/finalize")
+    async def pi_agent_workflow_finalize(request):
+        payload = await request.json()
+        minimum_gap = max(6.0, float(payload.get("minimum_node_gap_px", 6) or 6))
+        result = finalize_generated_workflow(
+            payload.get("workflow", {}),
+            minimum_gap=minimum_gap,
+            organize=bool(payload.get("organize", True)),
+        )
+
+        api_prompt = payload.get("api_prompt")
+        if api_prompt is None and result.get("format") == "api":
+            api_prompt = result.get("workflow")
+
+        native = {
+            "attempted": False,
+            "valid": False,
+            "reason": "No API prompt graph was supplied. UI static validation cannot substitute for native ComfyUI prompt validation.",
+        }
+        if isinstance(api_prompt, dict) and api_prompt:
+            api_gate = finalize_generated_workflow(api_prompt, minimum_gap=minimum_gap, organize=False)
+            if api_gate.get("valid"):
+                try:
+                    import execution  # type: ignore
+                    valid = await execution.validate_prompt(str(uuid.uuid4()), api_gate["workflow"], None)
+                    native = {
+                        "attempted": True,
+                        "valid": bool(valid[0]),
+                        "error": valid[1],
+                        "outputs_to_execute": valid[2],
+                        "node_errors": valid[3],
+                    }
+                except Exception as exc:
+                    native = {
+                        "attempted": True,
+                        "valid": False,
+                        "error": f"{type(exc).__name__}: {exc}",
+                        "outputs_to_execute": [],
+                        "node_errors": {},
+                    }
+            else:
+                native = {
+                    "attempted": False,
+                    "valid": False,
+                    "reason": "API prompt failed the live static gate before native validation.",
+                    "api_gate": {key: value for key, value in api_gate.items() if key != "workflow"},
+                }
+
+        result["native_validation"] = native
+        result["completion_verified"] = bool(
+            result.get("valid")
+            and native.get("attempted")
+            and native.get("valid")
+            and native.get("outputs_to_execute")
+        )
+        return web.json_response(result, status=200 if result.get("valid") else 409)
+
+    @routes.post("/pi-agent/screenshot/request")
+    async def pi_agent_screenshot_request(request):
+        payload = await request.json()
+        try:
+            timeout = max(5.0, min(60.0, float(payload.get("timeout_seconds", 35) or 35)))
+            result = await SCREENSHOT_BROKER.request(payload, timeout=timeout)
+        except ValueError as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        except asyncio.TimeoutError:
+            return web.json_response({
+                "ok": False,
+                "error": (
+                    "Timed out waiting for the active ComfyUI browser to capture the workflow. "
+                    "Keep the ComfyUI page open and make sure this custom-node web extension is loaded."
+                ),
+            }, status=504)
+
+        if not result.get("ok"):
+            return web.json_response(result, status=409)
+
+        metadata = result.get("metadata") or {}
+        headers = {
+            "X-ComfyUI-Pi-Width": str(metadata.get("width") or 0),
+            "X-ComfyUI-Pi-Height": str(metadata.get("height") or 0),
+            "X-ComfyUI-Pi-Mode": str(metadata.get("mode") or ""),
+            "X-ComfyUI-Pi-Node-Id": str(metadata.get("node_id") or ""),
+            "X-ComfyUI-Pi-Padding": str(metadata.get("padding_px") or 0),
+            "X-ComfyUI-Pi-Node-Width": str(metadata.get("node_width_px") or 0),
+            "X-ComfyUI-Pi-Node-Height": str(metadata.get("node_height_px") or 0),
+        }
+        return web.Response(body=result["png"], content_type="image/png", headers=headers)
+
+    @routes.post("/pi-agent/screenshot/playwright")
+    async def pi_agent_screenshot_playwright(request):
+        payload = await request.json()
+        base_url = f"{request.scheme}://{request.host}"
+        try:
+            result = await capture_with_playwright(payload, base_url=base_url)
+        except ValueError as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        except RuntimeError as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=503)
+        except Exception as exc:
+            return web.json_response(
+                {"ok": False, "error": f"Playwright capture failed: {exc}"},
+                status=500,
+            )
+
+        metadata = result.get("metadata") or {}
+        headers = {
+            "X-ComfyUI-Pi-Width": str(metadata.get("width") or 0),
+            "X-ComfyUI-Pi-Height": str(metadata.get("height") or 0),
+            "X-ComfyUI-Pi-Mode": str(metadata.get("mode") or ""),
+            "X-ComfyUI-Pi-Node-Id": str(metadata.get("node_id") or ""),
+            "X-ComfyUI-Pi-Padding": str(metadata.get("padding_px") or 0),
+            "X-ComfyUI-Pi-Node-Width": str(metadata.get("node_width_px") or 0),
+            "X-ComfyUI-Pi-Node-Height": str(metadata.get("node_height_px") or 0),
+            "X-ComfyUI-Pi-Capture-Backend": str(metadata.get("capture_backend") or ""),
+        }
+        return web.Response(body=result["png"], content_type="image/png", headers=headers)
+
+    @routes.get("/pi-agent/screenshot/pending")
+    async def pi_agent_screenshot_pending(request):
+        return web.json_response({"request": SCREENSHOT_BROKER.claim()})
+
+    @routes.post(r"/pi-agent/screenshot/complete/{request_id}")
+    async def pi_agent_screenshot_complete(request):
+        request_id = request.match_info["request_id"]
+        if request.content_type == "image/png":
+            png = await request.read()
+            metadata = {
+                "width": request.query.get("width", "0"),
+                "height": request.query.get("height", "0"),
+                "mode": request.query.get("mode", ""),
+                "node_id": request.query.get("node_id", ""),
+                "padding_px": request.query.get("padding_px", "0"),
+                "node_width_px": request.query.get("node_width_px", "0"),
+                "node_height_px": request.query.get("node_height_px", "0"),
+            }
+            accepted = SCREENSHOT_BROKER.complete(request_id, png, metadata)
+        else:
+            try:
+                payload = await request.json()
+            except Exception:
+                payload = {}
+            accepted = SCREENSHOT_BROKER.fail(
+                request_id,
+                str(payload.get("error") or "The ComfyUI browser could not capture the requested screenshot."),
+            )
+        return web.json_response({"ok": bool(accepted)}, status=200 if accepted else 404)
+
     @routes.get("/pi-agent/integrations/minimax-h3-director/status")
     async def pi_agent_minimax_status(request):
         module = _minimax_h3()
@@ -110,6 +267,7 @@ def register_routes() -> bool:
             use_enhance_prompt=bool(payload.get("use_enhance_prompt", False)),
             retake=bool(payload.get("retake", False)),
         )
+        result = finalize_workflow_result(result)
         return web.json_response(result, status=200 if result.get("ok") else 409)
 
     @routes.post("/pi-agent/integrations/context")
@@ -164,6 +322,7 @@ def register_routes() -> bool:
             use_ic_lora=bool(payload.get("use_ic_lora", False)),
             retake=bool(payload.get("retake", False)),
         )
+        result = finalize_workflow_result(result)
         return web.json_response(result, status=200 if result.get("ok") else 409)
 
 
@@ -201,6 +360,7 @@ def register_routes() -> bool:
             include_directing=bool(payload.get("include_directing", True)),
             scene_source=payload.get("scene_source", "generated"),
         )
+        result = finalize_workflow_result(result)
         return web.json_response(result, status=200 if result.get("ok") else 409)
 
     @routes.get("/pi-agent/integrations/minimax-h3-turbo/status")
@@ -237,6 +397,7 @@ def register_routes() -> bool:
             lora_strength=float(payload.get("lora_strength", 1.0)),
             low_vram=bool(payload.get("low_vram", False)),
         )
+        result = finalize_workflow_result(result)
         return web.json_response(result, status=200 if result.get("ok") else 409)
 
     @routes.post("/pi-agent/tutorial/compile")
@@ -244,6 +405,192 @@ def register_routes() -> bool:
         payload = await request.json()
         result = compile_tutorial(payload.get("workflows", []), payload.get("title", "ComfyUI Project Tutorial"), payload.get("output_directory", ""), payload.get("detail_level", "complete"))
         return web.json_response({"tutorial_directory": result["tutorial_directory"], "controller_workflow": result["controller_workflow"], "overview_workflow": result["overview_workflow"]})
+
+
+    @routes.get("/pi-agent/terminal/capability")
+    async def pi_agent_terminal_capability(request):
+        return web.json_response(TERMINAL_MANAGER.capability())
+
+    @routes.get(r"/pi-agent/terminal/status/{session_id}")
+    async def pi_agent_terminal_status(request):
+        return web.json_response(TERMINAL_MANAGER.status(request.match_info["session_id"]))
+
+    @routes.post("/pi-agent/terminal/start")
+    async def pi_agent_terminal_start(request):
+        payload = await request.json()
+        session_id = str(payload.get("session_id", "") or "").strip()
+        if not session_id:
+            return web.json_response({"ok": False, "error": "A chat session is required."}, status=400)
+        try:
+            context_settings = {
+                "preemptive_handoff": bool(payload.get("preemptive_handoff", True)),
+                "handoff_threshold": float(payload.get("handoff_threshold_percent", 82.5) or 82.5) / 100.0,
+                "handoff_max_chars": int(payload.get("handoff_max_chars", 8000) or 8000),
+                "project_context": payload.get("project_context", ""),
+                "comfyui_base_url": f"{request.scheme}://{request.host}",
+            }
+
+            # Opening/collapsing ComfyUI panels is a browser-renderer lifecycle event,
+            # not a request to prepare the model or restart Pi.  If this session already
+            # owns a live PTY, return it immediately.  This must happen before llama.cpp
+            # readiness probing because a running Pi process is already attached to its
+            # configured provider/model and re-probing can take the full model timeout.
+            existing = TERMINAL_MANAGER.get(session_id)
+            if existing and existing.status().running:
+                existing.update_workflow(payload.get("workflow"))
+                existing.update_bridge_config(context_settings)
+                existing.resize(
+                    int(payload.get("cols", existing.cols) or existing.cols),
+                    int(payload.get("rows", existing.rows) or existing.rows),
+                )
+                document = CHAT_MANAGER.store.load(session_id)
+                return web.json_response({
+                    "ok": True,
+                    "reattached": True,
+                    "terminal": existing.status().to_dict(),
+                    "session": document,
+                })
+
+            local = payload.get("local_llm") if isinstance(payload.get("local_llm"), dict) else {}
+            document = CHAT_MANAGER.store.update_config(
+                session_id,
+                payload.get("project_directory", ""),
+                payload.get("provider", ""),
+                payload.get("model", ""),
+                scoped_models=payload.get("scoped_models", ""),
+                local_llm=local,
+                preemptive_handoff=bool(payload.get("preemptive_handoff", True)),
+                handoff_threshold=payload.get("handoff_threshold_percent", 82.5),
+                handoff_max_chars=payload.get("handoff_max_chars", 8000),
+            )
+            provider = str(document.get("provider") or "")
+            model = str(document.get("model") or "")
+            saved_local = document.get("local_llm") if isinstance(document.get("local_llm"), dict) else {}
+            if str(saved_local.get("kind") or "") == "llama.cpp" and provider and model:
+                await asyncio.to_thread(
+                    CHAT_MANAGER._ensure_llama_router_model,
+                    str(saved_local.get("base_url") or ""),
+                    model,
+                    float(payload.get("timeout_seconds", 180) or 180),
+                )
+            session = await asyncio.to_thread(
+                TERMINAL_MANAGER.start,
+                session_id=session_id,
+                executable=payload.get("pi_executable", ""),
+                project_directory=payload.get("project_directory", ""),
+                provider=provider,
+                model=model,
+                scoped_models=payload.get("scoped_models", ""),
+                timeout=int(payload.get("timeout_seconds", 180) or 180),
+                cols=int(payload.get("cols", 100) or 100),
+                rows=int(payload.get("rows", 32) or 32),
+                resume=bool(payload.get("resume", False)),
+                env_overrides=runtime_environment(saved_local),
+                workflow=payload.get("workflow"),
+                context_settings=context_settings,
+            )
+            return web.json_response({"ok": True, "terminal": session.status().to_dict(), "session": document})
+        except (ValueError, FileNotFoundError, RuntimeError, TimeoutError, OSError) as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=503)
+
+    @routes.post("/pi-agent/terminal/restart")
+    async def pi_agent_terminal_restart(request):
+        payload = await request.json()
+        session_id = str(payload.get("session_id", "") or "").strip()
+        if not session_id:
+            return web.json_response({"ok": False, "error": "A chat session is required."}, status=400)
+        try:
+            document = CHAT_MANAGER.store.load(session_id)
+            local = document.get("local_llm") if isinstance(document.get("local_llm"), dict) else {}
+            provider = str(payload.get("provider", document.get("provider", "")) or "")
+            model = str(payload.get("model", document.get("model", "")) or "")
+            if str(local.get("kind") or "") == "llama.cpp" and provider and model:
+                await asyncio.to_thread(
+                    CHAT_MANAGER._ensure_llama_router_model,
+                    str(local.get("base_url") or ""),
+                    model,
+                    float(payload.get("timeout_seconds", 180) or 180),
+                )
+            session = await asyncio.to_thread(
+                TERMINAL_MANAGER.restart,
+                session_id=session_id,
+                provider=provider,
+                model=model,
+                scoped_models=str(payload.get("scoped_models", document.get("scoped_models", "")) or ""),
+                timeout=int(payload.get("timeout_seconds", 180) or 180),
+                env_overrides=runtime_environment(local),
+                workflow=payload.get("workflow"),
+                context_settings={
+                    "preemptive_handoff": bool(payload.get("preemptive_handoff", True)),
+                    "handoff_threshold": float(payload.get("handoff_threshold_percent", 82.5) or 82.5) / 100.0,
+                    "handoff_max_chars": int(payload.get("handoff_max_chars", 8000) or 8000),
+                    "project_context": payload.get("project_context", ""),
+                    "comfyui_base_url": f"{request.scheme}://{request.host}",
+                },
+            )
+            document["provider"] = provider
+            document["model"] = model
+            CHAT_MANAGER.store.save(document)
+            return web.json_response({"ok": True, "terminal": session.status().to_dict()})
+        except (ValueError, FileNotFoundError, RuntimeError, TimeoutError, OSError) as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=503)
+
+    @routes.post("/pi-agent/terminal/stop")
+    async def pi_agent_terminal_stop(request):
+        payload = await request.json()
+        return web.json_response({"stopped": await asyncio.to_thread(TERMINAL_MANAGER.stop, str(payload.get("session_id", "")))})
+
+    @routes.get(r"/pi-agent/terminal/ws/{session_id}")
+    async def pi_agent_terminal_ws(request):
+        session_id = request.match_info["session_id"]
+        session = TERMINAL_MANAGER.get(session_id)
+        if not session:
+            return web.json_response({"error": "Pi terminal is not running for this session."}, status=404)
+        ws = web.WebSocketResponse(heartbeat=20.0, autoping=True, max_msg_size=2 * 1024 * 1024)
+        await ws.prepare(request)
+        snapshot = session.attach_snapshot()
+        if snapshot:
+            await ws.send_str(json.dumps({"type": "output", "data": snapshot.decode("utf-8", errors="replace")}))
+
+        async def pump_output():
+            while not ws.closed:
+                chunk = await asyncio.to_thread(session.read_output, 0.25)
+                if chunk:
+                    await ws.send_str(json.dumps({"type": "output", "data": chunk.decode("utf-8", errors="replace")}))
+                status = session.status()
+                if not status.running and status.recovering:
+                    # Keep the browser attached while this same PiTerminalSession object
+                    # reopens the persisted Pi session.
+                    continue
+                if not status.running:
+                    await ws.send_str(json.dumps({"type": "exit", "status": status.to_dict()}))
+                    break
+
+        pump = asyncio.create_task(pump_output())
+        try:
+            async for message in ws:
+                if message.type != web.WSMsgType.TEXT:
+                    continue
+                try:
+                    payload = json.loads(message.data)
+                except Exception:
+                    payload = {"type": "input", "data": str(message.data)}
+                kind = str(payload.get("type") or "input")
+                if kind == "input":
+                    session.write(str(payload.get("data") or ""))
+                elif kind == "resize":
+                    session.resize(int(payload.get("cols", session.cols)), int(payload.get("rows", session.rows)))
+                elif kind == "workflow":
+                    session.update_workflow(payload.get("workflow"))
+                elif kind == "ping":
+                    await ws.send_str(json.dumps({"type": "pong"}))
+        finally:
+            pump.cancel()
+            try:
+                await pump
+            except BaseException:
+                pass
+        return ws
 
     @routes.get("/pi-agent/chat/sessions")
     async def pi_agent_chat_sessions(request):
@@ -357,6 +704,16 @@ def register_routes() -> bool:
         session = CHAT_MANAGER.store.save(session)
         return web.json_response({"session": session})
 
+    @routes.post("/pi-agent/chat/import")
+    async def pi_agent_chat_import(request):
+        payload = await request.json()
+        source = payload.get("session") if isinstance(payload.get("session"), dict) else payload
+        try:
+            session = CHAT_MANAGER.store.import_document(source)
+            return web.json_response({"session": session})
+        except ValueError as exc:
+            return web.json_response({"error": str(exc)}, status=400)
+
     @routes.get(r"/pi-agent/chat/session/{session_id}")
     async def pi_agent_chat_get(request):
         try:
@@ -364,6 +721,20 @@ def register_routes() -> bool:
             return web.json_response({"session": session})
         except FileNotFoundError as exc:
             return web.json_response({"error": str(exc)}, status=404)
+
+    @routes.post(r"/pi-agent/chat/session/{session_id}/rename")
+    async def pi_agent_chat_rename(request):
+        payload = await request.json()
+        try:
+            session = CHAT_MANAGER.store.rename(
+                request.match_info["session_id"],
+                str(payload.get("title") or ""),
+            )
+            return web.json_response({"session": session})
+        except FileNotFoundError as exc:
+            return web.json_response({"error": str(exc)}, status=404)
+        except ValueError as exc:
+            return web.json_response({"error": str(exc)}, status=400)
 
     @routes.delete(r"/pi-agent/chat/session/{session_id}")
     async def pi_agent_chat_delete(request):

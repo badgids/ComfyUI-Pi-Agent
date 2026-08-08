@@ -28,7 +28,6 @@ from .context_handoff import (
     clamp_threshold,
     context_pressure,
     create_handoff,
-    handoff_bootstrap_prompt,
 )
 from .local_llm import (
     configure_local_provider,
@@ -40,6 +39,14 @@ from .local_llm import (
 )
 
 
+COMFYUI_PI_COMPACTION_INSTRUCTIONS = (
+    "Preserve continuity for the current ComfyUI task using Pi's normal compaction format. "
+    "Preserve the user's current objective and constraints, completed and in-progress work, "
+    "key decisions, blockers, exact relevant file/workflow/model identifiers, and concrete next steps. "
+    "Keep large workflow/project artifacts referenced by path instead of embedding them. "
+    "Preserve which ComfyUI/node-pack procedures may need to be reloaded on demand, but do not inline "
+    "large manuals or whole workflows. Continue the same task after compaction; do not restart from scratch."
+)
 
 
 def _is_url_like(value: str) -> bool:
@@ -221,6 +228,75 @@ class ChatSessionStore:
         document["title"] = "New chat"
         return self.save(document)
 
+    def rename(self, session_id: str, title: str) -> dict[str, Any]:
+        clean = _safe_title(title, fallback="")
+        if not clean:
+            raise ValueError("Session title cannot be empty.")
+        document = self.load(session_id)
+        document["title"] = clean
+        return self.save(document)
+
+    def import_document(self, source: dict[str, Any]) -> dict[str, Any]:
+        if not isinstance(source, dict):
+            raise ValueError("Imported chat session must be a JSON object.")
+
+        local = source.get("local_llm") if isinstance(source.get("local_llm"), dict) else {}
+        clean_local = {
+            key: value
+            for key, value in local.items()
+            if key not in {"api_key", "token", "secret"}
+        }
+        provider, model = _normalized_provider_model(
+            str(source.get("provider") or ""),
+            str(source.get("model") or ""),
+            clean_local,
+        )
+        document = _new_document(
+            title=_safe_title(source.get("title"), fallback="Imported chat"),
+            project_directory=str(source.get("project_directory") or ""),
+            provider=provider,
+            model=model,
+        )
+        document["scoped_models"] = str(source.get("scoped_models") or "")
+        document["local_llm"] = clean_local if clean_local.get("enabled") else {}
+
+        imported_messages: list[dict[str, Any]] = []
+        source_messages = source.get("messages") if isinstance(source.get("messages"), list) else []
+        for item in source_messages:
+            if not isinstance(item, dict):
+                continue
+            role = str(item.get("role") or "").strip().lower()
+            if role not in {"user", "assistant"}:
+                continue
+            try:
+                created_at = float(item.get("created_at") or _now())
+            except (TypeError, ValueError):
+                created_at = _now()
+            message = {
+                "id": uuid.uuid4().hex,
+                "role": role,
+                "content": str(item.get("content") or ""),
+                "created_at": created_at,
+            }
+            for key in ("reasoning", "activity", "error", "slash_command"):
+                if key in item:
+                    message[key] = item[key]
+            imported_messages.append(message)
+        document["messages"] = imported_messages
+
+        imported_guard = source.get("context_guard") if isinstance(source.get("context_guard"), dict) else {}
+        guard = document.setdefault("context_guard", {})
+        guard["enabled"] = bool(imported_guard.get("enabled", True))
+        guard["threshold"] = clamp_threshold(imported_guard.get("threshold", DEFAULT_HANDOFF_THRESHOLD))
+        guard["handoff_max_chars"] = clamp_handoff_chars(
+            imported_guard.get("handoff_max_chars", DEFAULT_HANDOFF_MAX_CHARS)
+        )
+        # Imported sessions get fresh continuity bookkeeping; old paths may be invalid here.
+        guard["handoff_count"] = 0
+        guard["last_pressure"] = {}
+        guard["last_handoff"] = {}
+        return self.save(document)
+
     def append(self, session_id: str, role: str, content: str, **extra: Any) -> dict[str, Any]:
         document = self.load(session_id)
         message = {
@@ -341,20 +417,24 @@ class ChatRuntimeManager:
         model: str,
         timeout: float = 180.0,
     ) -> dict[str, Any]:
-        """Load a llama.cpp router model and wait for actual readiness.
+        """Load/wake a llama.cpp router model and wait for routed request readiness.
 
-        /models/load is asynchronous in current llama.cpp. Treating its HTTP 200 as
-        "model ready" races Pi startup and the first prompt. This helper waits until
-        the router reports loaded/sleeping, or returns a precise failure/timeout.
+        /models/load is asynchronous. ``sleeping`` is not ready because llama.cpp has
+        released the model weights in that state. The wait follows llama.cpp's supported
+        router lifecycle: request load, poll /models until loaded, then verify a lightweight
+        routed /tokenize request. The caller's configured timeout is the entire budget.
         """
         model_id = str(model or "").strip()
         if not model_id:
             return {"attempted": False, "status": "no-model", "ready": False}
         try:
-            catalog = llama_router_models(base_url, timeout=5.0)
-        except Exception:
-            # A single-model llama-server has no router lifecycle to manage.
-            return {"attempted": False, "status": "single-model-or-router-unavailable", "ready": True}
+            catalog = llama_router_models(base_url, timeout=min(5.0, max(0.25, float(timeout))))
+        except ValueError:
+            # A valid non-router llama-server can still be listening while its one model is
+            # loading. Honor the same user-configured wait budget against /health.
+            from .local_llm import wait_for_llama_server_health
+            ready = wait_for_llama_server_health(base_url, timeout=float(timeout))
+            return {"attempted": False, "status": "single-model", **ready}
         entry = next((item for item in catalog.get("models", []) if str(item.get("id") or "") == model_id), None)
         if not entry:
             raise ValueError(f"llama.cpp router does not report model '{model_id}'. Refresh the model list.")
@@ -363,12 +443,14 @@ class ChatRuntimeManager:
             raise RuntimeError(f"llama.cpp reports model '{model_id}' as failed. Refresh or repair the router model preset.")
         attempted = False
         if status == "unloaded":
-            llama_router_action("load", model_id, base_url, timeout=10.0)
+            # Explicit management load is only for a genuinely unloaded preset. llama.cpp
+            # treats sleeping children differently: the next real routed task wakes them.
+            llama_router_action("load", model_id, base_url, timeout=min(10.0, max(0.25, float(timeout))))
             attempted = True
-        if status not in {"loaded", "ready", "sleeping"}:
-            ready = wait_for_llama_router_model(base_url, model_id, timeout=max(5.0, float(timeout)))
-            return {"attempted": attempted, **ready}
-        return {"attempted": attempted, "ready": True, "status": status, "model": model_id, "entry": entry}
+        # Loaded models get a lightweight readiness probe; sleeping models are woken by that
+        # same routed task and may consume the caller's full configured timeout while loading.
+        ready = wait_for_llama_router_model(base_url, model_id, timeout=float(timeout))
+        return {"attempted": attempted, **ready}
 
     def activate_local_provider(
         self,
@@ -572,7 +654,7 @@ class ChatRuntimeManager:
             and str(local.get("provider") or "") == provider_value
         ):
             self._ensure_llama_router_model(
-                str(local.get("base_url") or ""), model_value, timeout=max(5.0, float(wait_timeout))
+                str(local.get("base_url") or ""), model_value, timeout=float(wait_timeout)
             )
 
         with self._guard:
@@ -695,22 +777,32 @@ class ChatRuntimeManager:
             max_chars=max_chars,
             summarizer=summarizer,
         )
-        live.client.new_session()
-        handoff_text = Path(str(handoff["path"])).read_text(encoding="utf-8")
-        bootstrap = live.client.prompt(handoff_bootstrap_prompt(str(handoff["path"]), handoff_text=handoff_text))
-        post_pressure = self._pressure_from_prompt_result(bootstrap, threshold).to_dict()
+        instructions = COMFYUI_PI_COMPACTION_INSTRUCTIONS
+        try:
+            handoff_text = Path(str(handoff.get("path") or "")).read_text(encoding="utf-8").strip()
+        except Exception:
+            handoff_text = ""
+        if handoff_text:
+            instructions += (
+                "\n\nAUTHORITATIVE COMFYUI-PI DURABLE HANDOFF:\n"
+                "Use this bounded state as the continuity source for the compaction summary. "
+                "Do not restart the task or discard approved work.\n\n" + handoff_text
+            )
+        if focus.strip():
+            instructions += "\n\nUser /compact focus: " + focus.strip()
+        compaction = live.client.compact(instructions)
+        post_pressure = self._pressure_from_session_stats(live, threshold).to_dict()
         handoff = dict(handoff)
         handoff.update({
-            "ingested": True,
-            "bootstrap_acknowledged": str(bootstrap.get("text") or "").strip().upper() == "HANDOFF_READY",
-            "reset_method": "new_session",
+            "ingested": False,
+            "continuity_method": "pi_compaction",
+            "reset_method": "none",
             "trigger_pressure": pressure.to_dict(),
-            "post_reset_pressure": post_pressure,
+            "post_compaction_pressure": post_pressure,
+            "compaction": compaction,
             "manual": True,
         })
         document = self.store.update_context_guard(session_id, post_pressure, handoff=handoff)
-        live.context_signature = None
-        live.handoff_ingested = True
         return document, handoff
 
     def _handle_builtin_command(
@@ -1023,7 +1115,10 @@ class ChatRuntimeManager:
                 session_id, live, document, project_context, workflow_summary, workflow_path,
                 routed, threshold, max_handoff_chars, focus=raw_args,
             )
-            response_text = f"Created and ingested ComfyUI-Pi handoff `{handoff.get('path')}` and reset Pi context."
+            response_text = (
+                f"Saved durable ComfyUI-Pi handoff `{handoff.get('path')}` and compacted "
+                "the current Pi session in place."
+            )
         elif name == "copy":
             last = next((str(item.get("content") or "") for item in reversed(document.get("messages") or []) if isinstance(item, dict) and item.get("role") == "assistant"), "")
             response_text = last or "There is no assistant reply to copy yet."
@@ -1128,7 +1223,7 @@ class ChatRuntimeManager:
                     self._ensure_llama_router_model(
                         str(local_config.get("base_url") or ""),
                         str(model),
-                        timeout=max(30.0, float(timeout)),
+                        timeout=float(timeout),
                     )
                 client = PiRpcClient(
                     resolved_executable,
@@ -1307,6 +1402,18 @@ class ChatRuntimeManager:
         usage = {"totalTokens": direct_tokens} if direct_tokens > 0 else prompt_result.get("usage")
         return context_pressure(usage, prompt_result.get("context_window"), threshold)
 
+    @staticmethod
+    def _pressure_from_session_stats(live: _LiveSession, threshold: float):
+        """Read Pi's post-compaction context usage without inventing a fresh session."""
+        try:
+            stats = live.client.get_session_stats()
+        except Exception:
+            stats = {}
+        usage = stats.get("contextUsage") if isinstance(stats, dict) else {}
+        tokens = int((usage or {}).get("tokens") or 0) if isinstance(usage, dict) else 0
+        window = int((usage or {}).get("contextWindow") or 0) if isinstance(usage, dict) else 0
+        return context_pressure({"totalTokens": tokens}, window, threshold)
+
     def _preemptive_handoff(
         self,
         session_id: str,
@@ -1347,26 +1454,32 @@ class ChatRuntimeManager:
             summarizer=summarizer,
         )
 
-        # Hard reset instead of Pi's built-in compaction. Then silently ingest the durable
-        # handoff once. The user-visible transcript stays in ComfyUI-Pi's JSON store.
-        live.client.new_session()
-        handoff_text = Path(str(handoff["path"])).read_text(encoding="utf-8")
-        bootstrap = live.client.prompt(handoff_bootstrap_prompt(str(handoff["path"]), handoff_text=handoff_text))
-        ack = str(bootstrap.get("text") or "").strip().upper() == "HANDOFF_READY"
-        post_pressure = self._pressure_from_prompt_result(bootstrap, threshold).to_dict()
+        # Keep the current Pi session. The durable handoff is the specialized continuity
+        # checkpoint; feed it directly into Pi's native compactor so the same-session
+        # CompactionEntry preserves our objective/constraints/artifact state as well.
+        instructions = COMFYUI_PI_COMPACTION_INSTRUCTIONS
+        try:
+            handoff_text = Path(str(handoff.get("path") or "")).read_text(encoding="utf-8").strip()
+        except Exception:
+            handoff_text = ""
+        if handoff_text:
+            instructions += (
+                "\n\nAUTHORITATIVE COMFYUI-PI DURABLE HANDOFF:\n"
+                "Use this bounded state as the continuity source for the compaction summary. "
+                "Do not restart the task or discard approved work.\n\n" + handoff_text
+            )
+        compaction = live.client.compact(instructions)
+        post_pressure = self._pressure_from_session_stats(live, threshold).to_dict()
         handoff = dict(handoff)
-        # Successful prompt delivery means the bounded handoff is now literally in the fresh
-        # Pi context even if a weak model fails to obey the requested acknowledgement string.
-        handoff["ingested"] = True
-        handoff["bootstrap_acknowledged"] = ack
-        handoff["reset_method"] = "new_session"
-        handoff["trigger_pressure"] = pressure_dict
-        handoff["post_reset_pressure"] = post_pressure
+        handoff.update({
+            "ingested": False,
+            "continuity_method": "pi_compaction",
+            "reset_method": "none",
+            "trigger_pressure": pressure_dict,
+            "post_compaction_pressure": post_pressure,
+            "compaction": compaction,
+        })
         document = self.store.update_context_guard(session_id, post_pressure, handoff=handoff)
-        # The next user turn should inject the current bounded workflow/integration scope again,
-        # but should not replay old visible history because the handoff already captured it.
-        live.context_signature = None
-        live.handoff_ingested = True
         return document, handoff
 
     def send(
@@ -1411,6 +1524,21 @@ class ChatRuntimeManager:
                 document.get("local_llm", {}),
                 executable, timeout,
             )
+            # Structured RPC cannot run our Terminal extension's agent_end gate. When the
+            # preemptive guard is enabled, temporarily disable Pi's automatic threshold
+            # compactor so the host can first write the durable handoff and then invoke
+            # Pi's native compact RPC in this same session. If the guard is disabled, leave
+            # Pi's normal automatic compaction enabled.
+            try:
+                live.client.set_auto_compaction(not preemptive_handoff)
+                live.client.auto_compaction_disabled = bool(preemptive_handoff)
+                live.client.auto_compaction_warning = ""
+            except Exception as compaction_exc:
+                live.client.auto_compaction_disabled = False
+                live.client.auto_compaction_warning = (
+                    "Could not configure Pi auto-compaction for the ComfyUI-Pi handoff gate: "
+                    f"{type(compaction_exc).__name__}: {compaction_exc}"
+                )
         except Exception as exc:
             error = f"{type(exc).__name__}: {exc}"
             document = self.store.append(session_id, "assistant", error, error=True)
@@ -1456,7 +1584,12 @@ class ChatRuntimeManager:
                     # native semantics.
                     result = live.client.prompt(text)
                     assistant_text = str(result.get("text") or "").strip() or f"Pi handled `/{parsed_command[0]}` without a text response."
-                    document = self.store.append(session_id, "assistant", assistant_text, slash_command=parsed_command[0], pi_passthrough=True)
+                    document = self.store.append(
+                        session_id, "assistant", assistant_text,
+                        slash_command=parsed_command[0], pi_passthrough=True,
+                        reasoning=str(result.get("reasoning") or ""),
+                        activity=result.get("activity") if isinstance(result.get("activity"), list) else [],
+                    )
                     return {
                         "ok": True,
                         "session": document,
@@ -1511,8 +1644,16 @@ class ChatRuntimeManager:
                 result = live.client.prompt(prompt)
                 assistant_text = str(result.get("text") or "").strip()
                 if not assistant_text:
-                    assistant_text = "Pi finished without returning a text response."
-                document = self.store.append(session_id, "assistant", assistant_text)
+                    event_types = sorted({str(item.get("type") or "") for item in result.get("events", []) if isinstance(item, dict) and item.get("type")})
+                    detail = ", ".join(event_types[:20]) or "no Pi events captured"
+                    assistant_text = f"Pi settled but no assistant text could be recovered. RPC events: {detail}."
+                document = self.store.append(
+                    session_id,
+                    "assistant",
+                    assistant_text,
+                    reasoning=str(result.get("reasoning") or ""),
+                    activity=result.get("activity") if isinstance(result.get("activity"), list) else [],
+                )
                 assistant_message = document["messages"][-1]
                 handoff = None
                 if preemptive_handoff:

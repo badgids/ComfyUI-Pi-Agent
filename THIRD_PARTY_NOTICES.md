@@ -65,6 +65,12 @@ ComfyUI-Pi includes original GPL-3.0 adapter logic, metadata, tests, and lazily 
 
 The separately distributed MiniMax H3 base models, Turbo LoRA weights, VAEs, text encoders, and other model assets keep their own license and usage terms; ComfyUI-Pi does not relicense or automatically redistribute them.
 
+## xterm.js
+
+ComfyUI-Pi vendors browser-side xterm.js JavaScript/CSS assets for rendering the real Pi PTY inside the ComfyUI sidebar. xterm.js is distributed under the **MIT License**. Its license text is included at [`web/vendor/XTERM_LICENSE.txt`](web/vendor/XTERM_LICENSE.txt).
+
+The vendored terminal renderer is a frontend dependency only. It does not change the GPL-3.0-only license of ComfyUI-Pi's own source code.
+
 ## ComfyUI and other custom nodes
 
 ComfyUI, KJNodes, ComfyUI-GGUF, ComfyUI-LTXVideo, VideoHelperSuite, and other custom-node packs are not relicensed by ComfyUI-Pi. Their original license terms continue to apply.

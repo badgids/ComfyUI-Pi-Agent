@@ -16,7 +16,27 @@ The analyzer extracts node types, graph order, file-like widget values, model-li
 
 ## Validation
 
-Validation is structural. It does not prove that a model can fit in VRAM or that a generated image is creatively correct.
+Legacy `validate_workflow()` remains useful for imported graphs, but generated-workflow completion uses the stricter gate. It compares node classes with the current live ComfyUI registry, validates serialized and live socket/link structure, requires a live output node, and rejects cycles or unverifiable connections.
+
+When an API prompt graph is available, the ComfyUI-Pi HTTP finalizer also calls ComfyUI's own `execution.validate_prompt`. This catches current-instance required-input, combo/model value, node, output, and execution-graph errors before anything is called completion-verified. It does not render media; actual rendering remains separate evidence when requested.
+
+## Generated workflow contract
+
+Generated UI workflows use ComfyUI Nodes 2.0 metadata: `extra.workflowRendererVersion = "Vue-corrected"`. The finalizer lays the graph out deterministically from left to right and enforces at least **6 pixels of empty space between every pair of node rectangles**. Six pixels is the hard minimum; the default organizer intentionally uses larger spacing for readability.
+
+The current live node registry and `/object_info` schemas are authoritative. ComfyUI-Pi must not fabricate a node class or silently substitute an unavailable node. Every link must reference real nodes and slots with compatible datatypes, and node-side link back-references must agree with the top-level link table.
+
+A generated workflow is not complete when it has missing live nodes, bad socket indexes/types, broken link back-references, cycles, insufficient node clearance, no live `OUTPUT_NODE`, or failed native prompt validation.
+
+## Markdown diagrams and Nodes 2.0 documentation images
+
+ComfyUI-Pi includes a dependency-free documentation renderer inspired by PHART's deterministic hierarchical/layered layouts and orthogonal routing, and by Ascidia's ASCII line/box/arrow conventions. PHART and Ascidia are references, not required runtime dependencies; the renderer emits SVG using the Python standard library.
+
+`comfyui_markdown_flowchart` creates stable ASCII flowcharts and project-relative SVG images, backs up the Markdown file, and inserts or updates an owned Markdown block. Existing ASCII flowcharts can also be vectorized directly.
+
+`comfyui_markdown_node_image` is specifically for ComfyUI nodes. It resolves the actual workflow node when supplied, queries the connected ComfyUI instance's live `/object_info/<node_type>` schema, and renders a deterministic Nodes 2.0 documentation image with rounded body, separate header/body surfaces, left inputs, right outputs, widgets, socket names/types, and current v2 dark-theme design tokens. It fails instead of drawing a guessed node type.
+
+The SVG is a deterministic documentation rendering, not a browser screenshot. Its node structure and palette track current ComfyUI Nodes 2.0 while socket/widget content comes from the live schema and serialized workflow node.
 
 ## Repair
 

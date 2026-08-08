@@ -22,7 +22,7 @@ class LicenseAndReleaseTests(unittest.TestCase):
     def test_release_version(self):
         namespace = {}
         exec((ROOT / "comfy_pi_agent" / "version.py").read_text(encoding="utf-8"), namespace)
-        self.assertEqual(namespace["__version__"], "0.1.12")
+        self.assertEqual(namespace["__version__"], "0.1.17")
 
 
 if __name__ == "__main__":

@@ -7,7 +7,7 @@
 
 ## Release
 
-- Version: 0.1.12
+- Version: 0.1.17
 - Creator: Alan D. Guice (Badgids)
 - License: GPL-3.0-only
 
@@ -15,12 +15,12 @@
 
 - ComfyUI nodes: 55
 - Bundled Pi skills: 34
-- Core documentation guides: 31
-- Total linked Markdown documentation/procedure files: 76
-- Test modules: 14
+- Core documentation guides: 32
+- Total linked Markdown documentation/procedure files: 77
+- Test modules: 15
 - Example workflows: 3
 - First-class lazy node-pack integrations: 4
-- Manifest-tracked source files: 168
+- Manifest-tracked source files: 178
 
 ## Context-efficiency guarantees
 
@@ -29,14 +29,16 @@
 - A deterministic host-side task router selects at most a few matching bundled procedures; weak local models do not need to choose from the complete skill library themselves.
 - Every Pi turn receives a compact current-job envelope with an explicit completion rule; the stable core contract is injected only when a new hidden scope is established.
 - Normal matched requests receive compact, task-targeted guidance; complete skill guides load only for explicit deep/tutorial requests.
+- The default Pi Agent Terminal is a real controlling-PTY-backed Pi CLI; structured Chat remains a fallback.
+- The optional Pi Agent interface can be registered in either the ComfyUI left sidebar or native bottom panel.
 - Sidebar and Pi Agent Prompt workflow context uses a bounded digest first; full workflow JSON is made available locally only for on-demand reading.
 - Stateful sidebar chat resets Pi's hidden scope when integration/project/workflow context changes, then restores only a bounded clean visible transcript.
 - Installed live ComfyUI schemas and the installed node pack's own example workflows outrank bundled static compatibility profiles.
-- Pi built-in auto-compaction is disabled over RPC when supported; ComfyUI-Pi performs a bounded continuity handoff/reset at a configurable 80–95% threshold (82.5% default).
+- Pi built-in threshold compaction is superseded in both sidebar modes: RPC auto-compaction is disabled when supported, while Terminal mode cancels Pi threshold compaction through its explicit bridge. ComfyUI-Pi performs the bounded continuity handoff/reset at a configurable 80–95% threshold (82.5% default).
 - Current Pi RPC `get_session_stats.contextUsage` is preferred for pressure measurement; assistant usage + model context window remains a compatibility fallback.
 - Handoff generation uses a separate fresh Pi process and references large workflows/assets by path instead of embedding them.
 - Pi built-in slash commands are bridged host-side before LLM routing; the slash-command catalog itself does not consume model context.
-- Local-server discovery/configuration is explicit and on-demand; no llama.cpp/Ollama/LM Studio/vLLM endpoint is probed at plugin startup. llama.cpp router model IDs come from its live catalog, and an unloaded selected model is awaited until ready before Pi RPC starts.
+- Local-server discovery/configuration is explicit and on-demand; no llama.cpp/Ollama/LM Studio/vLLM endpoint is probed at plugin startup. llama.cpp router model IDs come from its live catalog; unloaded or sleeping models are explicitly woken and the routed model endpoint is verified ready before Pi RPC starts, using the user-configured chat timeout as the wait budget.
 
 ## First-class integrations
 
@@ -159,6 +161,7 @@
 - [`docs/model-formats-gguf.md`](docs/model-formats-gguf.md)
 - [`docs/node-reference.md`](docs/node-reference.md)
 - [`docs/pi-runtime.md`](docs/pi-runtime.md)
+- [`docs/pi-terminal.md`](docs/pi-terminal.md)
 - [`docs/production-compiler.md`](docs/production-compiler.md)
 - [`docs/project-directory-layout.md`](docs/project-directory-layout.md)
 - [`docs/quick-start.md`](docs/quick-start.md)
@@ -188,6 +191,7 @@
 - `test_nodes.py`
 - `test_package_entrypoint.py`
 - `test_slash_commands_local_llm.py`
+- `test_terminal_mode.py`
 - `test_tutorial_nle.py`
 - `test_workflow.py`
 

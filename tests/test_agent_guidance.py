@@ -41,6 +41,10 @@ class AgentGuidanceTests(unittest.TestCase):
         self.assertIn("validate", envelope.lower())
         self.assertIn("do not drift", envelope.lower())
 
+    def test_markdown_diagram_routes_document_export(self):
+        matches = select_skills("Create an ASCII flowchart image in this markdown file")
+        self.assertIn("document-export", [item.name for item in matches])
+
 
 if __name__ == "__main__":
     unittest.main()

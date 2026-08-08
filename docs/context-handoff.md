@@ -7,7 +7,7 @@
 
 Long Pi conversations can eventually approach the model's context-window limit. ComfyUI-Pi does not wait for Pi's normal automatic compaction to decide what to keep.
 
-Instead, the sidebar chat uses a **preemptive handoff and reset** system.
+Instead, both sidebar modes use a **preemptive handoff and reset** system.
 
 ## Default behavior
 
@@ -25,17 +25,17 @@ ComfyUI-Pi prefers Pi's RPC `get_session_stats.contextUsage` values, which repor
 
 This is much more reliable than estimating the complete Pi context from the length of the visible chat.
 
-## Pi's automatic compaction is disabled
+## Pi threshold compaction is superseded
 
-When ComfyUI-Pi starts its supervised Pi RPC process, it sends:
+In structured Chat, when ComfyUI-Pi starts its supervised Pi RPC process, it sends:
 
 ```text
 set_auto_compaction = false
 ```
 
-ComfyUI-Pi then owns the long-session lifecycle.
+ComfyUI-Pi then owns the long-session lifecycle. In Terminal mode, the explicit Pi bridge cancels `session_before_compact` only for Pi's normal `threshold` reason so ComfyUI-Pi can write its durable handoff first. Manual `/compact` remains native Pi behavior, and `overflow` compaction is left available as an emergency fallback.
 
-If an older Pi build does not support that RPC command, ComfyUI-Pi reports a warning instead of crashing ComfyUI.
+If an older Pi build does not support the RPC auto-compaction command, structured Chat reports a warning instead of crashing ComfyUI.
 
 ## What happens at the threshold
 
@@ -66,6 +66,15 @@ continue normal chat
 ```
 
 The response that the user just received is not lost or replaced. The reset happens after that response has been saved in ComfyUI-Pi's durable sidebar transcript.
+
+
+## Terminal-mode reset
+
+The default real-Pi Terminal view does not translate the terminal into RPC. After every completed agent run, its bridge writes Pi's actual context usage and current session-file path to a tiny host-side state file. The ComfyUI-Pi terminal supervisor watches that state.
+
+At the configured threshold it reads only user/assistant visible text from Pi's JSONL session, creates the bounded handoff, writes a one-time marker, and sends native Pi `/new` through the existing PTY. The browser terminal stays connected. On the next ordinary user task, the bridge reads the bounded handoff, appends it once to that turn's system prompt, and deletes the marker.
+
+This preserves the real Pi CLI while keeping long-session continuity under ComfyUI-Pi control.
 
 ## Why a fresh summarizer is used
 

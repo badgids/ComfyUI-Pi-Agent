@@ -4,6 +4,53 @@
 **Navigation:** [Project README](README.md) · [Documentation home](docs/index.md) · [Previous: Third-party notices](THIRD_PARTY_NOTICES.md) · [Next: Release notes](RELEASE_NOTES.md)
 <!-- DOC_NAV_END -->
 
+## 0.1.17 — controlling PTY terminal and selectable ComfyUI placement
+
+- Fixed the real Pi terminal launch so POSIX Pi runs under a genuine controlling terminal through a tiny single-threaded PTY child that calls `setsid()` + `TIOCSCTTY` before `exec`. v0.1.16 provided TTY file descriptors but started a new session after opening the slave PTY, which could leave modern Pi TUI raw-mode/job-control initialization without a controlling terminal.
+- Added a PTY regression test that proves the child owns the controlling terminal and can receive browser-style input.
+- Fixed browser terminal focus by removing the outer host `tabindex`, explicitly focusing xterm on pointer interaction, and supporting both modern `onData`/`onResize` and legacy xterm event APIs.
+- Added compatibility handling for Pi's DEC synchronized-output (`?2026`) redraw wrappers when using the bundled legacy xterm renderer.
+- Added terminal input/output byte diagnostics so a running process with no PTY output is reported distinctly.
+- Added **Pi Agent: Interface placement** with **Left sidebar** and **Bottom panel** choices. Bottom placement uses ComfyUI's native `bottomPanelTabs` extension API and the same Terminal/Chat implementation.
+- Placement is applied on browser page load so only the selected Pi Agent location is registered.
+
+## 0.1.16 — real Pi terminal sidebar and faithful output
+
+- Added a PTY-backed **Terminal** view as the default Pi sidebar experience on POSIX platforms. It runs the actual interactive Pi CLI instead of reconstructing Pi's TUI through RPC.
+- Vendored xterm.js under its MIT license for the browser terminal renderer; no extra npm/pip installation is required.
+- Kept structured **Chat** as a secondary/fallback view and fixed false textless completions by falling back to Pi RPC `get_last_assistant_text` and the last assistant message.
+- Structured Chat now records reasoning/thinking and tool activity separately. Both are visible by default and can be hidden independently from sidebar settings.
+- Kept Provider → Model selectors beneath the interaction area. Terminal model/provider changes restart the supervised Pi CLI with `--continue` in the same private terminal session directory.
+- Added one explicit Pi terminal bridge extension. It dynamically injects only the task/integration guidance needed for the current prompt while discovered context files, extensions, skills, and prompt templates remain disabled.
+- Extended the preemptive handoff system to Terminal mode: Pi's bridge reports actual context usage, threshold auto-compaction is cancelled, a bounded durable handoff is written, native `/new` starts a fresh Pi session, and the handoff is injected exactly once on the next real task. Manual `/compact` and overflow recovery remain available.
+- Added terminal capability/start/restart/stop/WebSocket routes and automatic fallback to structured Chat when a native PTY backend is unavailable.
+- Added regression tests for terminal command construction, lazy terminal guidance, terminal handoff behavior, structured Chat final-text recovery, reasoning/tool capture, and default terminal UI state.
+
+## 0.1.15 — llama.cpp sleeping-model wake fix and HTTP diagnostics
+
+- Distinguished llama.cpp router `sleeping` from `unloaded`: only unloaded presets use `POST /models/load`.
+- Wake sleeping llama.cpp models with the real routed `/tokenize` task that llama.cpp documents as an incoming task, using the user's remaining configured timeout budget.
+- Added HTTP diagnostics that preserve the request method, endpoint, status, and llama.cpp response body instead of surfacing a bare `HTTP Error 400`.
+- Added regression tests proving sleeping models do not call `/models/load`, wake probes can use the full caller-provided timeout, and no personal timeout value is hardcoded.
+
+
+## 0.1.14 — llama.cpp router readiness contract correction
+
+- Removed the invalid model-specific `/props?model=...&autoload=false` readiness request that could return HTTP 400 on current llama.cpp routers.
+- Match llama.cpp's own router test lifecycle: request `/models/load`, poll `/models` until the selected preset is `loaded`, then verify routing with a lightweight model-targeted `POST /tokenize`.
+- Keep sleeping/unloaded models non-ready until the router completes their load/wake transition.
+- Continue using the user's configured chat timeout as the complete readiness budget; no personal timeout is hardcoded.
+- Preserve the compact gear settings control and all existing lazy-context/local-provider behavior.
+
+## 0.1.13 — Reliable llama.cpp wake/readiness
+
+- Treat llama.cpp router `sleeping` as not-ready and explicitly wake it before Pi is allowed to send a prompt.
+- Confirm the routed child server through model-specific `/props` after the router reports loaded, preventing stale-state races.
+- Wait through single-model llama-server `/health` 503 loading responses.
+- Pass the user's configured chat timeout through as the model-readiness budget; no personal timeout is hardcoded.
+- Make Send wait for an in-progress model preparation request.
+- Replace the visible Settings text button with a compact ComfyUI-style gear icon.
+
 ## 0.1.12 — llama.cpp router readiness and complete local catalogs
 
 - Read llama.cpp router `/models` as the authoritative full preset catalog, including unloaded entries, before single-model fallback.

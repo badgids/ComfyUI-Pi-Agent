@@ -5,10 +5,23 @@ import os
 import tempfile
 import time
 import urllib.error
-import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Any
+
+
+class LocalLLMHTTPError(urllib.error.HTTPError):
+    """HTTP error that keeps the local-host endpoint and response body visible."""
+
+    def __init__(self, url: str, code: int, reason: str, headers: Any, body_text: str, method: str) -> None:
+        super().__init__(url, code, reason, headers, None)
+        self.body_text = str(body_text or "").strip()
+        self.method = str(method or "GET").upper()
+
+    def __str__(self) -> str:
+        detail = " ".join(self.body_text.split())[:1200]
+        suffix = f": {detail}" if detail else f": {self.reason}"
+        return f"HTTP {self.code} {self.method} {self.url}{suffix}"
 
 
 LOCAL_SERVER_PRESETS: dict[str, dict[str, str]] = {
@@ -125,9 +138,25 @@ def _json_request(
     if payload is not None:
         body = json.dumps(payload).encode("utf-8")
         merged_headers["Content-Type"] = "application/json"
-    request = urllib.request.Request(url, data=body, headers=merged_headers, method=str(method or "GET").upper())
-    with urllib.request.urlopen(request, timeout=max(0.25, float(timeout))) as response:
-        response_payload = response.read()
+    request_method = str(method or "GET").upper()
+    request = urllib.request.Request(url, data=body, headers=merged_headers, method=request_method)
+    try:
+        with urllib.request.urlopen(request, timeout=max(0.25, float(timeout))) as response:
+            response_payload = response.read()
+    except urllib.error.HTTPError as exc:
+        try:
+            error_payload = exc.read()
+            error_text = error_payload.decode("utf-8", errors="replace") if error_payload else ""
+        except Exception:
+            error_text = ""
+        raise LocalLLMHTTPError(
+            url=str(getattr(exc, "url", None) or url),
+            code=int(getattr(exc, "code", 0) or 0),
+            reason=str(getattr(exc, "reason", None) or getattr(exc, "msg", None) or "HTTP error"),
+            headers=getattr(exc, "headers", None),
+            body_text=error_text,
+            method=request_method,
+        ) from exc
     return json.loads(response_payload.decode("utf-8")) if response_payload else {}
 
 
@@ -298,35 +327,139 @@ def llama_router_models(base_url: str = "", reload: bool = False, timeout: float
     return {"ok": True, "base_url": root, "models": models}
 
 
+def llama_router_model_tokenize(
+    base_url: str,
+    model: str,
+    timeout: float = 5.0,
+) -> dict[str, Any]:
+    """Send llama.cpp router's lightweight routed tokenize probe to one model.
+
+    Upstream llama.cpp router tests use POST /tokenize with a model id to prove that
+    requests are actually reaching the selected child server. This does not generate
+    assistant text and does not add anything to Pi's conversation context.
+    """
+    model_id = str(model or "").strip()
+    if not model_id:
+        raise ValueError("A llama.cpp model id is required.")
+    root = normalize_base_url("llama.cpp", base_url)
+    if root.endswith("/v1"):
+        root = root[:-3].rstrip("/")
+    payload = _json_request(
+        root + "/tokenize",
+        timeout=max(0.25, float(timeout)),
+        method="POST",
+        payload={"model": model_id, "content": "ComfyUI-Pi readiness"},
+        headers=_llama_headers(),
+    )
+    if not isinstance(payload, dict):
+        raise ValueError("llama.cpp returned an invalid /tokenize response.")
+    return payload
+
+
+def wait_for_llama_server_health(
+    base_url: str,
+    timeout: float = 180.0,
+    poll_interval: float = 0.5,
+) -> dict[str, Any]:
+    """Wait for a single-model llama-server's documented /health readiness signal."""
+    root = normalize_base_url("llama.cpp", base_url)
+    if root.endswith("/v1"):
+        root = root[:-3].rstrip("/")
+    budget = max(0.1, float(timeout))
+    deadline = time.monotonic() + budget
+    last_error = "not ready"
+    while time.monotonic() < deadline:
+        remaining = max(0.1, deadline - time.monotonic())
+        try:
+            payload = _json_request(
+                root + "/health",
+                timeout=min(5.0, remaining),
+                headers=_llama_headers(),
+            )
+            if isinstance(payload, dict) and str(payload.get("status") or "").lower() in {"ok", "ready"}:
+                return {"ready": True, "status": str(payload.get("status") or "ok")}
+            last_error = str(payload)
+        except urllib.error.HTTPError as exc:
+            # llama.cpp documents 503 while a single-model server is still loading.
+            if int(getattr(exc, "code", 0) or 0) != 503:
+                last_error = f"HTTP {getattr(exc, 'code', '?')}"
+            else:
+                last_error = "HTTP 503: model is still loading"
+        except (OSError, TimeoutError) as exc:
+            last_error = f"{type(exc).__name__}: {exc}"
+        time.sleep(min(max(0.1, float(poll_interval)), max(0.1, deadline - time.monotonic())))
+    raise TimeoutError(
+        f"Timed out after {budget:.0f}s waiting for llama.cpp to become ready (last result: {last_error})."
+    )
+
+
 def wait_for_llama_router_model(
     base_url: str,
     model: str,
     timeout: float = 180.0,
     poll_interval: float = 0.5,
 ) -> dict[str, Any]:
-    """Wait until a selected router model is actually ready before Pi is launched."""
+    """Wait until one llama.cpp router model can accept a routed task.
+
+    ``unloaded`` presets are explicitly loaded by the caller before this wait begins.
+    ``sleeping`` is different: llama.cpp documents that a real incoming task wakes the
+    sleeping child automatically, while management/read-only endpoints do not. For a
+    sleeping model this function therefore sends the lightweight routed ``/tokenize``
+    task immediately and gives that wake request the caller's remaining timeout budget.
+
+    No user-specific timeout is substituted here; ``timeout`` is always the value supplied
+    by the caller (normally the sidebar's Timeout in seconds setting).
+    """
     model_id = str(model or "").strip()
     if not model_id:
         raise ValueError("A llama.cpp model id is required.")
-    deadline = time.monotonic() + max(5.0, float(timeout))
+    budget = max(0.1, float(timeout))
+    deadline = time.monotonic() + budget
     last_status = "unknown"
-    last_entry: dict[str, Any] = {}
+    last_probe = "not attempted"
     while time.monotonic() < deadline:
-        catalog = llama_router_models(base_url, timeout=min(5.0, max(2.5, float(timeout))))
+        remaining = max(0.1, deadline - time.monotonic())
+        catalog = llama_router_models(base_url, timeout=min(5.0, remaining))
         entry = next((item for item in catalog.get("models", []) if str(item.get("id") or "") == model_id), None)
         if entry is None:
             raise ValueError(f"llama.cpp router no longer reports model '{model_id}'. Refresh the model list.")
-        last_entry = entry
         last_status = str(entry.get("status") or "unknown").lower()
         if bool(entry.get("failed", False)):
             detail = f" exit_code={entry.get('exit_code')}" if entry.get("exit_code") is not None else ""
             raise RuntimeError(f"llama.cpp failed to load '{model_id}'.{detail}")
+
         if last_status in {"loaded", "ready", "sleeping"}:
-            return {"ready": True, "model": model_id, "status": last_status, "entry": entry}
-        time.sleep(max(0.1, float(poll_interval)))
+            # A sleeping llama.cpp child is woken by a real routed task. Give that wake
+            # request the full remaining user-configured budget because loading large local
+            # models can legitimately take minutes. A loaded child only needs a short probe.
+            probe_timeout = remaining if last_status == "sleeping" else min(5.0, remaining)
+            try:
+                probe = llama_router_model_tokenize(base_url, model_id, timeout=probe_timeout)
+                return {
+                    "ready": True,
+                    "model": model_id,
+                    "status": "loaded",
+                    "entry": entry,
+                    "probe": probe,
+                    "woke_from_sleep": last_status == "sleeping",
+                }
+            except urllib.error.HTTPError as exc:
+                code = int(getattr(exc, "code", 0) or 0)
+                # Busy/loading conditions can be transient. A 400 is not swallowed: with
+                # LocalLLMHTTPError it now includes the exact endpoint and llama.cpp body.
+                if code not in {404, 409, 425, 429, 503}:
+                    raise
+                last_probe = f"/tokenize HTTP {code}"
+            except (OSError, TimeoutError) as exc:
+                last_probe = f"/tokenize {type(exc).__name__}: {exc}"
+        else:
+            last_probe = f"router status is {last_status}"
+
+        time.sleep(min(max(0.1, float(poll_interval)), max(0.1, deadline - time.monotonic())))
+
     raise TimeoutError(
-        f"Timed out after {float(timeout):.0f}s waiting for llama.cpp model '{model_id}' "
-        f"to become ready (last status: {last_status})."
+        f"Timed out after {budget:.0f}s waiting for llama.cpp model '{model_id}' to become ready "
+        f"(last router status: {last_status}; last readiness probe: {last_probe})."
     )
 
 def llama_router_action(
@@ -487,9 +620,32 @@ def configure_local_provider(
 
 
 def runtime_environment(local_config: dict[str, Any] | None) -> dict[str, str]:
-    """Compatibility hook for older sessions. Local servers are catalogued in models.json.
+    """Return explicit runtime configuration required by Pi's native local providers.
 
-    Keeping this function means existing runtime call sites stay stable, but endpoint URLs
-    are no longer smuggled into Pi through provider/env fields.
+    Pi 0.81+ registers llama.cpp as a built-in provider. The provider is considered
+    configured only when its router URL comes from `/login llama.cpp`, stored auth, or
+    ``LLAMA_BASE_URL``. ComfyUI-Pi already owns the selected endpoint, so pass that
+    endpoint directly to the supervised Pi process instead of requiring a second login.
+    Other local providers continue to use the models.json catalog path.
     """
-    return {}
+    local = local_config if isinstance(local_config, dict) else {}
+    if _normalize_kind(str(local.get("kind") or "")) != "llama.cpp":
+        return {}
+
+    root = normalize_base_url("llama.cpp", str(local.get("base_url") or ""))
+    if root.endswith("/v1"):
+        root = root[:-3].rstrip("/")
+    env = {"LLAMA_BASE_URL": root}
+
+    # A raw secret is never persisted in chat/session JSON. If the session names an
+    # environment variable containing a router key, copy only its value into the
+    # official Pi variable for the child process.
+    env_name = "".join(
+        ch for ch in str(local.get("api_key_env") or "").strip()
+        if ch.isalnum() or ch == "_"
+    )
+    if env_name:
+        api_key = os.environ.get(env_name, "").strip()
+        if api_key:
+            env["LLAMA_API_KEY"] = api_key
+    return env

@@ -197,6 +197,14 @@ These follow the same policy: a tiny registry entry exists host-side, but their 
 
 ---
 
+## Real Pi Terminal routing
+
+The default sidebar Terminal uses the same lazy router without converting the Pi TUI to RPC. One explicitly loaded Pi extension observes the original interactive input and invokes ComfyUI-Pi's local routing helper. Only the matching task procedure/integration summary is appended to that turn's system prompt. Unrelated guides remain unloaded, and the terminal displays the user's original input normally.
+
+See [Real Pi terminal](pi-terminal.md).
+
+---
+
 <!-- DOC_NAV_FOOTER_START -->
 **Navigate:** [Project README](../README.md) · [Documentation home](index.md) · [Previous: MiniMax H3 Turbo integration](minimax-h3-turbo.md) · [Next: Preemptive context handoff](context-handoff.md)
 <!-- DOC_NAV_FOOTER_END -->

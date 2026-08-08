@@ -17,6 +17,16 @@ Pi supplies the LLM runtime, configured model/provider access, and conversationa
 
 No personal location is searched.
 
+## Interactive Terminal runtime
+
+On POSIX platforms, the default sidebar **Terminal** view launches the real interactive `pi` CLI through an operating-system pseudo-terminal. It does not use `--mode rpc`. ComfyUI-Pi explicitly loads only its small terminal bridge extension while disabling automatic discovery of unrelated context files, extensions, skills, and prompt templates.
+
+The terminal bridge observes real user input, dynamically requests only the matching ComfyUI-Pi task/integration guidance, and appends that compact guidance to the system prompt for the current turn. It also reports Pi's own `getContextUsage()` values for the preemptive handoff monitor.
+
+Provider/model changes restart the supervised interactive process with `--continue` and the same private terminal session directory. This preserves Pi's native session semantics while allowing ComfyUI-Pi to prepare local models first. See [Real Pi terminal](pi-terminal.md).
+
+Structured Chat and node/headless features continue to use RPC as described below.
+
 ## RPC protocol
 
 The plugin launches Pi with an argument array and `--mode rpc`. It writes one JSON object per line to standard input and reads one JSON object per line from standard output.
@@ -44,8 +54,9 @@ These flags affect only the Pi subprocess launched by ComfyUI-Pi. They do not de
 The client:
 
 - correlates the prompt response with an ID;
-- collects `text_delta` events;
+- collects `text_delta`, reasoning/thinking, and tool activity events;
 - treats `message_end` as authoritative when available;
+- falls back to Pi RPC `get_last_assistant_text`, then the last assistant message, before declaring a successful turn textless;
 - waits for `agent_settled`;
 - aborts after the configured timeout;
 - does not use `shell=True`;
@@ -56,7 +67,7 @@ The client:
 
 The sidebar exposes **Provider** then **Model** directly beneath the chat box. The Provider selector contains Pi's current built-in provider catalog, supported local hosts, and custom providers visible in Pi's runtime/configuration. Hosted-provider models are read from Pi's own `get_available_models` RPC snapshot; the plugin does not maintain a second hardcoded cloud-model catalog. Selecting another already-available hosted model uses Pi RPC `set_model`, preserving the active Pi process and context.
 
-For local use, selecting llama.cpp, Ollama, LM Studio, vLLM, or the generic OpenAI-compatible entry explicitly probes only that host, reads all models the host reports as selectable, and safely merges those IDs into Pi's supported `models.json`. llama.cpp router discovery uses the full live `/models` catalog so configured-but-unloaded presets are included. If the chosen router model is not ready, ComfyUI-Pi requests the load and waits for router readiness **before** spawning Pi. Explicit Refresh can use `/models?reload=1` with a longer timeout to re-read presets. Local catalog changes restart only the supervised Pi RPC process because Pi must reload `models.json`. Common endpoints are automatic; the endpoint field lives under **Settings → Local model host — advanced** and is optional.
+For local use, selecting llama.cpp, Ollama, LM Studio, vLLM, or the generic OpenAI-compatible entry explicitly probes only that host, reads all models the host reports as selectable, and safely merges those IDs into Pi's supported `models.json`. llama.cpp router discovery uses the full live `/models` catalog so configured-but-unloaded presets are included. If the chosen router model is unloaded or sleeping, ComfyUI-Pi explicitly requests load/wake, polls `/models` until the selected preset reports `loaded`, and then verifies the routed child with a lightweight model-targeted `POST /tokenize` **before** spawning Pi. The wait uses the user's current chat timeout value unchanged as its readiness budget. Explicit Refresh can use `/models?reload=1` with a longer timeout to re-read presets. Local catalog changes restart only the supervised Pi RPC process because Pi must reload `models.json`. Common endpoints are automatic; the endpoint field lives under **Settings → Local model host — advanced** and is optional.
 
 Pi RPC startup itself has a readiness probe. ComfyUI-Pi sends `get_state` before accepting the first real chat turn. If Pi terminates because a provider/model/configuration cannot initialize, the surfaced error includes the Pi process exit code and recent stderr output, making the root cause diagnosable instead of returning only a generic early-exit message.
 
@@ -89,11 +100,15 @@ See [dynamic-integration-context.md](dynamic-integration-context.md).
 
 ## Preemptive handoff instead of Pi auto-compaction
 
-For stateful sidebar conversations, ComfyUI-Pi owns context lifecycle instead of relying on Pi's built-in compaction summary. The default trigger is **82.5%** of the model context window and can be adjusted between 80% and 95%.
+For stateful sidebar conversations in both Terminal and Chat, ComfyUI-Pi owns context lifecycle instead of relying on Pi's normal threshold compaction. The default trigger is **82.5%** of the model context window and can be adjusted between 80% and 95%.
 
-When the threshold is reached, ComfyUI-Pi creates a bounded continuity handoff using a separate fresh Pi process, structurally validates that handoff, resets the active Pi process with `new_session`, then reads the bounded file host-side and injects that continuity state directly into the fresh context. This avoids depending on a weak model to decide to call a file-read tool after reset. Large workflows and node-pack manuals stay referenced by path or dynamic integration ID instead of being copied into the handoff.
+Structured Chat uses the existing fresh-summarizer + RPC `new_session` path. Terminal mode creates the bounded durable handoff from Pi's saved visible session state, sends native `/new` through the PTY, and lets the explicit bridge inject that handoff exactly once on the next real prompt. This avoids depending on a weak model to decide to call a file-read tool after reset. Large workflows and node-pack manuals stay referenced by path or dynamic integration ID instead of being copied into the handoff.
 
 See [context-handoff.md](context-handoff.md).
+
+### Sleeping llama.cpp router models
+
+A llama.cpp router can keep a model entry in `sleeping` state after idle sleep. ComfyUI-Pi treats that differently from `unloaded`: only an unloaded preset is sent to `/models/load`. A sleeping model is woken by a lightweight routed `/tokenize` task, because llama.cpp defines real incoming tasks as the wake trigger. The wait uses the current chat's configured **Timeout in seconds** value; no personal timeout value is hardcoded. HTTP failures include the method, endpoint, status, and response body for troubleshooting.
 
 ---
 

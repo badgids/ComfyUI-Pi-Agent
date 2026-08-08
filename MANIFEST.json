@@ -1,10 +1,10 @@
 {
   "schema_version": "1.0",
   "project": "ComfyUI Pi Agent Production Suite",
-  "version": "0.1.12",
+  "version": "0.1.17",
   "creator": "Alan D. Guice (Badgids)",
   "license": "GPL-3.0-only",
-  "file_count": 168,
+  "file_count": 178,
   "files": [
     {
       "path": ".gitattributes",
@@ -28,8 +28,8 @@
     },
     {
       "path": "CHANGELOG.md",
-      "size": 11235,
-      "sha256": "ff601a1045a786dd76b6e984d6def880cdb1146b11348f02ee568687042d2358"
+      "size": 16395,
+      "sha256": "8012c4c1f6730a99d09cc3e3fee7c64bf84610c1b0d4d87dd1621951107b03fd"
     },
     {
       "path": "CODE_OF_CONDUCT.md",
@@ -48,18 +48,18 @@
     },
     {
       "path": "PROJECT_INVENTORY.md",
-      "size": 7507,
-      "sha256": "24d7806e07e601f5214954dd0a4c0636fe04ac82927fc5fe5e95614d158e0c2a"
+      "size": 8038,
+      "sha256": "b40778a9fb1a42c9ee8d88b32924ce244169d33b0be603086b8813a3703f31cb"
     },
     {
       "path": "README.md",
-      "size": 28560,
-      "sha256": "de0c6e75c2ae498d4da54ee565e4bfa7b5756ed42cfb25eda3174eff1f7667c3"
+      "size": 29288,
+      "sha256": "ddb0822970620fb8fd371a8622b719b4baeb4265f94cd80ace89a99515360b0e"
     },
     {
       "path": "RELEASE_NOTES.md",
-      "size": 17506,
-      "sha256": "f2c54503df86191836b329d0c98d8e661f06e64f0f1f3c8e3c1b304fa0ecef12"
+      "size": 24170,
+      "sha256": "1508e7efbe229ca728450edd3ef6f93731e8928bd8cb90e41f736f4664d5b212"
     },
     {
       "path": "SECURITY.md",
@@ -68,8 +68,8 @@
     },
     {
       "path": "THIRD_PARTY_NOTICES.md",
-      "size": 3878,
-      "sha256": "1cf1f43800a691b65c1768eacce2a2b25c37b1bbd80403eff6de733207c08345"
+      "size": 4300,
+      "sha256": "c79ab0a2b0be2664d7f2a2749adad343372e2457f00d4829f45e5a3547c3a821"
     },
     {
       "path": "__init__.py",
@@ -88,8 +88,8 @@
     },
     {
       "path": "comfy_pi_agent/chat.py",
-      "size": 74743,
-      "sha256": "1f7051054a73322f6eb3b8a2d4960df3eb2fec301d2bd42df6c5cb3a0673d3b9"
+      "size": 76075,
+      "sha256": "365e132554be922c8c30ecb8b3d25675a97199dcad270e03fba9bd5c4a2d7988"
     },
     {
       "path": "comfy_pi_agent/compat.py",
@@ -98,8 +98,8 @@
     },
     {
       "path": "comfy_pi_agent/context_handoff.py",
-      "size": 16773,
-      "sha256": "d5a6aeaa9c4a6d4c6ae6492148e1adae3a3b0c4c5ad1af7e1ef63244c1dfc0fb"
+      "size": 17019,
+      "sha256": "a3abafac9713a1bcab10fbaaa67db23458fea8069d4e97690fc2050142a85cd0"
     },
     {
       "path": "comfy_pi_agent/docx_writer.py",
@@ -148,8 +148,8 @@
     },
     {
       "path": "comfy_pi_agent/local_llm.py",
-      "size": 19814,
-      "sha256": "539ffcdb2cb940f146986d242e8af6a6c8895c95c25fbc8b8e9b579c7401eca4"
+      "size": 25794,
+      "sha256": "636aecebb31a5dd6195da3b700173b223707f88d4a489964d9ef3eca3abfd201"
     },
     {
       "path": "comfy_pi_agent/media_plans.py",
@@ -178,8 +178,8 @@
     },
     {
       "path": "comfy_pi_agent/pi_runtime.py",
-      "size": 22928,
-      "sha256": "ca02bfd9e637c8327efe56b3173b22c12fb95a2b0ac83b071e7e10ec64f78946"
+      "size": 26085,
+      "sha256": "2c3703210d1239ae69d1b66a2928306d9ae0a2fdc67bba0554eacfff30291482"
     },
     {
       "path": "comfy_pi_agent/projects.py",
@@ -188,13 +188,28 @@
     },
     {
       "path": "comfy_pi_agent/provider_catalog.py",
-      "size": 6634,
-      "sha256": "852c3fc508dc0d4dd6812bd456f42bcdc611a344506970c7b506d9dff2da60c0"
+      "size": 6730,
+      "sha256": "3a3a409c069413d9bf3e4418782d4645b3893287f39f6a43b309be7f951a7c23"
     },
     {
       "path": "comfy_pi_agent/routes.py",
-      "size": 19794,
-      "sha256": "1fbc508117d60e741cf5e857e3736e355cb894c20eda76ae0ea91890d47ffb5b"
+      "size": 28107,
+      "sha256": "d8ca0a939b4144506b61b8ec442cc87349eea8f2f03bb37436798d27f13af0be"
+    },
+    {
+      "path": "comfy_pi_agent/terminal.py",
+      "size": 28173,
+      "sha256": "82aac014ff5495d2a717c479fdd8eb2894400393e1b4f0489a30e517d0cd5bc1"
+    },
+    {
+      "path": "comfy_pi_agent/terminal_bridge_cli.py",
+      "size": 2222,
+      "sha256": "95339b5a1ca26fc65987fce860a001094882fc589c2d7e7fa12200420ef88889"
+    },
+    {
+      "path": "comfy_pi_agent/terminal_pty_child.py",
+      "size": 1714,
+      "sha256": "429c243dec5f7878bced9c11bf7314dbc6951761a4381721582b90285985cc71"
     },
     {
       "path": "comfy_pi_agent/tutorials.py",
@@ -204,7 +219,7 @@
     {
       "path": "comfy_pi_agent/version.py",
       "size": 23,
-      "sha256": "2dc2251631d915f885f51778507a1a926a266ce164c48624d34235f357eb1813"
+      "sha256": "0732239e48bc073ddebcd5a8e9b8c6c71a4b872fed37d311621b4cd0c9c3896b"
     },
     {
       "path": "comfy_pi_agent/workflow.py",
@@ -243,8 +258,8 @@
     },
     {
       "path": "docs/architecture.md",
-      "size": 4251,
-      "sha256": "405ca996f027b52c098e94f9bbed293f549839b60501a0d4cc22f2ff6c647341"
+      "size": 5123,
+      "sha256": "11811cd17ec847ec6f7c2365adb72e14e28e7747570485ebe98ab2e7f9ef3b5f"
     },
     {
       "path": "docs/audio-music-voice.md",
@@ -258,8 +273,8 @@
     },
     {
       "path": "docs/context-handoff.md",
-      "size": 7438,
-      "sha256": "daa4d6fc2ac6799c394a95944ea09cbb3455f9c3b163f7a6452b0f6e2779921f"
+      "size": 8534,
+      "sha256": "94dc9dd45278ca2adcd9aabcf032261c92c3a3688cf44ac9315facfcc7d5595d"
     },
     {
       "path": "docs/development.md",
@@ -268,8 +283,8 @@
     },
     {
       "path": "docs/dynamic-integration-context.md",
-      "size": 8613,
-      "sha256": "1fe5aea1cffd17d2055e2dbb7e7c24a967d0c90e7cdf13a1b997b09c07fcefa7"
+      "size": 9095,
+      "sha256": "ca9aa06dc7adba429c0881b06ae830d88e9ff3149c0f4be78249835414be5b66"
     },
     {
       "path": "docs/image-generation-editing.md",
@@ -278,8 +293,8 @@
     },
     {
       "path": "docs/index.md",
-      "size": 3679,
-      "sha256": "0d05aac069d569876b94cc28bf2feaca255963556410c7f8304852fea1fef442"
+      "size": 3744,
+      "sha256": "5b1e1a1de788f47c4a35394a46fa4faa455335e10214e315f433898d313d72af"
     },
     {
       "path": "docs/installation.md",
@@ -298,8 +313,8 @@
     },
     {
       "path": "docs/local-llm-slash-commands.md",
-      "size": 14136,
-      "sha256": "d2c5927d43d1120cbf9ec66d056246145f82cd0454b1a984b9140b6709a12d9b"
+      "size": 15465,
+      "sha256": "4b278f59ee898b11d0a2da0b57be1963224b327e457a1e0e8fd064699b6c77be"
     },
     {
       "path": "docs/minimax-h3-director.md",
@@ -323,8 +338,13 @@
     },
     {
       "path": "docs/pi-runtime.md",
-      "size": 7727,
-      "sha256": "da2586f91ebe24476194c8505c101d4d842b51de0f23512970aaaa1d8cc5ee6b"
+      "size": 9723,
+      "sha256": "68e3029dd7de19fdd7f85743e3e9f3858351ffe8e4d882b17b095e7045d71fbc"
+    },
+    {
+      "path": "docs/pi-terminal.md",
+      "size": 7367,
+      "sha256": "3e827bb1fd197236a0ba4412668be3da6ca984d3139ea20f9024b2a7d622f6e7"
     },
     {
       "path": "docs/production-compiler.md",
@@ -363,8 +383,8 @@
     },
     {
       "path": "docs/sidebar-chat.md",
-      "size": 7780,
-      "sha256": "fb5b89ecb8d304c436a908f96a8cf10e61250cbff06a7799b26c69dcbdf8acde"
+      "size": 9544,
+      "sha256": "ada40f4a5fcc72ed3135ab8722b2ffe676acc6a3affb107db0bb151aaa2aadec"
     },
     {
       "path": "docs/small-model-reliability.md",
@@ -762,9 +782,14 @@
       "sha256": "838c22cc7a16e7d3eb024e3e3ac26b1b6d8e72b1676f26b9dd79eab511e254ed"
     },
     {
+      "path": "pi/terminal-bridge.ts",
+      "size": 5019,
+      "sha256": "8eb27322be6651e7c7b328bf9660ed3e6dd4ac6110c1f401ad297595ff23a7c5"
+    },
+    {
       "path": "pyproject.toml",
       "size": 642,
-      "sha256": "3397c334f1723bdf4906daa95ff004f40d36cf4ac1cdbb9bc82188e910aa9630"
+      "sha256": "50d4688d32f7300416c2a29114b4fc3311b5f5cb941eb309b8ccccd96c7c6480"
     },
     {
       "path": "requirements.txt",
@@ -809,7 +834,7 @@
     {
       "path": "tests/test_license_and_release.py",
       "size": 1055,
-      "sha256": "30cc90f006b7f04836845edfc479d30305bab2649c58c81fb20c6f4f05a85752"
+      "sha256": "c14c6512d0461209e919b20de01e4adebd54fedf3aaf2ff3a784ebc59d95fde5"
     },
     {
       "path": "tests/test_media_plans.py",
@@ -828,8 +853,13 @@
     },
     {
       "path": "tests/test_slash_commands_local_llm.py",
-      "size": 21808,
-      "sha256": "c106b8485b35582cd1bfac8a0bc537671ad9ae28d2d8db763c8ea415cdb398d2"
+      "size": 27438,
+      "sha256": "a368e2d07a6d513084e897e9a4855b396bb4081573b311542d399adad23f8306"
+    },
+    {
+      "path": "tests/test_terminal_mode.py",
+      "size": 11176,
+      "sha256": "7600cce69a929cdb03398411b57a252e2c56f76692b5583b1a2f0882dbc6cf7f"
     },
     {
       "path": "tests/test_tutorial_nle.py",
@@ -843,8 +873,28 @@
     },
     {
       "path": "web/pi_agent.js",
-      "size": 46398,
-      "sha256": "c0e209571fbcdac030a7a45cfbd8e92d64454d19594311a9c4184fd1f01f5078"
+      "size": 69111,
+      "sha256": "0b3795f64bf584e7f76b349b71ee18ffa42175a3732064d727a412193ab0855b"
+    },
+    {
+      "path": "web/vendor/XTERM_LICENSE.txt",
+      "size": 1134,
+      "sha256": "b49a9ea244b37b4a8dfc98c66b12090d03aa08b24aba9525f599487886c5f1b7"
+    },
+    {
+      "path": "web/vendor/xterm-fit.js",
+      "size": 2837,
+      "sha256": "f2152966992dc838fd69bc90756ebfdeec58f55b60edab194f916d35282e9419"
+    },
+    {
+      "path": "web/vendor/xterm.css",
+      "size": 3595,
+      "sha256": "8baa5877506c5bebaeb458dbcce84e415211fad588410df31529d41b7f505eb1"
+    },
+    {
+      "path": "web/vendor/xterm.js",
+      "size": 261532,
+      "sha256": "995359e3f9f0aac026cb9930cd9a312f48deeb982ccdcc880a7693a32616e5b9"
     }
   ]
 }

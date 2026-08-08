@@ -22,15 +22,17 @@ Every documentation page has a navigation bar near the top and bottom:
 2. [Quick start](quick-start.md)
 3. [Node reference](node-reference.md)
 4. [Pi runtime and model-provider setup](pi-runtime.md)
-5. [Pi Agent sidebar chat](sidebar-chat.md)
-6. [Local LLM servers and Pi slash commands](local-llm-slash-commands.md)
-7. [Troubleshooting](troubleshooting.md)
+5. [Pi Agent sidebar](sidebar-chat.md)
+6. [Real Pi terminal](pi-terminal.md)
+7. [Local LLM servers and Pi slash commands](local-llm-slash-commands.md)
+8. [Troubleshooting](troubleshooting.md)
 
 ## Agent, workflow, and context system
 
 - [Pi runtime and model-provider setup](pi-runtime.md)
 - [Small local model reliability](small-model-reliability.md)
-- [Pi Agent sidebar chat](sidebar-chat.md)
+- [Pi Agent sidebar](sidebar-chat.md)
+- [Real Pi terminal](pi-terminal.md)
 - [Local LLM servers and Pi slash commands](local-llm-slash-commands.md)
 - [Workflow intelligence](workflow-intelligence.md)
 - [Model discovery, safetensors, and GGUF](model-formats-gguf.md)
