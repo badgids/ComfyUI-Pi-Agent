@@ -1754,8 +1754,8 @@ function buildSidebar(el, placement = "sidebar") {
       </div>
       <div class="pi-agent-toolbar pi-agent-session-toolbar">
         <select id="pi-agent-session-select" class="pi-agent-sessions" aria-label="Saved Pi session"></select>
-        <button id="pi-agent-new-chat" class="pi-agent-btn" type="button">New session</button>
         <div class="pi-agent-session-actions" aria-label="Session actions">
+          <button id="pi-agent-new-chat" class="pi-agent-btn pi-agent-icon-btn" type="button" title="New session" aria-label="New session"><i class="pi pi-plus" aria-hidden="true"></i></button>
           <button id="pi-agent-load-session" class="pi-agent-btn pi-agent-icon-btn" type="button" title="Load session JSON" aria-label="Load session JSON"><i class="pi pi-folder-open" aria-hidden="true"></i></button>
           <input id="pi-agent-load-session-file" type="file" accept=".json,application/json" hidden />
           <button id="pi-agent-save-session" class="pi-agent-btn pi-agent-icon-btn" type="button" title="Save session JSON" aria-label="Save session JSON"><i class="pi pi-save" aria-hidden="true"></i></button>
