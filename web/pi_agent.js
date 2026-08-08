@@ -1104,7 +1104,7 @@ function ensureStyles() {
     .pi-agent-session-actions { display:flex; align-items:center; gap:4px; flex:0 0 auto; }
     .pi-agent-session-actions .pi-agent-icon-btn { width:30px; height:30px; font-size:15px; }
     .pi-agent-emoji-icon { font-size:16px; line-height:1; pointer-events:none; }
-    .pi-agent-settings { padding:8px; border-bottom:1px solid color-mix(in srgb, currentColor 15%, transparent); display:grid; gap:7px; }
+    .pi-agent-settings { padding:8px; border-bottom:1px solid color-mix(in srgb, currentColor 15%, transparent); display:grid; gap:7px; flex:0 1 auto; min-height:0; overflow-y:auto; overflow-x:hidden; overscroll-behavior:contain; scrollbar-gutter:stable; }
     .pi-agent-settings[hidden] { display:none; }
     .pi-agent-field { display:grid; gap:3px; }
     .pi-agent-field label { font-size:11px; opacity:.75; }
