@@ -19,6 +19,7 @@ from .projects import compile_project, create_project_plan, create_reference_ass
 from .tutorials import compile_tutorial, load_tutorial, select_stage, tutorial_preflight, validate_stage
 from .version import __version__
 from .workflow import analyze_workflow, repair_workflow, validate_workflow
+from .workflow_guard import finalize_generated_workflow, finalize_workflow_result
 from importlib import import_module
 from .integrations.router import build_dynamic_integration_context, integration_status
 from .agent_guidance import build_request_guidance
@@ -45,7 +46,7 @@ def create_minimax_h3_director_plan(*args, **kwargs):
 
 
 def create_minimax_h3_director_workflow(*args, **kwargs):
-    return _minimax_h3().create_minimax_h3_director_workflow(*args, **kwargs)
+    return finalize_workflow_result(_minimax_h3().create_minimax_h3_director_workflow(*args, **kwargs))
 
 
 def find_minimax_h3_director_install(*args, **kwargs):
@@ -193,6 +194,33 @@ class PiWorkflowRepair:
     def run(self, workflow_json_or_path):
         result = repair_workflow(workflow_json_or_path)
         return (json_text(result["repaired"]), json_text({k: v for k, v in result.items() if k not in {"original", "repaired"}}))
+
+
+class PiWorkflowFinalize:
+    CATEGORY = f"{CATEGORY}/Workflow Intelligence"
+    RETURN_TYPES = ("BOOLEAN", "STRING", "STRING")
+    RETURN_NAMES = ("valid", "finalized_workflow_json", "gate_report_json")
+    FUNCTION = "run"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {
+            "workflow_json_or_path": _string_input("{}"),
+            "organize_nodes": ("BOOLEAN", {"default": True}),
+            "minimum_node_gap_px": ("INT", {"default": 6, "min": 6, "max": 1000}),
+        }}
+
+    def run(self, workflow_json_or_path, organize_nodes, minimum_node_gap_px):
+        result = finalize_generated_workflow(
+            workflow_json_or_path,
+            minimum_gap=max(6, int(minimum_node_gap_px)),
+            organize=bool(organize_nodes),
+        )
+        return (
+            result["valid"],
+            json_text(result["workflow"]),
+            json_text({key: value for key, value in result.items() if key != "workflow"}),
+        )
 
 
 class PiModelInventory:
@@ -536,11 +564,11 @@ class PiWhatDreamsCostWorkflow:
         }}
 
     def run(self, request, workflow_mode, preferred_format, use_prompt_relay, use_custom_audio, use_ic_lora, retake):
-        result = _whatdreamscost().create_whatdreamscost_workflow(
+        result = finalize_workflow_result(_whatdreamscost().create_whatdreamscost_workflow(
             request=request, workflow_mode=workflow_mode, preferred_format=preferred_format,
             use_prompt_relay=use_prompt_relay, use_custom_audio=use_custom_audio,
             use_ic_lora=use_ic_lora, retake=retake,
-        )
+        ))
         workflow = result.get("workflow") or {}
         return (workflow, json_text(workflow), json_text({k: v for k, v in result.items() if k != "workflow"}))
 
@@ -623,10 +651,10 @@ class PiSceneCameraActionWorkflow:
         }}
 
     def run(self, request, actor_type, duration_seconds, include_directing, scene_source):
-        result = _scene_camera_action().create_scene_camera_action_workflow(
+        result = finalize_workflow_result(_scene_camera_action().create_scene_camera_action_workflow(
             request=request, actor_type=actor_type, duration_seconds=duration_seconds,
             include_directing=include_directing, scene_source=scene_source,
-        )
+        ))
         workflow = result.get("workflow") or {}
         return (workflow, json_text(workflow), json_text({k: v for k, v in result.items() if k != "workflow"}))
 
@@ -708,9 +736,9 @@ class PiMiniMaxH3TurboWorkflow:
         }}
 
     def run(self, request, mode, steps, lora_strength, low_vram):
-        result = _minimax_h3_turbo().create_minimax_h3_turbo_workflow(
+        result = finalize_workflow_result(_minimax_h3_turbo().create_minimax_h3_turbo_workflow(
             request=request, mode=mode, steps=steps, lora_strength=lora_strength, low_vram=low_vram,
-        )
+        ))
         workflow = result.get("workflow") or {}
         return (workflow, json_text(workflow), json_text({k: v for k, v in result.items() if k != "workflow"}))
 
@@ -1181,6 +1209,7 @@ NODE_CLASS_MAPPINGS = {
     "PiWorkflowAnalyze": PiWorkflowAnalyze,
     "PiWorkflowValidate": PiWorkflowValidate,
     "PiWorkflowRepair": PiWorkflowRepair,
+    "PiWorkflowFinalize": PiWorkflowFinalize,
     "PiModelInventory": PiModelInventory,
     "PiModelResolver": PiModelResolver,
     "PiModelProfiles": PiModelProfiles,
@@ -1239,6 +1268,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "PiWorkflowAnalyze": "Pi Analyze Workflow",
     "PiWorkflowValidate": "Pi Validate Workflow",
     "PiWorkflowRepair": "Pi Repair Workflow",
+    "PiWorkflowFinalize": "Pi Finalize Generated Workflow",
     "PiModelInventory": "Pi Model Inventory",
     "PiModelResolver": "Pi Model Resolver",
     "PiModelProfiles": "Pi Model Profiles",

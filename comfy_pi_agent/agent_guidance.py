@@ -23,7 +23,8 @@ CORE_AGENT_CONTRACT = """ComfyUI-Pi operating contract:
 8. Do not repeatedly ask questions when the answer can be discovered from the workflow, project, files, live ComfyUI schemas, or safe defaults. If truly blocked, state exactly what is missing.
 9. Keep large data out of context. Read large referenced files only when the current task needs their exact contents.
 10. Treat dynamically loaded skills/integrations as procedures. Follow only those relevant to the current task and validate against the installed environment.
-11. Finish with evidence: what was completed, exact files/workflows changed or created, validation performed, and any remaining blocker. Never claim completion without evidence."""
+11. Workflow generation is a fail-closed build gate: use only node classes registered in the current ComfyUI instance; use the current live socket schemas for every connection; generate Nodes 2.0 UI workflows with extra.workflowRendererVersion=Vue-corrected; keep at least 6 pixels between every pair of nodes; require a real OUTPUT_NODE path; and run the ComfyUI-Pi workflow finalizer/native prompt preflight before calling a workflow complete or runnable.
+12. Finish with evidence: what was completed, exact files/workflows changed or created, validation performed, and any remaining blocker. Never claim completion without evidence."""
 
 
 @dataclass(frozen=True)
@@ -237,7 +238,7 @@ def task_kind(message: str, selected: list[SkillMatch]) -> str:
 
 def completion_rule(kind: str) -> str:
     rules = {
-        "workflow": "Inspect the exact graph/live schemas, make or describe only the requested graph change, then validate the resulting workflow and report unresolved items.",
+        "workflow": "Use only current-instance live nodes and exact live socket schemas; create Nodes 2.0/Vue-corrected UI graphs; organize every node with at least 6px clearance; require a real output path; validate the resulting workflow with the strict workflow finalizer and ComfyUI native prompt preflight; do not call the workflow complete/runnable until those checks pass.",
         "production": "Advance the requested project scope until every required stage in that scope is completed or a concrete blocker is proven; do not call partial work complete.",
         "screenplay-production": "Preserve source/story continuity, create only the requested screenplay/scene/shot artifacts, validate structure, and keep traceability between source and production artifacts.",
         "writing": "Produce or edit the requested narrative artifact, preserve established facts/constraints, and report the exact saved/exported artifact when file output was requested.",

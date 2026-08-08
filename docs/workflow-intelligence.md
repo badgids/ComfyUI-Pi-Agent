@@ -16,7 +16,17 @@ The analyzer extracts node types, graph order, file-like widget values, model-li
 
 ## Validation
 
-Validation is structural. It does not prove that a model can fit in VRAM or that a generated image is creatively correct.
+Legacy `validate_workflow()` remains useful for imported graphs, but generated-workflow completion uses the stricter gate. It compares node classes with the current live ComfyUI registry, validates serialized and live socket/link structure, requires a live output node, and rejects cycles or unverifiable connections.
+
+When an API prompt graph is available, the ComfyUI-Pi HTTP finalizer also calls ComfyUI's own `execution.validate_prompt`. This catches current-instance required-input, combo/model value, node, output, and execution-graph errors before anything is called completion-verified. It does not render media; actual rendering remains separate evidence when requested.
+
+## Generated workflow contract
+
+Generated UI workflows use ComfyUI Nodes 2.0 metadata: `extra.workflowRendererVersion = "Vue-corrected"`. The finalizer lays the graph out deterministically from left to right and enforces at least **6 pixels of empty space between every pair of node rectangles**. Six pixels is the hard minimum; the default organizer intentionally uses larger spacing for readability.
+
+The current live node registry and `/object_info` schemas are authoritative. ComfyUI-Pi must not fabricate a node class or silently substitute an unavailable node. Every link must reference real nodes and slots with compatible datatypes, and node-side link back-references must agree with the top-level link table.
+
+A generated workflow is not complete when it has missing live nodes, bad socket indexes/types, broken link back-references, cycles, insufficient node clearance, no live `OUTPUT_NODE`, or failed native prompt validation.
 
 ## Repair
 

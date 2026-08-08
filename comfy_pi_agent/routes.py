@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import uuid
 
 from .chat import CHAT_MANAGER
 from .models import inventory_models
@@ -12,6 +13,7 @@ from .terminal import TERMINAL_MANAGER
 from .tutorials import compile_tutorial
 from .version import __version__
 from .workflow import analyze_workflow
+from .workflow_guard import finalize_generated_workflow, finalize_workflow_result, live_node_catalog
 from .integrations.router import (
     build_dynamic_integration_context,
     integration_status,
@@ -68,6 +70,67 @@ def register_routes() -> bool:
         workflow = payload.get("workflow", {})
         return web.json_response(analyze_workflow(workflow).to_dict())
 
+    @routes.get("/pi-agent/workflow/capabilities")
+    async def pi_agent_workflow_capabilities(request):
+        return web.json_response(live_node_catalog())
+
+    @routes.post("/pi-agent/workflow/finalize")
+    async def pi_agent_workflow_finalize(request):
+        payload = await request.json()
+        minimum_gap = max(6.0, float(payload.get("minimum_node_gap_px", 6) or 6))
+        result = finalize_generated_workflow(
+            payload.get("workflow", {}),
+            minimum_gap=minimum_gap,
+            organize=bool(payload.get("organize", True)),
+        )
+
+        api_prompt = payload.get("api_prompt")
+        if api_prompt is None and result.get("format") == "api":
+            api_prompt = result.get("workflow")
+
+        native = {
+            "attempted": False,
+            "valid": False,
+            "reason": "No API prompt graph was supplied. UI static validation cannot substitute for native ComfyUI prompt validation.",
+        }
+        if isinstance(api_prompt, dict) and api_prompt:
+            api_gate = finalize_generated_workflow(api_prompt, minimum_gap=minimum_gap, organize=False)
+            if api_gate.get("valid"):
+                try:
+                    import execution  # type: ignore
+                    valid = await execution.validate_prompt(str(uuid.uuid4()), api_gate["workflow"], None)
+                    native = {
+                        "attempted": True,
+                        "valid": bool(valid[0]),
+                        "error": valid[1],
+                        "outputs_to_execute": valid[2],
+                        "node_errors": valid[3],
+                    }
+                except Exception as exc:
+                    native = {
+                        "attempted": True,
+                        "valid": False,
+                        "error": f"{type(exc).__name__}: {exc}",
+                        "outputs_to_execute": [],
+                        "node_errors": {},
+                    }
+            else:
+                native = {
+                    "attempted": False,
+                    "valid": False,
+                    "reason": "API prompt failed the live static gate before native validation.",
+                    "api_gate": {key: value for key, value in api_gate.items() if key != "workflow"},
+                }
+
+        result["native_validation"] = native
+        result["completion_verified"] = bool(
+            result.get("valid")
+            and native.get("attempted")
+            and native.get("valid")
+            and native.get("outputs_to_execute")
+        )
+        return web.json_response(result, status=200 if result.get("valid") else 409)
+
     @routes.get("/pi-agent/integrations/minimax-h3-director/status")
     async def pi_agent_minimax_status(request):
         module = _minimax_h3()
@@ -112,6 +175,7 @@ def register_routes() -> bool:
             use_enhance_prompt=bool(payload.get("use_enhance_prompt", False)),
             retake=bool(payload.get("retake", False)),
         )
+        result = finalize_workflow_result(result)
         return web.json_response(result, status=200 if result.get("ok") else 409)
 
     @routes.post("/pi-agent/integrations/context")
@@ -166,6 +230,7 @@ def register_routes() -> bool:
             use_ic_lora=bool(payload.get("use_ic_lora", False)),
             retake=bool(payload.get("retake", False)),
         )
+        result = finalize_workflow_result(result)
         return web.json_response(result, status=200 if result.get("ok") else 409)
 
 
@@ -203,6 +268,7 @@ def register_routes() -> bool:
             include_directing=bool(payload.get("include_directing", True)),
             scene_source=payload.get("scene_source", "generated"),
         )
+        result = finalize_workflow_result(result)
         return web.json_response(result, status=200 if result.get("ok") else 409)
 
     @routes.get("/pi-agent/integrations/minimax-h3-turbo/status")
@@ -239,6 +305,7 @@ def register_routes() -> bool:
             lora_strength=float(payload.get("lora_strength", 1.0)),
             low_vram=bool(payload.get("low_vram", False)),
         )
+        result = finalize_workflow_result(result)
         return web.json_response(result, status=200 if result.get("ok") else 409)
 
     @routes.post("/pi-agent/tutorial/compile")
@@ -268,6 +335,7 @@ def register_routes() -> bool:
                 "handoff_threshold": float(payload.get("handoff_threshold_percent", 82.5) or 82.5) / 100.0,
                 "handoff_max_chars": int(payload.get("handoff_max_chars", 8000) or 8000),
                 "project_context": payload.get("project_context", ""),
+                "comfyui_base_url": f"{request.scheme}://{request.host}",
             }
 
             # Opening/collapsing ComfyUI panels is a browser-renderer lifecycle event,
@@ -365,6 +433,7 @@ def register_routes() -> bool:
                     "handoff_threshold": float(payload.get("handoff_threshold_percent", 82.5) or 82.5) / 100.0,
                     "handoff_max_chars": int(payload.get("handoff_max_chars", 8000) or 8000),
                     "project_context": payload.get("project_context", ""),
+                    "comfyui_base_url": f"{request.scheme}://{request.host}",
                 },
             )
             document["provider"] = provider

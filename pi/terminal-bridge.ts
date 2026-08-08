@@ -7,6 +7,8 @@
  */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from "fs";
+import { isAbsolute, relative, resolve } from "path";
+import { Type } from "typebox";
 
 const COMFYUI_PI_COMPACTION_INSTRUCTIONS =
   "Preserve continuity for the current ComfyUI task using Pi's normal compaction format. " +
@@ -92,6 +94,145 @@ export default function comfyUiPiTerminalBridge(pi: ExtensionAPI) {
   let compactionSessionFile = "";
   let compactionSessionId = "";
   let continuationSerial = 0;
+
+
+  const workflowToolConfig = () => readJson(process.env.COMFYUI_PI_BRIDGE_CONFIG || "");
+
+  const workflowPathAllowed = (path: string): boolean => {
+    const candidate = resolve(String(path || ""));
+    const config = workflowToolConfig();
+    const roots = [String(config.project_directory || ""), process.cwd()]
+      .filter(Boolean)
+      .map((item) => resolve(item));
+    return roots.some((root) => {
+      const rel = relative(root, candidate);
+      return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+    });
+  };
+
+  const requestJson = async (url: string, init?: any): Promise<any> => {
+    const response = await fetch(url, init);
+    const text = await response.text();
+    let payload: any = {};
+    try { payload = text ? JSON.parse(text) : {}; } catch { payload = { error: text }; }
+    if (!response.ok && !payload?.error) payload.error = `HTTP ${response.status}`;
+    return payload;
+  };
+
+  pi.registerTool({
+    name: "comfyui_live_nodes",
+    label: "ComfyUI Live Nodes",
+    description:
+      "Query the CURRENT connected ComfyUI instance for real installed node classes and live /object_info schemas. " +
+      "Use this before creating or connecting workflow nodes. Never invent a node or socket that is absent here.",
+    parameters: Type.Object({
+      node_types: Type.Optional(Type.Array(Type.String())),
+    }),
+    async execute(_toolCallId, params) {
+      const config = workflowToolConfig();
+      const base = String(config.comfyui_base_url || "").replace(/\/+$/, "");
+      if (!base) {
+        return {
+          content: [{ type: "text", text: "ERROR: no current ComfyUI base URL. Do not generate a workflow from guessed nodes." }],
+          details: { ok: false, error: "missing_comfyui_base_url" },
+        };
+      }
+      const requested = Array.isArray(params.node_types) ? params.node_types.filter(Boolean) : [];
+      let result: any;
+      if (!requested.length) {
+        result = await requestJson(`${base}/pi-agent/workflow/capabilities`);
+      } else {
+        result = {};
+        for (const nodeType of requested) {
+          const info = await requestJson(`${base}/object_info/${encodeURIComponent(nodeType)}`);
+          result[nodeType] = info?.[nodeType] ?? null;
+        }
+      }
+      return {
+        content: [{ type: "text", text: JSON.stringify(result, null, 2).slice(0, 30000) }],
+        details: { ok: true, result },
+      };
+    },
+  });
+
+  pi.registerTool({
+    name: "comfyui_workflow_finalize",
+    label: "Finalize ComfyUI Workflow",
+    description:
+      "MANDATORY final gate for generated workflows. Validates current live nodes/sockets, forces Nodes 2.0 Vue-corrected layout, " +
+      "enforces >=6px node clearance, requires a real output node, and runs native prompt validation when api_prompt_path is supplied. " +
+      "Do not call a workflow complete until completion_verified=true.",
+    parameters: Type.Object({
+      workflow_path: Type.String(),
+      api_prompt_path: Type.Optional(Type.String()),
+      organize: Type.Optional(Type.Boolean()),
+    }),
+    async execute(_toolCallId, params) {
+      const workflowPath = String(params.workflow_path || "");
+      const apiPath = String(params.api_prompt_path || "");
+      if (!workflowPathAllowed(workflowPath) || (apiPath && !workflowPathAllowed(apiPath))) {
+        return {
+          content: [{ type: "text", text: "ERROR: workflow path is outside the current project/cwd safety boundary." }],
+          details: { ok: false, error: "path_outside_allowed_roots" },
+        };
+      }
+      if (!existsSync(workflowPath)) {
+        return {
+          content: [{ type: "text", text: `ERROR: workflow file does not exist: ${workflowPath}` }],
+          details: { ok: false, error: "workflow_missing" },
+        };
+      }
+      const config = workflowToolConfig();
+      const base = String(config.comfyui_base_url || "").replace(/\/+$/, "");
+      if (!base) {
+        return {
+          content: [{ type: "text", text: "ERROR: no current ComfyUI base URL; live workflow validation cannot run." }],
+          details: { ok: false, error: "missing_comfyui_base_url" },
+        };
+      }
+
+      let workflow: any;
+      let apiPrompt: any = undefined;
+      try {
+        workflow = JSON.parse(readFileSync(workflowPath, "utf8"));
+        if (apiPath) apiPrompt = JSON.parse(readFileSync(apiPath, "utf8"));
+      } catch (error) {
+        return {
+          content: [{ type: "text", text: `ERROR: could not read workflow JSON: ${String(error)}` }],
+          details: { ok: false, error: String(error) },
+        };
+      }
+
+      const result = await requestJson(`${base}/pi-agent/workflow/finalize`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workflow,
+          api_prompt: apiPrompt,
+          organize: params.organize !== false,
+          minimum_node_gap_px: 6,
+        }),
+      });
+      if (result?.valid && result?.workflow) {
+        writeFileSync(workflowPath, JSON.stringify(result.workflow, null, 2));
+      }
+      const state = result?.completion_verified
+        ? "COMPLETE: live schema + layout + output + native ComfyUI prompt validation passed."
+        : "NOT COMPLETE: fix every gate error and/or provide a native-valid API prompt before claiming completion.";
+      return {
+        content: [{ type: "text", text: `${state}\n${JSON.stringify({
+          valid: result?.valid,
+          runnable_candidate: result?.runnable_candidate,
+          completion_verified: result?.completion_verified,
+          renderer: result?.workflow_renderer,
+          minimum_node_gap_px: result?.minimum_node_gap_px,
+          issues: result?.issues,
+          native_validation: result?.native_validation,
+        }, null, 2)}` }],
+        details: result,
+      };
+    },
+  });
 
   const createDurableCheckpoint = async (
     ctx: any,

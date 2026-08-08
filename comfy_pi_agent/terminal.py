@@ -254,6 +254,7 @@ class PiTerminalSession:
             "project_directory": self.project_directory,
             "provider": self.provider,
             "model": self.model,
+            "comfyui_base_url": str(settings.get("comfyui_base_url", "")),
             "preemptive_handoff": bool(settings.get("preemptive_handoff", True)),
             "handoff_threshold": float(settings.get("handoff_threshold", 0.825)),
             "handoff_max_chars": int(settings.get("handoff_max_chars", 8000)),
