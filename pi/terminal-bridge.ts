@@ -289,13 +289,15 @@ export default function comfyUiPiTerminalBridge(pi: ExtensionAPI) {
         action: ratio >= threshold ? "threshold-reached" : "below-threshold",
       },
     });
-    if (!(ratio > 0) || ratio < threshold) return false;
 
-    // agent_end happens before Pi's own host compaction check. Only PREPARE here.
-    // ExtensionContext.compact() is fire-and-forget in Pi 0.83; starting it from
-    // agent_end races Pi's subsequent _checkCompaction() and can produce overlapping
-    // compactions. The actual early compact request is delayed until agent_settled,
-    // after Pi's host compaction decision has finished.
+    // Pi explicitly allows context usage to be unknown after a compaction/turn boundary.
+    // If a checkpoint is already prepared, do not strand it just because this later
+    // agent_settled sample is null/zero. Only require a threshold sample before prepare.
+    if (!compactionPrepared && (!(ratio > 0) || ratio < threshold)) return false;
+
+    // turn_end/agent_end only PREPARE continuity. ExtensionContext.compact() is
+    // fire-and-forget, so the fallback compact request still waits until agent_settled,
+    // after Pi's own post-run compaction decision has finished.
     if (!compactionPrepared) {
       try {
         const checkpoint = await createDurableCheckpoint(
@@ -494,10 +496,12 @@ export default function comfyUiPiTerminalBridge(pi: ExtensionAPI) {
     const anchored = Boolean(
       compactionAnchorId && branchContainsEntry(event.branchEntries || [], compactionAnchorId)
     );
-    const firstKeptEntryId = anchored
-      ? compactionAnchorId
-      : event.preparation.firstKeptEntryId;
     const handoffPath = String(pendingHandoff?.path || "");
+
+    // The hidden anchor proves the durable checkpoint was inserted on this branch.
+    // It must NOT replace Pi's native recent-message keep boundary. Keeping Pi's
+    // firstKeptEntryId preserves the recent user/assistant/tool suffix as designed.
+    const firstKeptEntryId = event.preparation.firstKeptEntryId;
 
     return {
       compaction: {
@@ -513,7 +517,9 @@ export default function comfyUiPiTerminalBridge(pi: ExtensionAPI) {
           handoff_path: handoffPath,
           session_file: currentSessionFile,
           session_id: currentSessionId,
+          anchor_id: compactionAnchorId,
           anchored,
+          native_first_kept_entry_id: event.preparation.firstKeptEntryId,
         },
       },
     };
@@ -596,7 +602,7 @@ export default function comfyUiPiTerminalBridge(pi: ExtensionAPI) {
               session_file: sessionFileAfter,
               session_id: sessionIdAfter,
             },
-          }, { triggerTurn: true });
+          }, { deliverAs: "followUp", triggerTurn: true });
         }, 0);
       }
     }
@@ -682,17 +688,22 @@ export default function comfyUiPiTerminalBridge(pi: ExtensionAPI) {
     return { systemPrompt: event.systemPrompt + "\n\n" + additions.join("\n\n") };
   });
 
-  // Comfy-Media-Director's proven ordering matters here: Pi performs its host
-  // automatic-compaction check after extension agent_end handlers and before
-  // agent_settled. Run the configured early guard at agent_end so the durable
-  // checkpoint is guaranteed to exist before Pi can compact on its own.
+  // Pi's own reference trigger-compact extension observes context usage at turn_end.
+  // Prepare continuity there too so long tool-driven work does not have to wait for the
+  // whole agent run to finish before the durable checkpoint exists.
+  pi.on("turn_end", async (_event, ctx) => {
+    await maybeRequestEarlyCompaction(ctx, "turn-end");
+  });
+
+  // Pi performs its host automatic-compaction check after extension agent_end handlers
+  // and before agent_settled. Keep agent_end as a fallback preparation boundary.
   pi.on("agent_end", async (_event, ctx) => {
     writeBridgeState(ctx, { source: latestSource });
     await maybeRequestEarlyCompaction(ctx, "agent-end");
   });
 
-  // Compatibility fallback. Usually the agent_end gate has already decided whether to
-  // compact, but a later settled usage update should still be able to trigger the guard.
+  // If Pi did not compact on its own, this is the safe boundary for the one manual
+  // same-session ctx.compact() fallback.
   pi.on("agent_settled", async (_event, ctx) => {
     await maybeRequestEarlyCompaction(ctx, "agent-settled");
   });
