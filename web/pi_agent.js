@@ -120,6 +120,475 @@ function currentWorkflow() {
   }
 }
 
+const SCREENSHOT_MIN_NODE_PADDING = 300;
+const SCREENSHOT_DEFAULT_WORKFLOW_PADDING = 80;
+let SCREENSHOT_WORKER_TIMER = null;
+let SCREENSHOT_WORKER_BUSY = false;
+
+function screenshotNextPaint(frames = 2) {
+  return new Promise((resolve) => {
+    const step = (remaining) => {
+      if (remaining <= 0) {
+        resolve();
+        return;
+      }
+      requestAnimationFrame(() => step(remaining - 1));
+    };
+    step(frames);
+  });
+}
+
+function screenshotGraphCanvas() {
+  return document.getElementById("graph-canvas");
+}
+
+function screenshotGraphNodes() {
+  const nodes = app.graph?._nodes;
+  return Array.isArray(nodes) ? nodes : [];
+}
+
+function screenshotGraphBounds() {
+  const items = [];
+  for (const node of screenshotGraphNodes()) {
+    const pos = node?.pos;
+    const size = node?.size;
+    if (!pos || !size) continue;
+    const x = Number(pos[0]);
+    const y = Number(pos[1]);
+    const w = Number(size[0]);
+    const h = Number(size[1]);
+    if ([x, y, w, h].every(Number.isFinite) && w > 0 && h > 0) {
+      items.push([x, y, w, h]);
+    }
+  }
+  const groups = app.graph?._groups;
+  if (Array.isArray(groups)) {
+    for (const group of groups) {
+      const pos = group?.pos;
+      const size = group?.size;
+      if (!pos || !size) continue;
+      const x = Number(pos[0]);
+      const y = Number(pos[1]);
+      const w = Number(size[0]);
+      const h = Number(size[1]);
+      if ([x, y, w, h].every(Number.isFinite) && w > 0 && h > 0) {
+        items.push([x, y, w, h]);
+      }
+    }
+  }
+  if (!items.length) return null;
+  const minX = Math.min(...items.map((item) => item[0]));
+  const minY = Math.min(...items.map((item) => item[1]));
+  const maxX = Math.max(...items.map((item) => item[0] + item[2]));
+  const maxY = Math.max(...items.map((item) => item[1] + item[3]));
+  return [minX, minY, Math.max(1, maxX - minX), Math.max(1, maxY - minY)];
+}
+
+function screenshotFindGraphNode(nodeId) {
+  const wanted = String(nodeId ?? "");
+  return screenshotGraphNodes().find((node) => String(node?.id ?? "") === wanted) || null;
+}
+
+function screenshotFindVueNode(nodeId) {
+  const wanted = String(nodeId ?? "");
+  return [...document.querySelectorAll("[data-node-id]")]
+    .find((element) => String(element.getAttribute("data-node-id") ?? "") === wanted) || null;
+}
+
+function screenshotSaveView() {
+  const ds = app.canvas?.ds;
+  if (!ds) return null;
+  return {
+    scale: Number(ds.scale || 1),
+    offset: [Number(ds.offset?.[0] || 0), Number(ds.offset?.[1] || 0)],
+  };
+}
+
+function screenshotRestoreView(state) {
+  const ds = app.canvas?.ds;
+  if (!ds || !state) return;
+  ds.scale = Number(state.scale || 1);
+  if (ds.offset) {
+    ds.offset[0] = Number(state.offset?.[0] || 0);
+    ds.offset[1] = Number(state.offset?.[1] || 0);
+  }
+  app.canvas?.setDirty?.(true, true);
+}
+
+function screenshotFitBounds(bounds, paddingPx, maxScale = 1.0) {
+  const graphCanvas = screenshotGraphCanvas();
+  const ds = app.canvas?.ds;
+  if (!graphCanvas || !ds || !bounds) return false;
+  const viewport = graphCanvas.getBoundingClientRect();
+  const padding = Math.max(0, Number(paddingPx || 0));
+  const availableW = Math.max(1, viewport.width - padding * 2);
+  const availableH = Math.max(1, viewport.height - padding * 2);
+  const width = Math.max(1, Number(bounds[2] || 1));
+  const height = Math.max(1, Number(bounds[3] || 1));
+  let scale = Math.min(availableW / width, availableH / height, Number(maxScale || 1));
+  if (!Number.isFinite(scale) || scale <= 0) scale = 1;
+  // Direct assignment deliberately allows a temporarily smaller documentation view
+  // than the interactive zoom floor when an unusually large node needs >=300px margin.
+  scale = Math.max(0.02, Math.min(scale, Number(ds.max_scale || 10)));
+
+  const centerX = Number(bounds[0]) + width / 2;
+  const centerY = Number(bounds[1]) + height / 2;
+  ds.scale = scale;
+  ds.offset[0] = viewport.width / (2 * scale) - centerX;
+  ds.offset[1] = viewport.height / (2 * scale) - centerY;
+  app.canvas?.setDirty?.(true, true);
+  return true;
+}
+
+function screenshotRect(left, top, width, height) {
+  return {
+    left: Number(left),
+    top: Number(top),
+    width: Math.max(1, Number(width)),
+    height: Math.max(1, Number(height)),
+    right: Number(left) + Math.max(1, Number(width)),
+    bottom: Number(top) + Math.max(1, Number(height)),
+  };
+}
+
+function screenshotExpandRect(rect, padding) {
+  const p = Math.max(0, Number(padding || 0));
+  return screenshotRect(
+    rect.left - p,
+    rect.top - p,
+    rect.width + p * 2,
+    rect.height + p * 2,
+  );
+}
+
+function screenshotIntersects(a, b) {
+  return a.right > b.left && a.left < b.right && a.bottom > b.top && a.top < b.bottom;
+}
+
+function screenshotEscapeAttribute(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+}
+
+function screenshotCopyComputedStyle(source, target) {
+  if (!(source instanceof Element) || !(target instanceof Element)) return;
+  const computed = getComputedStyle(source);
+  for (let i = 0; i < computed.length; i += 1) {
+    const property = computed.item(i);
+    if (!property) continue;
+    try {
+      target.style.setProperty(
+        property,
+        computed.getPropertyValue(property),
+        computed.getPropertyPriority(property),
+      );
+    } catch {}
+  }
+  if (source instanceof HTMLInputElement && target instanceof HTMLInputElement) {
+    target.value = source.value;
+    target.setAttribute("value", source.value);
+    target.checked = source.checked;
+  } else if (source instanceof HTMLTextAreaElement && target instanceof HTMLTextAreaElement) {
+    target.value = source.value;
+    target.textContent = source.value;
+  } else if (source instanceof HTMLSelectElement && target instanceof HTMLSelectElement) {
+    target.value = source.value;
+    [...target.options].forEach((option) => {
+      option.selected = option.value === source.value;
+    });
+  }
+}
+
+function screenshotCloneStyledElement(source) {
+  const clone = source.cloneNode(true);
+  const sources = [source, ...source.querySelectorAll("*")];
+  const clones = [clone, ...clone.querySelectorAll("*")];
+  const count = Math.min(sources.length, clones.length);
+
+  for (let i = 0; i < count; i += 1) {
+    const src = sources[i];
+    const dst = clones[i];
+    screenshotCopyComputedStyle(src, dst);
+
+    if (src instanceof HTMLCanvasElement && dst instanceof HTMLCanvasElement) {
+      try {
+        const image = document.createElement("img");
+        image.src = src.toDataURL("image/png");
+        image.style.cssText = dst.style.cssText;
+        image.width = src.width;
+        image.height = src.height;
+        dst.replaceWith(image);
+      } catch {}
+    }
+  }
+  return clone;
+}
+
+function screenshotBlobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error || new Error("Unable to inline screenshot image."));
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function screenshotInlineImages(source, clone) {
+  const sources = [...source.querySelectorAll("img")];
+  const clones = [...clone.querySelectorAll("img")];
+  await Promise.all(sources.map(async (src, index) => {
+    const dst = clones[index];
+    const url = String(src.currentSrc || src.src || "");
+    if (!dst || !url || url.startsWith("data:")) return;
+    try {
+      const response = await fetch(url, { credentials: "same-origin" });
+      if (!response.ok) return;
+      dst.src = await screenshotBlobToDataUrl(await response.blob());
+    } catch {}
+  }));
+}
+
+async function screenshotNodeForeignObject(element, captureRect) {
+  const rect = element.getBoundingClientRect();
+  const elementRect = screenshotRect(rect.left, rect.top, rect.width, rect.height);
+  if (!screenshotIntersects(elementRect, captureRect)) return "";
+
+  const naturalWidth = Math.max(1, Number(element.offsetWidth || rect.width || 1));
+  const naturalHeight = Math.max(1, Number(element.offsetHeight || rect.height || 1));
+  const clone = screenshotCloneStyledElement(element);
+  await screenshotInlineImages(element, clone);
+
+  clone.setAttribute("xmlns", "http://www.w3.org/1999/xhtml");
+  clone.style.position = "relative";
+  clone.style.left = "0";
+  clone.style.top = "0";
+  clone.style.margin = "0";
+  clone.style.transform = "none";
+  clone.style.transformOrigin = "0 0";
+  clone.style.width = `${naturalWidth}px`;
+  clone.style.height = `${naturalHeight}px`;
+
+  const wrapper = document.createElement("div");
+  wrapper.setAttribute("xmlns", "http://www.w3.org/1999/xhtml");
+  wrapper.style.position = "relative";
+  wrapper.style.width = `${naturalWidth}px`;
+  wrapper.style.height = `${naturalHeight}px`;
+  wrapper.style.transformOrigin = "0 0";
+  wrapper.style.transform =
+    `scale(${rect.width / naturalWidth}, ${rect.height / naturalHeight})`;
+  wrapper.appendChild(clone);
+
+  const markup = new XMLSerializer().serializeToString(wrapper);
+  return `<foreignObject x="${rect.left - captureRect.left}" y="${rect.top - captureRect.top}" ` +
+    `width="${rect.width}" height="${rect.height}" overflow="visible">${markup}</foreignObject>`;
+}
+
+function screenshotCanvasLayer(canvas, captureRect) {
+  const rect = canvas.getBoundingClientRect();
+  const layerRect = screenshotRect(rect.left, rect.top, rect.width, rect.height);
+  if (!screenshotIntersects(layerRect, captureRect)) return "";
+  try {
+    const dataUrl = canvas.toDataURL("image/png");
+    return `<image href="${screenshotEscapeAttribute(dataUrl)}" ` +
+      `x="${rect.left - captureRect.left}" y="${rect.top - captureRect.top}" ` +
+      `width="${rect.width}" height="${rect.height}" preserveAspectRatio="none"/>`;
+  } catch {
+    return "";
+  }
+}
+
+function screenshotGraphCanvasLayers() {
+  const main = screenshotGraphCanvas();
+  if (!main) return { main: null, overlays: [] };
+  const graphRect = main.getBoundingClientRect();
+  const sameViewport = (canvas) => {
+    if (canvas === main || canvas.closest("[data-node-id]")) return false;
+    const rect = canvas.getBoundingClientRect();
+    return (
+      Math.abs(rect.left - graphRect.left) < 3 &&
+      Math.abs(rect.top - graphRect.top) < 3 &&
+      Math.abs(rect.width - graphRect.width) < 3 &&
+      Math.abs(rect.height - graphRect.height) < 3
+    );
+  };
+  return {
+    main,
+    overlays: [...document.querySelectorAll("canvas")].filter(sameViewport),
+  };
+}
+
+async function screenshotRenderGraphRegion(captureRect, pixelRatio) {
+  const ratio = Math.max(1, Math.min(3, Number(pixelRatio || 1.5)));
+  const width = Math.max(1, Math.ceil(captureRect.width * ratio));
+  const height = Math.max(1, Math.ceil(captureRect.height * ratio));
+  const layers = screenshotGraphCanvasLayers();
+  if (!layers.main) throw new Error("ComfyUI graph canvas is not available in the active browser.");
+
+  let background = getComputedStyle(document.body).backgroundColor || "rgb(32, 33, 33)";
+  if (!background || background === "rgba(0, 0, 0, 0)") background = "rgb(32, 33, 33)";
+
+  const nodeMarkup = [];
+  for (const element of document.querySelectorAll("[data-node-id]")) {
+    const markup = await screenshotNodeForeignObject(element, captureRect);
+    if (markup) nodeMarkup.push(markup);
+  }
+
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${captureRect.width}" height="${captureRect.height}" ` +
+    `viewBox="0 0 ${captureRect.width} ${captureRect.height}">` +
+    `<rect width="100%" height="100%" fill="${screenshotEscapeAttribute(background)}"/>` +
+    screenshotCanvasLayer(layers.main, captureRect) +
+    nodeMarkup.join("") +
+    layers.overlays.map((canvas) => screenshotCanvasLayer(canvas, captureRect)).join("") +
+    `</svg>`;
+
+  const svgBlob = new Blob([svg], { type: "image/svg+xml;charset=utf-8" });
+  const url = URL.createObjectURL(svgBlob);
+  try {
+    const image = new Image();
+    await new Promise((resolve, reject) => {
+      image.onload = () => resolve();
+      image.onerror = () => reject(new Error("Unable to rasterize the live ComfyUI workflow."));
+      image.src = url;
+    });
+    const output = document.createElement("canvas");
+    output.width = width;
+    output.height = height;
+    const ctx = output.getContext("2d");
+    if (!ctx) throw new Error("Browser did not provide a 2D canvas context.");
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(image, 0, 0, width, height);
+    const blob = await new Promise((resolve, reject) => {
+      output.toBlob((value) => value ? resolve(value) : reject(new Error("Unable to encode screenshot PNG.")), "image/png");
+    });
+    return { blob, width, height };
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+async function captureLiveWorkflowScreenshot(request) {
+  const graphCanvas = screenshotGraphCanvas();
+  const canvas = app.canvas;
+  if (!graphCanvas || !canvas?.ds || !app.graph) {
+    throw new Error("The active ComfyUI workflow canvas is not ready.");
+  }
+
+  const mode = String(request.mode || "workflow").toLowerCase();
+  const padding = mode === "node"
+    ? Math.max(SCREENSHOT_MIN_NODE_PADDING, Number(request.padding_px || SCREENSHOT_MIN_NODE_PADDING))
+    : Math.max(0, Number(request.padding_px ?? SCREENSHOT_DEFAULT_WORKFLOW_PADDING));
+  const savedView = screenshotSaveView();
+
+  try {
+    if (mode === "workflow") {
+      const bounds = screenshotGraphBounds();
+      if (!bounds) throw new Error("The active ComfyUI workflow has no nodes to capture.");
+      screenshotFitBounds(bounds, Math.max(40, padding), 1.0);
+      await screenshotNextPaint(3);
+      const rect = graphCanvas.getBoundingClientRect();
+      const captureRect = screenshotRect(rect.left, rect.top, rect.width, rect.height);
+      const rendered = await screenshotRenderGraphRegion(captureRect, request.pixel_ratio);
+      return {
+        ...rendered,
+        mode,
+        padding_px: padding,
+        node_id: "",
+      };
+    }
+
+    const nodeId = String(request.node_id || "");
+    const graphNode = screenshotFindGraphNode(nodeId);
+    if (!graphNode) throw new Error(`Workflow node ${nodeId} does not exist in the active ComfyUI graph.`);
+    const pos = graphNode.pos;
+    const size = graphNode.size;
+    if (!pos || !size) throw new Error(`Workflow node ${nodeId} does not expose position/size data.`);
+
+    screenshotFitBounds(
+      [Number(pos[0]), Number(pos[1]), Number(size[0]), Number(size[1])],
+      padding,
+      1.5,
+    );
+    await screenshotNextPaint(3);
+
+    const nodeElement = screenshotFindVueNode(nodeId);
+    if (!nodeElement) {
+      throw new Error(
+        `Workflow node ${nodeId} is not rendered as a current ComfyUI Nodes 2.0 Vue node. ` +
+        "ComfyUI-Pi will not substitute a fake node screenshot."
+      );
+    }
+    const rect = nodeElement.getBoundingClientRect();
+    const nodeRect = screenshotRect(rect.left, rect.top, rect.width, rect.height);
+    const captureRect = screenshotExpandRect(nodeRect, padding);
+    const rendered = await screenshotRenderGraphRegion(captureRect, request.pixel_ratio);
+    return {
+      ...rendered,
+      mode,
+      padding_px: padding,
+      node_id: nodeId,
+      node_width_px: Math.round(nodeRect.width),
+      node_height_px: Math.round(nodeRect.height),
+    };
+  } finally {
+    screenshotRestoreView(savedView);
+    await screenshotNextPaint(2);
+  }
+}
+
+async function completeLiveScreenshotRequest(request) {
+  const requestId = String(request?.request_id || "");
+  if (!requestId) return;
+  const endpoint = `/pi-agent/screenshot/complete/${encodeURIComponent(requestId)}`;
+  try {
+    const result = await captureLiveWorkflowScreenshot(request);
+    const query = new URLSearchParams({
+      width: String(result.width),
+      height: String(result.height),
+      mode: String(result.mode || ""),
+      node_id: String(result.node_id || ""),
+      padding_px: String(result.padding_px || 0),
+      node_width_px: String(result.node_width_px || 0),
+      node_height_px: String(result.node_height_px || 0),
+    });
+    const response = await api.fetchApi(`${endpoint}?${query.toString()}`, {
+      method: "POST",
+      headers: { "Content-Type": "image/png" },
+      body: result.blob,
+    });
+    if (!response.ok) throw new Error(`Screenshot upload failed: ${response.status}`);
+  } catch (error) {
+    try {
+      await api.fetchApi(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ok: false, error: String(error) }),
+      });
+    } catch {}
+  }
+}
+
+function startWorkflowScreenshotWorker() {
+  if (SCREENSHOT_WORKER_TIMER) return;
+  const tick = async () => {
+    if (SCREENSHOT_WORKER_BUSY) return;
+    SCREENSHOT_WORKER_BUSY = true;
+    try {
+      const data = await fetchJson("/pi-agent/screenshot/pending");
+      if (data?.request) await completeLiveScreenshotRequest(data.request);
+    } catch {
+      // The worker is opportunistic. The requesting Pi tool owns user-visible errors.
+    } finally {
+      SCREENSHOT_WORKER_BUSY = false;
+    }
+  };
+  tick();
+  SCREENSHOT_WORKER_TIMER = setInterval(tick, 900);
+}
+
 function extensionAssetUrl(relativePath) {
   return new URL(relativePath, import.meta.url).href;
 }
@@ -1534,6 +2003,9 @@ app.registerExtension({
     { path: ["Pi Agent"], commands: ["pi-agent.show-status"] }
   ],
   async setup() {
+    // Screenshot capture is a browser capability, not a sidebar capability. Keep the
+    // worker available even when the optional Pi Agent UI panel is disabled.
+    startWorkflowScreenshotWorker();
     const enabled = app.extensionManager?.setting?.get?.("PiAgent.UI.ShowSidebar") ?? false;
     if (!enabled) return;
     const placement = app.extensionManager?.setting?.get?.("PiAgent.UI.Placement") ?? "Left sidebar";

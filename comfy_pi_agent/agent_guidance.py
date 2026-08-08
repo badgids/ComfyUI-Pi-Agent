@@ -134,6 +134,7 @@ _RULES: dict[str, dict[str, Any]] = {
             "docx", "markdown export", "save markdown", "export document", "export text",
             "diagram", "flowchart", "ascii flowchart", "markdown diagram",
             "diagram image", "node image", "comfyui node image",
+            "screenshot", "workflow screenshot", "node screenshot", "tutorial screenshot",
         ],
         "weight": 8,
     },

@@ -6,8 +6,9 @@
  * actually submits a prompt. The visible text in Pi remains the user's original input.
  */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { existsSync, readFileSync, unlinkSync, writeFileSync } from "fs";
-import { isAbsolute, relative, resolve } from "path";
+import { Buffer } from "buffer";
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "fs";
+import { dirname, isAbsolute, relative, resolve } from "path";
 import { Type } from "typebox";
 
 const COMFYUI_PI_COMPACTION_INSTRUCTIONS =
@@ -377,6 +378,190 @@ export default function comfyUiPiTerminalBridge(pi: ExtensionAPI) {
           details: { ok: false, error: String(error) },
         };
       }
+    },
+  });
+
+  const upsertScreenshotMarkdown = (
+    markdownPath: string,
+    imagePath: string,
+    markerId: string,
+    altText: string,
+  ) => {
+    mkdirSync(dirname(markdownPath), { recursive: true });
+    const original = existsSync(markdownPath) ? readFileSync(markdownPath, "utf8") : "";
+    if (original && !existsSync(`${markdownPath}.comfyui-pi.bak`)) {
+      writeFileSync(`${markdownPath}.comfyui-pi.bak`, original);
+    }
+    const safeMarker = String(markerId || "workflow")
+      .replace(/[^a-zA-Z0-9._-]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "workflow";
+    const relativeImage = relative(dirname(markdownPath), imagePath).replace(/\\/g, "/");
+    const safeAlt = String(altText || "ComfyUI workflow screenshot")
+      .replace(/\]/g, "\\]");
+    const start = `<!-- COMFYUI-PI-SCREENSHOT:${safeMarker}:START -->`;
+    const end = `<!-- COMFYUI-PI-SCREENSHOT:${safeMarker}:END -->`;
+    const block = `${start}\n![${safeAlt}](${relativeImage})\n${end}`;
+    const escaped = safeMarker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const owned = new RegExp(
+      `<!-- COMFYUI-PI-SCREENSHOT:${escaped}:START -->[\\s\\S]*?` +
+      `<!-- COMFYUI-PI-SCREENSHOT:${escaped}:END -->`,
+      "m",
+    );
+    const updated = owned.test(original)
+      ? original.replace(owned, block)
+      : `${original.replace(/\s+$/, "")}${original.trim() ? "\n\n" : ""}${block}\n`;
+    writeFileSync(markdownPath, updated);
+  };
+
+  pi.registerTool({
+    name: "comfyui_workflow_screenshot",
+    label: "Capture Live ComfyUI Workflow",
+    description:
+      "Capture the ACTUAL currently loaded ComfyUI browser workflow for tutorials/documentation. " +
+      "mode=workflow captures the full live graph. mode=node captures the real Nodes 2.0 Vue node and surrounding workflow context; " +
+      "node screenshots ALWAYS enforce at least 300 pixels of padding on every side. The tool restores the user's previous pan/zoom afterward. " +
+      "Optionally inserts the PNG into Markdown using a project-relative image path. Never substitute a synthetic node renderer for this screenshot tool.",
+    parameters: Type.Object({
+      mode: Type.String({ description: "workflow or node" }),
+      output_path: Type.String({ description: "Project/cwd path for the PNG screenshot." }),
+      node_id: Type.Optional(Type.String({ description: "Required when mode=node." })),
+      padding_px: Type.Optional(Type.Integer({ minimum: 0, maximum: 4000 })),
+      pixel_ratio: Type.Optional(Type.Number({ minimum: 1, maximum: 3 })),
+      markdown_path: Type.Optional(Type.String({ description: "Optional Markdown file to receive the image link." })),
+      alt_text: Type.Optional(Type.String()),
+      marker_id: Type.Optional(Type.String()),
+    }),
+    async execute(_toolCallId, params) {
+      const mode = String(params.mode || "workflow").toLowerCase();
+      if (!["workflow", "node"].includes(mode)) {
+        return {
+          content: [{ type: "text", text: "ERROR: mode must be 'workflow' or 'node'." }],
+          details: { ok: false, error: "invalid_mode" },
+        };
+      }
+      const nodeId = String(params.node_id || "");
+      if (mode === "node" && !nodeId) {
+        return {
+          content: [{ type: "text", text: "ERROR: node_id is required for mode=node." }],
+          details: { ok: false, error: "missing_node_id" },
+        };
+      }
+
+      const outputPath = resolve(String(params.output_path || ""));
+      const markdownPath = String(params.markdown_path || "")
+        ? resolve(String(params.markdown_path))
+        : "";
+      if (!String(params.output_path || "") || !workflowPathAllowed(outputPath) ||
+          (markdownPath && !workflowPathAllowed(markdownPath))) {
+        return {
+          content: [{ type: "text", text: "ERROR: screenshot/Markdown path is outside the current project/cwd safety boundary." }],
+          details: { ok: false, error: "path_outside_allowed_roots" },
+        };
+      }
+      if (!outputPath.toLowerCase().endsWith(".png")) {
+        return {
+          content: [{ type: "text", text: "ERROR: output_path must end in .png." }],
+          details: { ok: false, error: "png_required" },
+        };
+      }
+
+      const config = workflowToolConfig();
+      const base = String(config.comfyui_base_url || "").replace(/\/+$/, "");
+      if (!base) {
+        return {
+          content: [{ type: "text", text: "ERROR: no current ComfyUI base URL; live browser screenshots cannot run." }],
+          details: { ok: false, error: "missing_comfyui_base_url" },
+        };
+      }
+
+      const requestedPadding = Number(params.padding_px ?? (mode === "node" ? 300 : 80));
+      const padding = mode === "node"
+        ? Math.max(300, requestedPadding)
+        : Math.max(0, requestedPadding);
+      const pixelRatio = Math.max(1, Math.min(3, Number(params.pixel_ratio ?? 1.5)));
+
+      let response: any;
+      try {
+        response = await fetch(`${base}/pi-agent/screenshot/request`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            mode,
+            node_id: nodeId,
+            padding_px: padding,
+            pixel_ratio: pixelRatio,
+            timeout_seconds: 35,
+          }),
+        });
+      } catch (error) {
+        return {
+          content: [{ type: "text", text: `ERROR: could not contact ComfyUI screenshot broker: ${String(error)}` }],
+          details: { ok: false, error: String(error) },
+        };
+      }
+
+      if (!response.ok) {
+        let message = `HTTP ${response.status}`;
+        try {
+          const body = await response.json() as any;
+          message = String(body?.error || message);
+        } catch {
+          try { message = await response.text(); } catch {}
+        }
+        return {
+          content: [{ type: "text", text: `ERROR: live workflow screenshot failed: ${message}` }],
+          details: { ok: false, error: message },
+        };
+      }
+
+      const png = Buffer.from(await response.arrayBuffer());
+      if (!png.length) {
+        return {
+          content: [{ type: "text", text: "ERROR: ComfyUI returned an empty PNG screenshot." }],
+          details: { ok: false, error: "empty_png" },
+        };
+      }
+      mkdirSync(dirname(outputPath), { recursive: true });
+      writeFileSync(outputPath, png);
+
+      const width = Number(response.headers.get("x-comfyui-pi-width") || 0);
+      const height = Number(response.headers.get("x-comfyui-pi-height") || 0);
+      const actualPadding = Number(response.headers.get("x-comfyui-pi-padding") || padding);
+      const nodeWidth = Number(response.headers.get("x-comfyui-pi-node-width") || 0);
+      const nodeHeight = Number(response.headers.get("x-comfyui-pi-node-height") || 0);
+
+      if (markdownPath) {
+        upsertScreenshotMarkdown(
+          markdownPath,
+          outputPath,
+          String(params.marker_id || (mode === "node" ? `node-${nodeId}` : "workflow")),
+          String(params.alt_text || (mode === "node"
+            ? `ComfyUI node ${nodeId} close-up`
+            : "ComfyUI workflow")),
+        );
+      }
+
+      const details = {
+        ok: true,
+        mode,
+        output_path: outputPath,
+        markdown_path: markdownPath,
+        node_id: nodeId,
+        padding_px: actualPadding,
+        width,
+        height,
+        node_width_px: nodeWidth,
+        node_height_px: nodeHeight,
+      };
+      return {
+        content: [{ type: "text", text:
+          `Captured live ComfyUI ${mode} screenshot.\n` +
+          `PNG: ${outputPath}\n` +
+          `${markdownPath ? `Markdown: ${markdownPath}\n` : ""}` +
+          `${mode === "node" ? `Node ${nodeId} padding: ${actualPadding}px on every side (minimum 300px).\n` : ""}` +
+          `Image size: ${width}x${height}px` }],
+        details,
+      };
     },
   });
 

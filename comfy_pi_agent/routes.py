@@ -14,6 +14,7 @@ from .tutorials import compile_tutorial
 from .version import __version__
 from .workflow import analyze_workflow
 from .workflow_guard import finalize_generated_workflow, finalize_workflow_result, live_node_catalog
+from .workflow_screenshots import SCREENSHOT_BROKER
 from .integrations.router import (
     build_dynamic_integration_context,
     integration_status,
@@ -130,6 +131,68 @@ def register_routes() -> bool:
             and native.get("outputs_to_execute")
         )
         return web.json_response(result, status=200 if result.get("valid") else 409)
+
+    @routes.post("/pi-agent/screenshot/request")
+    async def pi_agent_screenshot_request(request):
+        payload = await request.json()
+        try:
+            timeout = max(5.0, min(60.0, float(payload.get("timeout_seconds", 35) or 35)))
+            result = await SCREENSHOT_BROKER.request(payload, timeout=timeout)
+        except ValueError as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        except asyncio.TimeoutError:
+            return web.json_response({
+                "ok": False,
+                "error": (
+                    "Timed out waiting for the active ComfyUI browser to capture the workflow. "
+                    "Keep the ComfyUI page open and make sure this custom-node web extension is loaded."
+                ),
+            }, status=504)
+
+        if not result.get("ok"):
+            return web.json_response(result, status=409)
+
+        metadata = result.get("metadata") or {}
+        headers = {
+            "X-ComfyUI-Pi-Width": str(metadata.get("width") or 0),
+            "X-ComfyUI-Pi-Height": str(metadata.get("height") or 0),
+            "X-ComfyUI-Pi-Mode": str(metadata.get("mode") or ""),
+            "X-ComfyUI-Pi-Node-Id": str(metadata.get("node_id") or ""),
+            "X-ComfyUI-Pi-Padding": str(metadata.get("padding_px") or 0),
+            "X-ComfyUI-Pi-Node-Width": str(metadata.get("node_width_px") or 0),
+            "X-ComfyUI-Pi-Node-Height": str(metadata.get("node_height_px") or 0),
+        }
+        return web.Response(body=result["png"], content_type="image/png", headers=headers)
+
+    @routes.get("/pi-agent/screenshot/pending")
+    async def pi_agent_screenshot_pending(request):
+        return web.json_response({"request": SCREENSHOT_BROKER.claim()})
+
+    @routes.post(r"/pi-agent/screenshot/complete/{request_id}")
+    async def pi_agent_screenshot_complete(request):
+        request_id = request.match_info["request_id"]
+        if request.content_type == "image/png":
+            png = await request.read()
+            metadata = {
+                "width": request.query.get("width", "0"),
+                "height": request.query.get("height", "0"),
+                "mode": request.query.get("mode", ""),
+                "node_id": request.query.get("node_id", ""),
+                "padding_px": request.query.get("padding_px", "0"),
+                "node_width_px": request.query.get("node_width_px", "0"),
+                "node_height_px": request.query.get("node_height_px", "0"),
+            }
+            accepted = SCREENSHOT_BROKER.complete(request_id, png, metadata)
+        else:
+            try:
+                payload = await request.json()
+            except Exception:
+                payload = {}
+            accepted = SCREENSHOT_BROKER.fail(
+                request_id,
+                str(payload.get("error") or "The ComfyUI browser could not capture the requested screenshot."),
+            )
+        return web.json_response({"ok": bool(accepted)}, status=200 if accepted else 404)
 
     @routes.get("/pi-agent/integrations/minimax-h3-director/status")
     async def pi_agent_minimax_status(request):
