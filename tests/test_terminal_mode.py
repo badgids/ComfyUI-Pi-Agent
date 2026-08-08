@@ -281,6 +281,8 @@ class TerminalArchitectureTests(unittest.TestCase):
         self.assertIn('id="pi-agent-show-reasoning" type="checkbox" checked', js)
         self.assertIn('id="pi-agent-show-tools" type="checkbox" checked', js)
         self.assertIn("/pi-agent/terminal/ws/", js)
+        self.assertIn('"Connected to Pi terminal."', js)
+        self.assertNotIn('"Connected to real Pi terminal."', js)
         provider_pos = js.index('for="pi-agent-provider">Provider')
         model_pos = js.index('for="pi-agent-model">Model')
         self.assertLess(provider_pos, model_pos)

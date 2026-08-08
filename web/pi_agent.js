@@ -916,7 +916,7 @@ async function connectTerminalSocket(ui) {
   CHAT_STATE.terminalSocket = ws;
   ws.addEventListener("open", () => {
     CHAT_STATE.terminalRecoveryAttempts = 0;
-    ui.terminalStatus.textContent = "Connected to real Pi terminal.";
+    ui.terminalStatus.textContent = "Connected to Pi terminal.";
     const term = CHAT_STATE.terminal;
     if (term) {
       if (ui.includeWorkflow.checked) ws.send(JSON.stringify({ type: "workflow", workflow: currentWorkflow() }));
@@ -988,7 +988,7 @@ async function startTerminal(ui, { restart = false } = {}) {
     // still open, the detached xterm has continued receiving Pi output the entire
     // time, so reopening is just a DOM re-parent + fit operation with zero model work.
     if (!restart && CHAT_STATE.terminalSocket?.readyState === WebSocket.OPEN) {
-      ui.terminalStatus.textContent = "Connected to real Pi terminal.";
+      ui.terminalStatus.textContent = "Connected to Pi terminal.";
       scheduleTerminalFit(CHAT_STATE.terminal, ui, { notifyPty: true, focus: true });
       return;
     }
@@ -1353,7 +1353,6 @@ function setBusy(ui, busy) {
     ui.loadSessionButton,
     ui.saveSessionButton,
     ui.renameSessionButton,
-    ui.clearChat,
     ui.deleteChat,
   ]) {
     if (control) control.disabled = busy;
@@ -1880,7 +1879,6 @@ function buildSidebar(el, placement = "sidebar") {
           <input id="pi-agent-load-session-file" type="file" accept=".json,application/json" hidden />
           <button id="pi-agent-save-session" class="pi-agent-btn pi-agent-icon-btn" type="button" title="Save session JSON" aria-label="Save session JSON"><i class="pi pi-save" aria-hidden="true"></i></button>
           <button id="pi-agent-rename-session" class="pi-agent-btn pi-agent-icon-btn" type="button" title="Rename session" aria-label="Rename session"><i class="pi pi-pencil" aria-hidden="true"></i></button>
-          <button id="pi-agent-clear-chat" class="pi-agent-btn pi-agent-icon-btn" type="button" title="Clear session" aria-label="Clear session"><span class="pi-agent-emoji-icon" aria-hidden="true">🧹</span></button>
           <button id="pi-agent-delete-chat" class="pi-agent-btn pi-agent-icon-btn" type="button" title="Delete session" aria-label="Delete session"><i class="pi pi-trash" aria-hidden="true"></i></button>
         </div>
       </div>
@@ -1952,7 +1950,6 @@ function buildSidebar(el, placement = "sidebar") {
     loadSessionFile: el.querySelector("#pi-agent-load-session-file"),
     saveSessionButton: el.querySelector("#pi-agent-save-session"),
     renameSessionButton: el.querySelector("#pi-agent-rename-session"),
-    clearChat: el.querySelector("#pi-agent-clear-chat"),
     deleteChat: el.querySelector("#pi-agent-delete-chat"),
     settingsToggle: el.querySelector("#pi-agent-settings-toggle"),
     settings: el.querySelector("#pi-agent-chat-settings"),
@@ -2111,7 +2108,6 @@ function buildSidebar(el, placement = "sidebar") {
   ui.renameSessionButton.addEventListener("click", async () => {
     try { await renameCurrentSession(ui); } catch (error) { ui.statusline.textContent = String(error); }
   });
-  ui.clearChat.addEventListener("click", () => clearChat(ui));
   ui.deleteChat.addEventListener("click", async () => {
     if (!CHAT_STATE.sessionId || CHAT_STATE.busy) return;
     try { await fetchJson("/pi-agent/terminal/stop", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session_id: CHAT_STATE.sessionId }) }); } catch {}
@@ -2143,7 +2139,7 @@ async function initializeSidebar(el, placement = "sidebar") {
   if (CHAT_STATE.terminal && CHAT_STATE.view === "terminal") {
     ensureTerminalInstance(ui);
     ui.terminalStatus.textContent = CHAT_STATE.terminalSocket?.readyState === WebSocket.OPEN
-      ? "Connected to real Pi terminal." : "Restoring Pi terminal connection…";
+      ? "Connected to Pi terminal." : "Restoring Pi terminal connection…";
   }
 
   await refreshCommandCatalog(ui);
@@ -2207,8 +2203,8 @@ async function initializeSidebar(el, placement = "sidebar") {
           ui.terminalStatus.textContent = status.message || "Pi interactive terminal is stopped.";
         } else if (CHAT_STATE.terminalSocket?.readyState === WebSocket.OPEN) {
           ui.terminalStatus.textContent = Number(status.resume_count || 0) > 0
-            ? `Connected to real Pi terminal. Automatic recoveries: ${status.resume_count}.`
-            : "Connected to real Pi terminal.";
+            ? `Connected to Pi terminal. Automatic recoveries: ${status.resume_count}.`
+            : "Connected to Pi terminal.";
         }
         if (status.running && Number(status.output_bytes || 0) === 0 && Date.now() / 1000 - Number(status.started_at || 0) > 3) {
           ui.terminalStatus.textContent = status.message || "Pi is running but has not produced terminal output yet.";
