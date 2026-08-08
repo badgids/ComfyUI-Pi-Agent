@@ -654,6 +654,54 @@ function closeTerminalSocket() {
   }
 }
 
+function terminalNotifyPtySize(term) {
+  const ws = CHAT_STATE.terminalSocket;
+  if (!term || ws?.readyState !== WebSocket.OPEN) return;
+  ws.send(JSON.stringify({
+    type: "resize",
+    cols: Math.max(20, Number(term.cols || 100)),
+    rows: Math.max(6, Number(term.rows || 32)),
+  }));
+}
+
+function fitTerminalToHost(term, ui, { notifyPty = true, focus = false } = {}) {
+  if (!term || !ui?.terminalHost || ui.terminalPane?.hidden) return;
+  const rect = ui.terminalHost.getBoundingClientRect();
+  if (rect.width < 20 || rect.height < 20) return;
+  if (typeof term.fit === "function") term.fit();
+  // fit() only fires xterm's onResize when its geometry changes. Pi still needs a
+  // final SIGWINCH after ComfyUI's flex layout settles, even if xterm already adopted
+  // those rows during an earlier intermediate frame.
+  if (notifyPty) terminalNotifyPtySize(term);
+  if (focus) term.focus();
+}
+
+function scheduleTerminalFit(term, ui, { notifyPty = true, focus = false } = {}) {
+  if (!term) return;
+  if (term._comfyPiFitFrame) {
+    try { cancelAnimationFrame(term._comfyPiFitFrame); } catch {}
+    term._comfyPiFitFrame = null;
+  }
+  if (term._comfyPiFitTimer) {
+    clearTimeout(term._comfyPiFitTimer);
+    term._comfyPiFitTimer = null;
+  }
+
+  // Wait through two paints for ComfyUI's sidebar/grid/flex sizing, then run one short
+  // delayed verification pass. The last pass always re-sends rows/cols to the PTY so
+  // Pi redraws its own footer at the true bottom of the expanded xterm.
+  term._comfyPiFitFrame = requestAnimationFrame(() => {
+    term._comfyPiFitFrame = requestAnimationFrame(() => {
+      term._comfyPiFitFrame = null;
+      fitTerminalToHost(term, ui, { notifyPty, focus: false });
+      term._comfyPiFitTimer = setTimeout(() => {
+        term._comfyPiFitTimer = null;
+        fitTerminalToHost(term, ui, { notifyPty, focus });
+      }, 90);
+    });
+  });
+}
+
 function detachPiInterface() {
   // ComfyUI destroys a sidebar/bottom-panel renderer when the panel is collapsed.
   // Keep the xterm instance and its WebSocket alive so Pi continues rendering into
@@ -668,6 +716,14 @@ function detachPiInterface() {
   if (term?._comfyPiResizeObserver) {
     try { term._comfyPiResizeObserver.disconnect(); } catch {}
     term._comfyPiResizeObserver = null;
+  }
+  if (term?._comfyPiFitFrame) {
+    try { cancelAnimationFrame(term._comfyPiFitFrame); } catch {}
+    term._comfyPiFitFrame = null;
+  }
+  if (term?._comfyPiFitTimer) {
+    clearTimeout(term._comfyPiFitTimer);
+    term._comfyPiFitTimer = null;
   }
   try { term?._comfyPiClipboardCleanup?.(); } catch {}
   try { term?._comfyPiPointerCleanup?.(); } catch {}
@@ -704,12 +760,13 @@ function attachTerminalHost(term, ui) {
 
   if (typeof ResizeObserver !== "undefined") {
     const observer = new ResizeObserver(() => {
-      if (typeof term.fit === "function") term.fit();
+      scheduleTerminalFit(term, ui, { notifyPty: true });
     });
     observer.observe(ui.terminalHost);
+    observer.observe(ui.terminalPane);
     term._comfyPiResizeObserver = observer;
   }
-  if (typeof term.fit === "function") term.fit();
+  scheduleTerminalFit(term, ui, { notifyPty: true });
 }
 
 function ensureTerminalInstance(ui) {
@@ -792,13 +849,8 @@ async function connectTerminalSocket(ui) {
     ui.terminalStatus.textContent = "Connected to real Pi terminal.";
     const term = CHAT_STATE.terminal;
     if (term) {
-      if (typeof term.fit === "function") term.fit();
-      ws.send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }));
       if (ui.includeWorkflow.checked) ws.send(JSON.stringify({ type: "workflow", workflow: currentWorkflow() }));
-      requestAnimationFrame(() => {
-        if (typeof term.fit === "function") term.fit();
-        term.focus();
-      });
+      scheduleTerminalFit(term, ui, { notifyPty: true, focus: true });
     }
   });
   ws.addEventListener("message", (event) => {
@@ -867,8 +919,7 @@ async function startTerminal(ui, { restart = false } = {}) {
     // time, so reopening is just a DOM re-parent + fit operation with zero model work.
     if (!restart && CHAT_STATE.terminalSocket?.readyState === WebSocket.OPEN) {
       ui.terminalStatus.textContent = "Connected to real Pi terminal.";
-      if (typeof CHAT_STATE.terminal?.fit === "function") CHAT_STATE.terminal.fit();
-      CHAT_STATE.terminal?.focus();
+      scheduleTerminalFit(CHAT_STATE.terminal, ui, { notifyPty: true, focus: true });
       return;
     }
 
@@ -935,8 +986,7 @@ function switchView(ui, view) {
   ui.chatActions.hidden = target !== "chat";
   if (target === "terminal") {
     startTerminal(ui).then(() => {
-      if (CHAT_STATE.terminal && typeof CHAT_STATE.terminal.fit === "function") CHAT_STATE.terminal.fit();
-      CHAT_STATE.terminal?.focus();
+      scheduleTerminalFit(CHAT_STATE.terminal, ui, { notifyPty: true, focus: true });
     });
   } else {
     ui.textarea.focus();
