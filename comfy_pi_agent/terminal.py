@@ -113,6 +113,7 @@ def build_terminal_command(
     session_dir: str = "",
     session_name: str = "ComfyUI-Pi",
     resume: bool = False,
+    session_file: str = "",
 ) -> list[str]:
     """Build the actual interactive Pi CLI command used by Terminal mode.
 
@@ -132,7 +133,9 @@ def build_terminal_command(
     ]
     if session_dir:
         command += ["--session-dir", str(session_dir)]
-    if resume:
+    if session_file:
+        command += ["--session", str(session_file)]
+    elif resume:
         command += ["--continue"]
     if session_name:
         command += ["--name", str(session_name)]
@@ -262,7 +265,7 @@ class PiTerminalSession:
     def update_bridge_config(self, settings: dict[str, Any]) -> None:
         self._save_bridge_config(settings)
 
-    def _start(self, resume: bool, env_overrides: dict[str, str]) -> None:
+    def _start(self, resume: bool, env_overrides: dict[str, str], session_file: str = "") -> None:
         if pty is None or fcntl is None or termios is None or not hasattr(termios, "TIOCSCTTY"):
             raise RuntimeError("A controlling-terminal PTY backend is not available on this platform.")
 
@@ -301,6 +304,7 @@ class PiTerminalSession:
             session_dir=str(self.pi_session_dir),
             session_name=session_name,
             resume=resume,
+            session_file=session_file,
         )
         cwd = Path(self.project_directory).expanduser().resolve() if self.project_directory.strip() else get_comfy_user_directory()
         cwd.mkdir(parents=True, exist_ok=True)
@@ -418,6 +422,30 @@ class PiTerminalSession:
             name=f"comfy-pi-recover-{self.session_id[:8]}",
         ).start()
 
+    def _exact_resume_session_file(self) -> str:
+        """Return the exact Pi JSONL session this terminal last reported using."""
+        try:
+            state = json.loads(self.bridge_state_path.read_text(encoding="utf-8"))
+        except Exception:
+            state = {}
+        candidate = Path(str(state.get("session_file") or "")).expanduser()
+        if candidate.is_file():
+            try:
+                candidate.resolve().relative_to(self.pi_session_dir.resolve())
+                return str(candidate.resolve())
+            except Exception:
+                pass
+
+        # Fallback only when bridge-state was unavailable: choose the newest JSONL inside
+        # this sidebar session's private Pi session directory.
+        try:
+            files = [p for p in self.pi_session_dir.rglob("*.jsonl") if p.is_file()]
+            if files:
+                return str(max(files, key=lambda p: p.stat().st_mtime_ns).resolve())
+        except Exception:
+            pass
+        return ""
+
     def _auto_resume_loop(self) -> None:
         success = False
         with self._recovery_lock:
@@ -427,7 +455,12 @@ class PiTerminalSession:
                 if attempt > 1:
                     time.sleep(min(1.5, 0.35 * attempt))
                 try:
-                    self._start(resume=True, env_overrides=getattr(self, "_recovery_env", {}))
+                    exact_session = self._exact_resume_session_file()
+                    self._start(
+                        resume=not bool(exact_session),
+                        env_overrides=getattr(self, "_recovery_env", {}),
+                        session_file=exact_session,
+                    )
                     time.sleep(0.25)
                     if self.process is None or self.process.poll() is not None:
                         code = self.process.poll() if self.process is not None else "unknown"

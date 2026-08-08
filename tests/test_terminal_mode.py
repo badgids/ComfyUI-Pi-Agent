@@ -83,13 +83,23 @@ class TerminalArchitectureTests(unittest.TestCase):
         bridge = command[command.index("-e") + 1]
         self.assertTrue(bridge.endswith("pi/terminal-bridge.ts"))
         self.assertIn("--continue", command)
+        exact = build_terminal_command(
+            "pi",
+            session_dir="/tmp/comfy-pi-session",
+            session_file="/tmp/comfy-pi-session/exact.jsonl",
+            resume=True,
+        )
+        self.assertIn("--session", exact)
+        self.assertEqual(exact[exact.index("--session") + 1], "/tmp/comfy-pi-session/exact.jsonl")
+        self.assertNotIn("--continue", exact)
         self.assertEqual(command[command.index("--provider") + 1], "llama.cpp")
         self.assertEqual(command[command.index("--model") + 1], "test-model")
 
     def test_terminal_saved_session_recovery_architecture_is_present(self):
         terminal_source = (ROOT / "comfy_pi_agent" / "terminal.py").read_text(encoding="utf-8")
         self.assertIn("def _has_persisted_pi_session", terminal_source)
-        self.assertIn("self._start(resume=True", terminal_source)
+        self.assertIn("def _exact_resume_session_file", terminal_source)
+        self.assertIn("session_file=exact_session", terminal_source)
         self.assertIn("Automatically reopening and resuming the saved Pi session", terminal_source)
         self.assertIn("resume_saved = bool(resume or _has_persisted_pi_session(session_id))", terminal_source)
         self.assertIn("def _record_terminal_title", terminal_source)
@@ -156,7 +166,16 @@ class TerminalArchitectureTests(unittest.TestCase):
         self.assertIn("firstKeptEntryId", text)
         self.assertIn("ctx.compact({", text)
         self.assertIn("--create-handoff", text)
-        self.assertNotIn("return { cancel: true }", text)
+        self.assertIn("compactionPrepared", text)
+        self.assertIn('phase !== "agent-settled"', text)
+        self.assertIn('customType: "comfyui-pi-auto-resume"', text)
+        self.assertIn("triggerTurn: true", text)
+        self.assertIn('pi.on("session_before_switch"', text)
+        self.assertIn('pi.on("session_before_fork"', text)
+        self.assertIn("return { cancel: true }", text)
+        self.assertIn("same_session: sameSession", text)
+        self.assertIn("session_file_before: compactionSessionFile", text)
+        self.assertIn("session_id_before: compactionSessionId", text)
         self.assertNotIn("if (!usage?.tokens || !usage?.contextWindow", text)
         self.assertIn('return undefined;', text)
         self.assertIn("LEGACY COMFYUI-PI CONTINUITY HANDOFF", text)

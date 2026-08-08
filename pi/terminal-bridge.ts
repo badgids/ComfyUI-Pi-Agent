@@ -83,10 +83,15 @@ function writeBridgeState(ctx: any, extra: Record<string, unknown> = {}) {
 export default function comfyUiPiTerminalBridge(pi: ExtensionAPI) {
   let latestInput = "";
   let latestSource = "interactive";
+  let activeTaskInput = "";
+  let compactionPrepared = false;
   let compactionRequested = false;
   let pendingHandoff: any = undefined;
   let pendingHandoffText = "";
   let compactionAnchorId = "";
+  let compactionSessionFile = "";
+  let compactionSessionId = "";
+  let continuationSerial = 0;
 
   const createDurableCheckpoint = async (
     ctx: any,
@@ -145,68 +150,98 @@ export default function comfyUiPiTerminalBridge(pi: ExtensionAPI) {
     });
     if (!(ratio > 0) || ratio < threshold) return false;
 
-    try {
-      const checkpoint = await createDurableCheckpoint(
-        ctx,
-        "comfyui-threshold",
-        usage?.tokens == null ? undefined : Number(usage.tokens),
+    // agent_end happens before Pi's own host compaction check. Only PREPARE here.
+    // ExtensionContext.compact() is fire-and-forget in Pi 0.83; starting it from
+    // agent_end races Pi's subsequent _checkCompaction() and can produce overlapping
+    // compactions. The actual early compact request is delayed until agent_settled,
+    // after Pi's host compaction decision has finished.
+    if (!compactionPrepared) {
+      try {
+        const checkpoint = await createDurableCheckpoint(
+          ctx,
+          "comfyui-threshold",
+          usage?.tokens == null ? undefined : Number(usage.tokens),
+        );
+        pendingHandoff = checkpoint.metadata;
+        pendingHandoffText = checkpoint.text;
+        compactionSessionFile = String(ctx.sessionManager.getSessionFile?.() || "");
+        compactionSessionId = String(ctx.sessionManager.getSessionId?.() || "");
+      } catch (error) {
+        writeBridgeState(ctx, {
+          source: latestSource,
+          last_guard: {
+            phase,
+            ratio,
+            threshold,
+            action: "checkpoint-failed",
+            error: String(error),
+          },
+        });
+        if (ctx.hasUI) {
+          ctx.ui.notify(
+            `ComfyUI-Pi reached ${(ratio * 100).toFixed(1)}% but could not create the durable checkpoint: ${String(error)}`,
+            "warning",
+          );
+        }
+        return false;
+      }
+
+      compactionAnchorId = "";
+      try {
+        const manager = ctx.sessionManager as any;
+        if (typeof manager.appendCustomMessageEntry === "function") {
+          compactionAnchorId = String(manager.appendCustomMessageEntry(
+            "comfyui-pi-compaction-anchor",
+            `[ComfyUI-Pi verified compaction anchor]\nDurable checkpoint: ${String(pendingHandoff?.path || "")}\n` +
+              "The compaction summary is authoritative continuity state. Continue the same task; do not restart.",
+            false,
+            { owner: "comfyui-pi", phase, threshold, ratio },
+          ) || "");
+        }
+      } catch {
+        compactionAnchorId = "";
+      }
+
+      compactionPrepared = true;
+      ctx.ui.setStatus(
+        "comfyui-pi-compaction",
+        `Checkpoint saved at ${(ratio * 100).toFixed(1)}%; waiting for the safe same-session compaction boundary...`,
       );
-      pendingHandoff = checkpoint.metadata;
-      pendingHandoffText = checkpoint.text;
-    } catch (error) {
       writeBridgeState(ctx, {
         source: latestSource,
         last_guard: {
           phase,
           ratio,
           threshold,
-          action: "checkpoint-failed",
-          error: String(error),
+          action: "compaction-prepared",
+          handoff_path: String(pendingHandoff?.path || ""),
+          anchor_id: compactionAnchorId,
+          session_file: compactionSessionFile,
+          session_id: compactionSessionId,
         },
       });
-      if (ctx.hasUI) {
-        ctx.ui.notify(
-          `ComfyUI-Pi reached ${(ratio * 100).toFixed(1)}% but could not create the durable checkpoint: ${String(error)}`,
-          "warning",
-        );
-      }
-      // Never claim a protected handoff occurred when it did not. Pi's native
-      // threshold/overflow compaction remains available as the emergency fallback.
-      return false;
     }
 
-    compactionAnchorId = "";
-    try {
-      // Pi 0.83's concrete SessionManager exposes appendCustomMessageEntry even though
-      // ReadonlySessionManager omits mutators from the public ExtensionContext type.
-      const manager = ctx.sessionManager as any;
-      if (typeof manager.appendCustomMessageEntry === "function") {
-        compactionAnchorId = String(manager.appendCustomMessageEntry(
-          "comfyui-pi-compaction-anchor",
-          `[ComfyUI-Pi verified compaction anchor]\nDurable checkpoint: ${String(pendingHandoff?.path || "")}\n` +
-            "The compaction summary is authoritative continuity state. Continue the same task; do not restart.",
-          false,
-          { owner: "comfyui-pi", phase, threshold, ratio },
-        ) || "");
-      }
-    } catch {
-      compactionAnchorId = "";
-    }
+    if (phase !== "agent-settled") return true;
 
+    // Safe point: Pi's post-agent automatic threshold/overflow check has completed.
+    // If Pi already compacted, session_compact cleared compactionPrepared and this
+    // function will not be called with prepared state. Otherwise request one manual
+    // Pi compaction in the SAME session.
+    if (!compactionPrepared) return false;
     compactionRequested = true;
-    ctx.ui.setStatus(
-      "comfyui-pi-compaction",
-      `Checkpoint saved; compacting in place at ${(ratio * 100).toFixed(1)}%...`,
-    );
+    ctx.ui.setStatus("comfyui-pi-compaction", "Compacting prepared context in place...");
     writeBridgeState(ctx, {
       source: latestSource,
       last_guard: {
         phase,
         ratio,
         threshold,
-        action: "compaction-requested",
+        action: "compaction-requested-safe",
         handoff_path: String(pendingHandoff?.path || ""),
         anchor_id: compactionAnchorId,
+        session_file: compactionSessionFile,
+        session_id: compactionSessionId,
       },
     });
 
@@ -218,20 +253,26 @@ export default function comfyUiPiTerminalBridge(pi: ExtensionAPI) {
           ctx.ui.setStatus("comfyui-pi-compaction", undefined);
         },
         onError: (error) => {
+          compactionPrepared = false;
           compactionRequested = false;
           pendingHandoff = undefined;
           pendingHandoffText = "";
           compactionAnchorId = "";
+          compactionSessionFile = "";
+          compactionSessionId = "";
           ctx.ui.setStatus("comfyui-pi-compaction", undefined);
           ctx.ui.notify(`ComfyUI-Pi compaction failed: ${String(error)}`, "error");
         },
       });
       return true;
     } catch (error) {
+      compactionPrepared = false;
       compactionRequested = false;
       pendingHandoff = undefined;
       pendingHandoffText = "";
       compactionAnchorId = "";
+      compactionSessionFile = "";
+      compactionSessionId = "";
       ctx.ui.setStatus("comfyui-pi-compaction", undefined);
       if (ctx.hasUI) ctx.ui.notify(`ComfyUI-Pi could not start compaction: ${String(error)}`, "error");
       return false;
@@ -242,22 +283,47 @@ export default function comfyUiPiTerminalBridge(pi: ExtensionAPI) {
     if (event.source === "extension") return { action: "continue" };
     latestInput = String(event.text || "");
     latestSource = String(event.source || "interactive");
+    const task = latestInput.trim();
+    if (task && !task.startsWith("/") && !task.startsWith("!")) {
+      activeTaskInput = task;
+    }
     return { action: "continue" };
   });
 
   // Pi remains the compaction authority, but ComfyUI-Pi owns the continuity payload.
-  // The proactive guard creates the checkpoint before ctx.compact(). Manual/native
-  // compaction reaches this hook directly, so create the same checkpoint here as fallback.
-  // The bounded handoff becomes Pi's actual CompactionEntry summary rather than an unused
-  // sidecar file.
+  // Native Pi threshold/overflow compaction may arrive between our agent_end preparation
+  // and agent_settled. When it does, use the already prepared handoff/anchor. If no
+  // checkpoint exists yet, create it here. Never allow a compaction that cannot preserve
+  // the durable continuity handoff.
   pi.on("session_before_compact", async (event, ctx) => {
     const configPath = process.env.COMFYUI_PI_BRIDGE_CONFIG || "";
     const config = readJson(configPath);
     if (config.preemptive_handoff === false || !configPath) return undefined;
 
+    const currentSessionFile = String(ctx.sessionManager.getSessionFile?.() || "");
+    const currentSessionId = String(ctx.sessionManager.getSessionId?.() || "");
     const requestedByGuard = compactionRequested;
     const handoffReason =
       requestedByGuard && event.reason === "manual" ? "comfyui-threshold" : String(event.reason || "manual");
+
+    if (compactionSessionFile && currentSessionFile && compactionSessionFile !== currentSessionFile) {
+      if (ctx.hasUI) {
+        ctx.ui.notify(
+          "ComfyUI-Pi cancelled compaction because Pi changed session files before the prepared compaction could run.",
+          "error",
+        );
+      }
+      return { cancel: true };
+    }
+    if (compactionSessionId && currentSessionId && compactionSessionId !== currentSessionId) {
+      if (ctx.hasUI) {
+        ctx.ui.notify(
+          "ComfyUI-Pi cancelled compaction because Pi changed session IDs before the prepared compaction could run.",
+          "error",
+        );
+      }
+      return { cancel: true };
+    }
 
     if (!pendingHandoff || !pendingHandoffText) {
       try {
@@ -268,16 +334,19 @@ export default function comfyUiPiTerminalBridge(pi: ExtensionAPI) {
         );
         pendingHandoff = checkpoint.metadata;
         pendingHandoffText = checkpoint.text;
+        compactionSessionFile = currentSessionFile;
+        compactionSessionId = currentSessionId;
+        compactionPrepared = true;
       } catch (error) {
         pendingHandoff = undefined;
         pendingHandoffText = "";
         if (ctx.hasUI) {
           ctx.ui.notify(
-            `ComfyUI-Pi could not write the durable handoff before ${event.reason} compaction; Pi native compaction will continue: ${String(error)}`,
-            "warning",
+            `ComfyUI-Pi cancelled ${event.reason} compaction because the durable handoff could not be written: ${String(error)}`,
+            "error",
           );
         }
-        return undefined;
+        return { cancel: true };
       }
     }
 
@@ -287,20 +356,44 @@ export default function comfyUiPiTerminalBridge(pi: ExtensionAPI) {
     const firstKeptEntryId = anchored
       ? compactionAnchorId
       : event.preparation.firstKeptEntryId;
+    const handoffPath = String(pendingHandoff?.path || "");
 
     return {
       compaction: {
         summary:
           `${pendingHandoffText}\n\n` +
-          `Durable ComfyUI-Pi checkpoint: ${String(pendingHandoff?.path || "")}`,
+          `Durable ComfyUI-Pi checkpoint: ${handoffPath}\n` +
+          `Preserved Pi session file: ${currentSessionFile}\n` +
+          `Preserved Pi session id: ${currentSessionId}`,
         firstKeptEntryId,
         tokensBefore: event.preparation.tokensBefore,
+        details: {
+          owner: "comfyui-pi",
+          handoff_path: handoffPath,
+          session_file: currentSessionFile,
+          session_id: currentSessionId,
+          anchored,
+        },
       },
     };
   });
 
   pi.on("session_compact", async (event, ctx) => {
     const requestedByGuard = compactionRequested;
+    const handoffPath = String(pendingHandoff?.path || "");
+    const summary = String(event.compactionEntry?.summary || "");
+    const sessionFileAfter = String(ctx.sessionManager.getSessionFile?.() || "");
+    const sessionIdAfter = String(ctx.sessionManager.getSessionId?.() || "");
+    const sameSessionFile = !compactionSessionFile || !sessionFileAfter || compactionSessionFile === sessionFileAfter;
+    const sameSessionId = !compactionSessionId || !sessionIdAfter || compactionSessionId === sessionIdAfter;
+    const sameSession = sameSessionFile && sameSessionId;
+    const handoffWasIngested = Boolean(
+      handoffPath &&
+      summary.includes("Durable ComfyUI-Pi checkpoint:") &&
+      summary.includes(handoffPath)
+    );
+
+    compactionPrepared = false;
     compactionRequested = false;
     ctx.ui.setStatus("comfyui-pi-compaction", undefined);
     writeBridgeState(ctx, {
@@ -309,18 +402,91 @@ export default function comfyUiPiTerminalBridge(pi: ExtensionAPI) {
         reason: requestedByGuard ? "comfyui-threshold" : event.reason,
         tokens_before: event.compactionEntry?.tokensBefore ?? null,
         first_kept_entry_id: event.compactionEntry?.firstKeptEntryId || "",
-        summary_chars: String(event.compactionEntry?.summary || "").length,
-        handoff_path: String(pendingHandoff?.path || ""),
+        summary_chars: summary.length,
+        handoff_path: handoffPath,
         handoff_index: pendingHandoff?.handoff_index ?? null,
         anchor_id: compactionAnchorId,
         summary_source: pendingHandoffText ? "comfyui-durable-handoff" : "pi-native",
+        handoff_ingested: handoffWasIngested,
+        same_session: sameSession,
+        session_file_before: compactionSessionFile,
+        session_file_after: sessionFileAfter,
+        session_id_before: compactionSessionId,
+        session_id_after: sessionIdAfter,
       },
     });
-    const backup = pendingHandoff?.path ? ` Durable checkpoint: ${pendingHandoff.path}` : "";
-    ctx.ui.notify(`Context compacted in place; the current Pi session was preserved.${backup}`, "info");
+
+    const taskToResume = activeTaskInput.trim();
+    const backup = handoffPath ? ` Durable checkpoint: ${handoffPath}` : "";
+    if (!sameSession) {
+      ctx.ui.notify(
+        "ComfyUI-Pi detected a Pi session change during compaction and blocked automatic continuation.",
+        "error",
+      );
+    } else if (!handoffWasIngested) {
+      ctx.ui.notify(
+        "Pi compacted in place, but ComfyUI-Pi could not verify that the durable handoff entered the CompactionEntry. Automatic continuation was blocked.",
+        "error",
+      );
+    } else {
+      ctx.ui.notify(`Context compacted in place; the exact Pi session was preserved.${backup}`, "info");
+
+      // Overflow recovery already tells Pi to retry the interrupted turn. For normal
+      // threshold/manual compaction, schedule one hidden follow-up AFTER the compaction
+      // promise unwinds. This starts another agent TURN, never another Pi SESSION.
+      if (!event.willRetry && taskToResume) {
+        const serial = ++continuationSerial;
+        const continuation =
+          "[Automatic ComfyUI-Pi continuation after compaction]\n" +
+          `Durable handoff already ingested: ${handoffPath}\n` +
+          "Continue the exact unfinished user task now from the compacted continuity state. " +
+          "Do not ask the user to type continue. Do not start, resume, fork, or switch Pi sessions. " +
+          "Do not repeat completed work or restart planning from scratch. " +
+          "If the requested task is already complete, return control cleanly.\n\n" +
+          "Active user task:\n" + taskToResume.slice(0, 6000);
+        setTimeout(() => {
+          pi.sendMessage({
+            customType: "comfyui-pi-auto-resume",
+            content: continuation,
+            display: false,
+            details: {
+              serial,
+              handoff_path: handoffPath,
+              session_file: sessionFileAfter,
+              session_id: sessionIdAfter,
+            },
+          }, { triggerTurn: true });
+        }, 0);
+      }
+    }
+
     pendingHandoff = undefined;
     pendingHandoffText = "";
     compactionAnchorId = "";
+    compactionSessionFile = "";
+    compactionSessionId = "";
+  });
+
+  pi.on("session_before_switch", async (_event, ctx) => {
+    if (!compactionPrepared && !compactionRequested) return undefined;
+    if (ctx.hasUI) {
+      ctx.ui.notify(
+        "ComfyUI-Pi blocked a session switch while compaction continuity is active. Compaction must stay in the current Pi session.",
+        "warning",
+      );
+    }
+    return { cancel: true };
+  });
+
+  pi.on("session_before_fork", async (_event, ctx) => {
+    if (!compactionPrepared && !compactionRequested) return undefined;
+    if (ctx.hasUI) {
+      ctx.ui.notify(
+        "ComfyUI-Pi blocked a session fork while compaction continuity is active.",
+        "warning",
+      );
+    }
+    return { cancel: true };
   });
 
   pi.on("before_agent_start", async (event) => {

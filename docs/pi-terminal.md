@@ -101,19 +101,19 @@ The user's visible terminal input remains unchanged.
 
 The terminal bridge reads Pi's actual `getContextUsage()` values and applies the configured 80–95% threshold range (82.5% by default). Pi remains the compaction engine, but ComfyUI-Pi must reach the compaction lifecycle **before** Pi's later host threshold check so the durable continuity state exists first.
 
-The ordering follows the proven Comfy-Media-Director pattern:
+The ordering follows the proven Comfy-Media-Director pattern, with one important Pi 0.83 safety rule:
 
-1. at Pi's `agent_end` boundary, ComfyUI-Pi checks the current context percentage;
-2. when the configured threshold is reached, it writes the bounded durable continuity handoff before requesting compaction;
-3. when the concrete Pi session manager exposes it, ComfyUI-Pi appends a hidden compaction anchor and keeps that exact entry as the first retained boundary;
-4. `session_before_compact` uses the bounded handoff itself as Pi's `CompactionEntry` summary instead of leaving the handoff as an unused sidecar file;
-5. Pi performs its normal in-place compaction and keeps the same session;
-6. `agent_settled` repeats the guard only as a compatibility fallback;
-7. manual `/compact`, Pi threshold compaction, and overflow recovery also create/use the same durable checkpoint when they enter `session_before_compact` without a pre-created one.
+1. at Pi's `agent_end` boundary, ComfyUI-Pi checks the current context percentage and **prepares** the bounded durable handoff plus hidden compaction anchor;
+2. it does **not** call `ctx.compact()` from `agent_end`, because Pi 0.83 exposes that API as fire-and-forget and Pi immediately performs its own post-agent compaction check afterward; starting both there can race two compactions;
+3. if Pi's own threshold/overflow compactor runs next, `session_before_compact` injects the prepared handoff as the `CompactionEntry` summary in the current session;
+4. if Pi's own compactor does not run because ComfyUI-Pi's configured threshold is earlier, `agent_settled` is the safe point where ComfyUI-Pi requests one native `ctx.compact()` operation;
+5. `session_compact` verifies that the Pi session file and session ID are unchanged and that the durable handoff path is present in the resulting `CompactionEntry`;
+6. normal threshold/manual compaction then schedules one hidden continuation **turn** in that same Pi session; overflow recovery uses Pi's own retry path;
+7. any attempted session switch or fork while compaction continuity is active is cancelled.
 
-This ordering matters because Pi performs its own automatic-compaction check after extension `agent_end` handlers and before `agent_settled`. Waiting until `agent_settled` makes an "early" guard too late.
+No `/new` command is sent during compaction, and compaction never intentionally launches or resumes another Pi session. If the Pi process itself exits unexpectedly, the Terminal supervisor relaunches with Pi's explicit `--session <exact-jsonl-path>` whenever the bridge recorded that path, rather than relying on `--continue` to guess which saved session is newest.
 
-No `/new` command is sent during compaction. The bridge records the last guard phase, ratio, threshold, action, handoff path, and anchor ID in `bridge-state.json` so a missed trigger is diagnosable. A one-time marker left by an older reset-based ComfyUI-Pi build is accepted only as backward-compatible recovery state.
+The bridge records the guard phase, ratio, handoff path, anchor, before/after session file, before/after session ID, handoff-ingestion verification, and same-session result in `bridge-state.json`. A one-time marker left by an older reset-based ComfyUI-Pi build is accepted only as backward-compatible recovery state.
 
 ## Platform support
 
