@@ -14,7 +14,7 @@ from .tutorials import compile_tutorial
 from .version import __version__
 from .workflow import analyze_workflow
 from .workflow_guard import finalize_generated_workflow, finalize_workflow_result, live_node_catalog
-from .workflow_screenshots import SCREENSHOT_BROKER
+from .workflow_screenshots import SCREENSHOT_BROKER, capture_with_playwright
 from .integrations.router import (
     build_dynamic_integration_context,
     integration_status,
@@ -161,6 +161,35 @@ def register_routes() -> bool:
             "X-ComfyUI-Pi-Padding": str(metadata.get("padding_px") or 0),
             "X-ComfyUI-Pi-Node-Width": str(metadata.get("node_width_px") or 0),
             "X-ComfyUI-Pi-Node-Height": str(metadata.get("node_height_px") or 0),
+        }
+        return web.Response(body=result["png"], content_type="image/png", headers=headers)
+
+    @routes.post("/pi-agent/screenshot/playwright")
+    async def pi_agent_screenshot_playwright(request):
+        payload = await request.json()
+        base_url = f"{request.scheme}://{request.host}"
+        try:
+            result = await capture_with_playwright(payload, base_url=base_url)
+        except ValueError as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        except RuntimeError as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=503)
+        except Exception as exc:
+            return web.json_response(
+                {"ok": False, "error": f"Playwright capture failed: {exc}"},
+                status=500,
+            )
+
+        metadata = result.get("metadata") or {}
+        headers = {
+            "X-ComfyUI-Pi-Width": str(metadata.get("width") or 0),
+            "X-ComfyUI-Pi-Height": str(metadata.get("height") or 0),
+            "X-ComfyUI-Pi-Mode": str(metadata.get("mode") or ""),
+            "X-ComfyUI-Pi-Node-Id": str(metadata.get("node_id") or ""),
+            "X-ComfyUI-Pi-Padding": str(metadata.get("padding_px") or 0),
+            "X-ComfyUI-Pi-Node-Width": str(metadata.get("node_width_px") or 0),
+            "X-ComfyUI-Pi-Node-Height": str(metadata.get("node_height_px") or 0),
+            "X-ComfyUI-Pi-Capture-Backend": str(metadata.get("capture_backend") or ""),
         }
         return web.Response(body=result["png"], content_type="image/png", headers=headers)
 

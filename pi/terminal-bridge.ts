@@ -417,10 +417,10 @@ export default function comfyUiPiTerminalBridge(pi: ExtensionAPI) {
     name: "comfyui_workflow_screenshot",
     label: "Capture Live ComfyUI Workflow",
     description:
-      "Capture the ACTUAL currently loaded ComfyUI browser workflow for tutorials/documentation. " +
-      "mode=workflow captures the full live graph. mode=node captures the real Nodes 2.0 Vue node and surrounding workflow context; " +
-      "node screenshots ALWAYS enforce at least 300 pixels of padding on every side. The tool restores the user's previous pan/zoom afterward. " +
-      "Optionally inserts the PNG into Markdown using a project-relative image path. Never substitute a synthetic node renderer for this screenshot tool.",
+      "Capture the ACTUAL currently loaded ComfyUI workflow for tutorials/documentation using Playwright page.screenshot(clip=...) against the real rendered frontend. " +
+      "mode=workflow captures the real graph/canvas/connections. mode=node clips around the real Vue node DOM bounding box and surrounding workflow context; " +
+      "node screenshots ALWAYS enforce at least 300 pixels of padding on every side. The user's visible ComfyUI pan/zoom is not modified. " +
+      "Optionally inserts the PNG into Markdown using a project-relative image path. Never substitute a synthetic node renderer or SVG/HTML reconstruction.",
     parameters: Type.Object({
       mode: Type.String({ description: "workflow or node" }),
       output_path: Type.String({ description: "Project/cwd path for the PNG screenshot." }),

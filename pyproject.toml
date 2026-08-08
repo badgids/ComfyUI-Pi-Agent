@@ -12,6 +12,9 @@ dependencies = []
 diagrams = [
     "ascidia>=2.0.1,<3",
 ]
+screenshots = [
+    "playwright>=1.50,<2",
+]
 
 [project.urls]
 Homepage = "https://github.com/Badgids/ComfyUI-Pi-Agent"
