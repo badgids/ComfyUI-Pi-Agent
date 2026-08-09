@@ -29,8 +29,8 @@ Pi, FFmpeg, Kdenlive, KJNodes, SageAttention, GGUF loaders, LTXVideo, model-spec
 
 Two documentation features have packaged Python extras:
 
-- `python -m pip install -e '.[diagrams]'` installs Ascidia for conversion of **existing hand-authored ASCII diagrams**. Generated semantic flowcharts and Nodes 2.0 schematic node images do not require it.
-- `python -m pip install -e '.[screenshots]'` installs Playwright for real browser-rendered ComfyUI workflow/node screenshots. When no suitable system Chromium/Chrome is available, also run `python -m playwright install chromium`.
+- `python -m pip install -e '.[diagrams]'` installs Ascidia for conversion of **existing hand-authored ASCII diagrams**. Generated semantic flowcharts do not require it.
+- `python -m pip install -e '.[screenshots]'` installs Playwright for `comfyui_markdown_node_image` and `comfyui_workflow_screenshot`. These tools capture the real browser-rendered ComfyUI node/workflow and never fall back to schematic artwork. When no suitable system Chromium/Chrome is available, also run `python -m playwright install chromium`.
 
 Install optional extras with the same Python interpreter/environment that runs ComfyUI. Missing optional integrations or extras do not prevent ComfyUI-Pi's core features from loading.
 

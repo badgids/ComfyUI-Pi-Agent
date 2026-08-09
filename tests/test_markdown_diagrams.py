@@ -180,64 +180,15 @@ class MarkdownDiagramTests(unittest.TestCase):
             self.assertEqual(text.count("<!-- comfyui-pi:diagram:same:start -->"), 1)
             self.assertEqual(text.count("![Flowchart](guide_assets/same.svg)"), 1)
 
-    def test_v2_node_svg_uses_current_comfyui_v2_structure_and_dark_tokens(self):
-        info = {
-            "display_name": "KSampler",
-            "input": {
-                "required": {
-                    "model": ["MODEL", {}],
-                    "seed": ["INT", {"default": 0}],
-                    "positive": ["CONDITIONING", {}],
-                }
-            },
-            "output": ["LATENT"],
-            "output_name": ["LATENT"],
-        }
-        node = {
-            "id": 3, "type": "KSampler", "size": [315, 260],
-            "inputs": [
-                {"name": "model", "type": "MODEL", "link": 1},
-                {"name": "positive", "type": "CONDITIONING", "link": 2},
-            ],
-            "outputs": [{"name": "LATENT", "type": "LATENT", "links": [3]}],
-            "widgets_values": [12345],
-        }
-        svg = render_comfyui_v2_node_svg("KSampler", info, node)
-        self.assertIn(COMFY_V2_DARK["background"], svg)
-        self.assertIn(COMFY_V2_DARK["header"], svg)
-        self.assertIn('rx="12"', svg)
-        self.assertIn("<circle", svg)
-        self.assertIn("positive", svg)
-        self.assertIn("LATENT", svg)
-        self.assertIn("KSampler", svg)
+    def test_legacy_synthetic_node_renderer_is_retired(self):
+        with self.assertRaisesRegex(RuntimeError, "Synthetic ComfyUI node rendering has been retired"):
+            render_comfyui_v2_node_svg("KSampler", {}, {})
 
-    def test_node_markdown_requires_live_object_info(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            markdown = root / "nodes.md"
-            workflow = root / "workflow.json"
-            workflow.write_text(json.dumps({
-                "nodes": [{
-                    "id": 7, "type": "KSampler", "title": "Sampler", "size": [315, 240],
-                    "inputs": [{"name": "model", "type": "MODEL", "link": None}],
-                    "outputs": [{"name": "LATENT", "type": "LATENT", "links": []}],
-                    "widgets_values": [42],
-                }],
-                "links": [],
-            }), encoding="utf-8")
-            live = {
-                "display_name": "KSampler",
-                "input": {"required": {"model": ["MODEL", {}], "seed": ["INT", {"default": 0}]}},
-                "output": ["LATENT"], "output_name": ["LATENT"],
-            }
-            with patch("comfy_pi_agent.markdown_diagrams._fetch_live_object_info", return_value=live) as fetch:
-                result = create_comfyui_v2_node_markdown(
-                    str(markdown), "http://127.0.0.1:8188", workflow_path=str(workflow), node_id="7"
-                )
-            fetch.assert_called_once_with("http://127.0.0.1:8188", "KSampler")
-            self.assertTrue(result["live_schema_verified"])
-            self.assertTrue(Path(result["image_path"]).is_file())
-            self.assertIn("![Sampler](nodes_assets/node-7.svg)", markdown.read_text(encoding="utf-8"))
+    def test_legacy_synthetic_node_markdown_is_retired(self):
+        with self.assertRaisesRegex(RuntimeError, "Synthetic ComfyUI node Markdown rendering has been retired"):
+            create_comfyui_v2_node_markdown(
+                "nodes.md", "http://127.0.0.1:8188", node_type="KSampler"
+            )
 
     def test_terminal_bridge_exposes_markdown_diagram_tools(self):
         root = Path(__file__).resolve().parents[1]
@@ -245,6 +196,10 @@ class MarkdownDiagramTests(unittest.TestCase):
         self.assertIn('name: "comfyui_markdown_flowchart"', bridge)
         self.assertIn('name: "comfyui_markdown_node_image"', bridge)
         self.assertIn("comfy_pi_agent.markdown_diagram_cli", bridge)
+        self.assertNotIn('runMarkdownDiagramCli("node"', bridge)
+        cli = (root / "comfy_pi_agent" / "markdown_diagram_cli.py").read_text(encoding="utf-8")
+        self.assertIn('choices=("flowchart",)', cli)
+        self.assertNotIn("create_comfyui_v2_node_markdown", cli)
         self.assertIn("semantic", bridge.lower())
 
 

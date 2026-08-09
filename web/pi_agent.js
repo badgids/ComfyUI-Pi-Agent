@@ -140,7 +140,23 @@ function screenshotNextPaint(frames = 2) {
 }
 
 function screenshotGraphCanvas() {
-  return document.getElementById("graph-canvas");
+  return app.canvas?.canvas ?? document.getElementById("graph-canvas");
+}
+
+function screenshotCaptureFrontendReady() {
+  return Boolean(
+    app?.canvas &&
+    app?.rootGraph &&
+    screenshotGraphCanvas() &&
+    typeof app.loadGraphData === "function"
+  );
+}
+
+function installPlaywrightCaptureBridge() {
+  if (!screenshotCaptureFrontendReady()) return false;
+  globalThis.__COMFYUI_PI_PLAYWRIGHT_CAPTURE_READY__ = true;
+  globalThis.__COMFYUI_PI_PREPARE_PLAYWRIGHT_CAPTURE__ = preparePlaywrightWorkflowCapture;
+  return true;
 }
 
 function screenshotGraphNodes() {
@@ -236,17 +252,43 @@ function screenshotFitBounds(bounds, paddingPx, maxScale = 1.0) {
   return true;
 }
 
+function screenshotGraphClientBox(bounds) {
+  const graphCanvas = screenshotGraphCanvas();
+  const ds = app.canvas?.ds;
+  const rect = graphCanvas?.getBoundingClientRect?.();
+  if (!bounds || !rect || !ds) return null;
+  const scale = Number(ds.scale || 1);
+  const offsetX = Number(ds.offset?.[0] || 0);
+  const offsetY = Number(ds.offset?.[1] || 0);
+  if (!Number.isFinite(scale) || scale <= 0) return null;
+  return {
+    x: rect.x + (Number(bounds[0]) + offsetX) * scale,
+    y: rect.y + (Number(bounds[1]) + offsetY) * scale,
+    width: Math.max(1, Number(bounds[2]) * scale),
+    height: Math.max(1, Number(bounds[3]) * scale),
+  };
+}
+
 async function preparePlaywrightWorkflowCapture(payload) {
   const workflow = payload?.workflow;
   if (!workflow || !Array.isArray(workflow.nodes)) {
     throw new Error("Playwright capture requires a serialized ComfyUI UI workflow.");
   }
-  if (typeof app.loadGraphData !== "function") {
-    throw new Error("Current ComfyUI frontend does not expose app.loadGraphData().");
+  if (!screenshotCaptureFrontendReady()) {
+    throw new Error(
+      "ComfyUI frontend setup is not complete; app.canvas/rootGraph are unavailable for real screenshot capture."
+    );
   }
 
-  await app.loadGraphData(workflow);
-  await screenshotNextPaint(6);
+  // Let the real ComfyUI frontend configure every installed node and frontend
+  // extension. Disable only view restoration and missing-asset scans so they
+  // cannot race ComfyUI-Pi's screenshot framing on this disposable capture page.
+  await app.loadGraphData(workflow, true, false, null, {
+    deferWarnings: true,
+    skipAssetScans: true,
+    silentAssetErrors: true,
+  });
+  await screenshotNextPaint(8);
 
   const mode = String(payload?.mode || "workflow").toLowerCase();
   const nodeCapture = mode === "node" || mode === SCREENSHOT_EXACT_NODE_MODE;
@@ -257,6 +299,7 @@ async function preparePlaywrightWorkflowCapture(payload) {
       : Math.max(0, Number(payload?.padding_px ?? SCREENSHOT_DEFAULT_WORKFLOW_PADDING));
 
   let graphNode = null;
+  let workflowBounds = null;
   if (nodeCapture) {
     const nodeId = String(payload?.node_id || "");
     graphNode = screenshotFindGraphNode(nodeId);
@@ -277,12 +320,12 @@ async function preparePlaywrightWorkflowCapture(payload) {
       mode === SCREENSHOT_EXACT_NODE_MODE ? 1.0 : 1.5,
     );
   } else {
-    const bounds = screenshotGraphBounds();
-    if (!bounds) throw new Error("The workflow has no nodes to capture.");
-    screenshotFitBounds(bounds, Math.max(40, padding), 1.0);
+    workflowBounds = screenshotGraphBounds();
+    if (!workflowBounds) throw new Error("The workflow has no nodes to capture.");
+    screenshotFitBounds(workflowBounds, Math.max(40, padding), 1.0);
   }
 
-  await screenshotNextPaint(6);
+  await screenshotNextPaint(8);
   const graphCanvas = screenshotGraphCanvas();
   const canvasRect = graphCanvas?.getBoundingClientRect?.();
   return {
@@ -290,6 +333,7 @@ async function preparePlaywrightWorkflowCapture(payload) {
     node_id: String(payload?.node_id || ""),
     node_type: String(graphNode?.type || payload?.node_type || ""),
     node_count: screenshotGraphNodes().length,
+    workflow_box: workflowBounds ? screenshotGraphClientBox(workflowBounds) : null,
     canvas: canvasRect ? {
       x: canvasRect.x,
       y: canvasRect.y,
@@ -298,11 +342,6 @@ async function preparePlaywrightWorkflowCapture(payload) {
     } : null,
   };
 }
-
-// Playwright runs a separate headless page against this same ComfyUI instance.
-// Expose the app-backed workflow loader/fitter because app is an ES-module import,
-// not something external automation should assume is attached to window.
-globalThis.__COMFYUI_PI_PREPARE_PLAYWRIGHT_CAPTURE__ = preparePlaywrightWorkflowCapture;
 
 function screenshotStorageSnapshot(storage) {
   const result = {};
@@ -2129,11 +2168,18 @@ app.registerExtension({
     { path: ["Pi Agent"], commands: ["pi-agent.show-status"] }
   ],
   async setup() {
-    // The normal browser supplies the active serialized workflow. A headless
-    // Playwright capture page must not claim screenshot-broker work recursively.
+    // ComfyUI calls extension setup() at the end of frontend startup. Only now
+    // is app.canvas/rootGraph safe for loadGraphData(). The capture bridge must
+    // not be exposed earlier merely because this ES module has been evaluated.
     const isPlaywrightCapturePage =
       new URLSearchParams(window.location.search).get("comfyui_pi_playwright_capture") === "1";
-    if (!isPlaywrightCapturePage) startWorkflowScreenshotWorker();
+    if (isPlaywrightCapturePage) {
+      if (!installPlaywrightCaptureBridge()) {
+        throw new Error("ComfyUI-Pi Playwright capture page reached extension setup without a ready graph canvas.");
+      }
+    } else {
+      startWorkflowScreenshotWorker();
+    }
     const enabled = app.extensionManager?.setting?.get?.("PiAgent.UI.ShowSidebar") ?? false;
     if (!enabled) return;
     const placement = app.extensionManager?.setting?.get?.("PiAgent.UI.Placement") ?? "Left sidebar";

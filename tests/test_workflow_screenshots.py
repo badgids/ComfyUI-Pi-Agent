@@ -129,8 +129,13 @@ class ScreenshotArchitectureTests(unittest.TestCase):
     def test_active_browser_supplies_workflow_but_playwright_owns_png_capture(self):
         js = (ROOT / "web" / "pi_agent.js").read_text(encoding="utf-8")
         self.assertIn("currentWorkflow()", js)
-        self.assertIn("app.loadGraphData(workflow)", js)
+        self.assertIn("app.loadGraphData(workflow, true, false, null", js)
+        self.assertIn("skipAssetScans: true", js)
         self.assertIn("__COMFYUI_PI_PREPARE_PLAYWRIGHT_CAPTURE__", js)
+        self.assertIn("__COMFYUI_PI_PLAYWRIGHT_CAPTURE_READY__", js)
+        self.assertIn("installPlaywrightCaptureBridge()", js)
+        setup_source = js[js.index("  async setup() {"):]
+        self.assertIn("installPlaywrightCaptureBridge()", setup_source)
         self.assertIn('"/pi-agent/screenshot/playwright"', js)
         self.assertIn("comfyui_pi_playwright_capture", js)
         self.assertIn("SCREENSHOT_MIN_NODE_PADDING = 300", js)
@@ -146,8 +151,12 @@ class ScreenshotArchitectureTests(unittest.TestCase):
         self.assertIn("from playwright.async_api import async_playwright", source)
         self.assertIn("page.screenshot(", source)
         self.assertIn("clip=clip", source)
-        self.assertIn("await locator.bounding_box()", source)
-        self.assertIn(".lg-node[data-node-id=", source)
+        self.assertIn("_stable_locator_box", source)
+        self.assertIn('page.wait_for_selector(".lg-node[data-node-id]"', source)
+        self.assertIn('page.locator(".lg-node[data-node-id]")', source)
+        self.assertIn('return f\'.lg-node[data-node-id="{escaped}"]\'', source)
+        self.assertNotIn('], [data-node-id=', source)
+        self.assertIn('prepared.get("workflow_box")', source)
         self.assertIn("capture_backend", source)
 
     def test_playwright_route_and_optional_dependency_are_declared(self):

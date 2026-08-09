@@ -248,7 +248,40 @@ async def _launch_chromium(playwright: Any) -> Any:
 
 def _node_selector(node_id: str) -> str:
     escaped = str(node_id).replace("\\", "\\\\").replace('"', '\\"')
-    return f'.lg-node[data-node-id="{escaped}"], [data-node-id="{escaped}"]'
+    return f'.lg-node[data-node-id="{escaped}"]'
+
+
+async def _stable_locator_box(
+    locator: Any,
+    *,
+    timeout_seconds: float = 5.0,
+    sample_seconds: float = 0.08,
+    stable_samples: int = 3,
+) -> dict[str, float]:
+    """Wait until the real Vue node root has stable measurable geometry."""
+    deadline = time.monotonic() + max(0.5, float(timeout_seconds))
+    wanted = max(2, int(stable_samples))
+    last_signature: tuple[float, float, float, float] | None = None
+    last_box: dict[str, float] | None = None
+    stable = 0
+    while time.monotonic() < deadline:
+        box = await locator.bounding_box()
+        if box and float(box.get("width") or 0) > 0 and float(box.get("height") or 0) > 0:
+            signature = tuple(
+                round(float(box[key]), 1) for key in ("x", "y", "width", "height")
+            )
+            if signature == last_signature:
+                stable += 1
+            else:
+                last_signature = signature
+                stable = 1
+            last_box = {key: float(box[key]) for key in ("x", "y", "width", "height")}
+            if stable >= wanted:
+                return last_box
+        await asyncio.sleep(max(0.02, float(sample_seconds)))
+    if last_box is None:
+        raise RuntimeError("ComfyUI rendered the Vue node without a measurable .lg-node bounding box.")
+    raise RuntimeError("ComfyUI Vue node geometry did not settle before screenshot capture.")
 
 
 async def capture_with_playwright(
@@ -302,9 +335,17 @@ async def capture_with_playwright(
             page = await context.new_page()
             page.set_default_timeout(30000)
             await page.goto(capture_url, wait_until="domcontentloaded", timeout=30000)
-            await page.wait_for_function(
-                "() => typeof globalThis.__COMFYUI_PI_PREPARE_PLAYWRIGHT_CAPTURE__ === 'function'"
-            )
+            try:
+                await page.wait_for_function(
+                    """() =>
+                      globalThis.__COMFYUI_PI_PLAYWRIGHT_CAPTURE_READY__ === true &&
+                      typeof globalThis.__COMFYUI_PI_PREPARE_PLAYWRIGHT_CAPTURE__ === 'function'"""
+                )
+            except Exception as exc:
+                raise RuntimeError(
+                    "The ComfyUI capture page never reached the extension setup-ready state. "
+                    "Real node/workflow capture requires the running frontend to finish app setup."
+                ) from exc
 
             prepare_payload = {
                 "workflow": workflow,
@@ -317,19 +358,15 @@ async def capture_with_playwright(
                 "(payload) => globalThis.__COMFYUI_PI_PREPARE_PLAYWRIGHT_CAPTURE__(payload)",
                 prepare_payload,
             )
-            await page.wait_for_selector("[data-node-id]", state="attached")
-            await page.wait_for_timeout(180)
+            await page.wait_for_selector(".lg-node[data-node-id]", state="attached")
+            await page.wait_for_timeout(120)
 
             node_box: dict[str, float] | None = None
             node_capture = request["mode"] in {"node", EXACT_NODE_SCREENSHOT_MODE}
             if node_capture:
                 locator = page.locator(_node_selector(request["node_id"])).first
                 await locator.wait_for(state="visible")
-                node_box = await locator.bounding_box()
-                if not node_box:
-                    raise RuntimeError(
-                        f"ComfyUI rendered node {request['node_id']} without a measurable DOM bounding box."
-                    )
+                node_box = await _stable_locator_box(locator)
 
                 required_viewport = _required_node_viewport(
                     node_box,
@@ -347,12 +384,8 @@ async def capture_with_playwright(
                         "(payload) => globalThis.__COMFYUI_PI_PREPARE_PLAYWRIGHT_CAPTURE__(payload)",
                         prepare_payload,
                     )
-                    await page.wait_for_timeout(120)
-                    node_box = await locator.bounding_box()
-                    if not node_box:
-                        raise RuntimeError(
-                            f"ComfyUI node {request['node_id']} disappeared after viewport resize."
-                        )
+                    await page.wait_for_timeout(80)
+                    node_box = await _stable_locator_box(locator)
 
                 padding = int(request["padding_px"])
                 if (
@@ -367,7 +400,7 @@ async def capture_with_playwright(
                     )
                 clip = _box_clip(node_box, padding)
             else:
-                boxes = await page.locator("[data-node-id]").evaluate_all(
+                boxes = await page.locator(".lg-node[data-node-id]").evaluate_all(
                     """(elements) => elements
                       .filter((el) => {
                         const r = el.getBoundingClientRect();
@@ -378,8 +411,20 @@ async def capture_with_playwright(
                         return { x: r.x, y: r.y, width: r.width, height: r.height };
                       })"""
                 )
+                prepared_workflow_box = (
+                    prepared.get("workflow_box") if isinstance(prepared, dict) else None
+                )
+                if isinstance(prepared_workflow_box, dict):
+                    try:
+                        if (
+                            float(prepared_workflow_box.get("width") or 0) > 0
+                            and float(prepared_workflow_box.get("height") or 0) > 0
+                        ):
+                            boxes.append(prepared_workflow_box)
+                    except (TypeError, ValueError):
+                        pass
                 if not boxes:
-                    raise RuntimeError("ComfyUI rendered no Vue workflow nodes for the screenshot.")
+                    raise RuntimeError("ComfyUI rendered no real Vue workflow nodes for the screenshot.")
                 min_x = min(float(box["x"]) for box in boxes)
                 min_y = min(float(box["y"]) for box in boxes)
                 max_x = max(float(box["x"]) + float(box["width"]) for box in boxes)
