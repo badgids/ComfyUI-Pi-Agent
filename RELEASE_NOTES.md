@@ -1,8 +1,59 @@
-# Release notes — 0.1.17
+# Release notes — 0.1.18
 
 <!-- DOC_NAV_START -->
 **Navigation:** [Project README](README.md) · [Documentation home](docs/index.md) · [Previous: Changelog](CHANGELOG.md) · [Next: Project inventory](PROJECT_INVENTORY.md)
 <!-- DOC_NAV_END -->
+
+## 0.1.18 highlights
+
+### Context compacts when the checkpoint is made
+
+The configured preemptive threshold now means what it says. When Terminal sees the threshold at Pi's completed `turn_end` boundary, ComfyUI-Pi writes/verifies the durable checkpoint and same-session anchor, marks the compaction request in flight, and immediately requests Pi native `ctx.compact()`. It no longer saves a checkpoint in the mid-80% range and then waits while Pi consumes context until its standard 100%/overflow behavior takes over.
+
+Context-pressure compaction preserves the current Pi session. `/new`/`new_session` is not the compaction mechanism. `agent_end` remains prepare-only fallback state and `agent_settled` is used only when an already-prepared checkpoint still requires a fallback request.
+
+### Real documentation screenshots
+
+The documentation screenshot tool now uses an optional Playwright backend instead of reconstructing ComfyUI nodes with HTML/SVG composites. A separate capture page opens the same running ComfyUI frontend, loads a serialized copy of the active workflow, waits for real canvas/Vue rendering, and captures the page with Playwright clipping. Node captures measure the real Vue node DOM bounds and retain at least 300 CSS pixels of surrounding context on every side.
+
+Install it in the same Python environment as ComfyUI:
+
+```bash
+python -m pip install -e '.[screenshots]'
+python -m playwright install chromium   # when no suitable system Chromium/Chrome is available
+```
+
+### Semantic diagrams and current node illustrations
+
+Generated documentation flowcharts now start from semantic nodes/edges and independently produce deterministic ASCII plus a polished SVG. Current ComfyUI node illustrations use live `/object_info/<node_type>` schemas and Nodes 2.0 structure rather than legacy/generic node drawings. Existing hand-authored ASCII conversion is available through optional Ascidia:
+
+```bash
+python -m pip install -e '.[diagrams]'
+```
+
+Both optional feature sets can be installed together:
+
+```bash
+python -m pip install -e '.[diagrams,screenshots]'
+```
+
+### Provider catalog synchronized with current Pi
+
+The built-in Provider selector is synchronized with Pi's current 38-ID `KnownProvider` union. Baseten and `qwen-token-plan-individual` are no longer advertised as current Pi built-ins. Custom/runtime providers are still unioned into the selector, so a user-defined provider with either name can still appear when Pi or `models.json` reports it.
+
+### Pi Agent interface and session management
+
+The session toolbar is now icon-sized and supports New, JSON Load, JSON Save, Rename, and Delete. Copy Chat, Clear, and the Chat Send button were removed; Chat sends with Enter and uses Shift+Enter for a newline. Terminal and Chat are real tabs, Provider/Model stay in the lower footer, Terminal fills the available panel height, terminal resize is synchronized to the PTY, and Settings scrolls vertically on smaller screens.
+
+### Release integrity metadata
+
+`MANIFEST.json` is a generated integrity snapshot, not a hand-maintained version list. After the final release tree is assembled, run `python tools/regenerate_manifest.py` and then `python tools/regenerate_manifest.py --check` from that exact checkout so the manifest version, sizes, and SHA-256 hashes describe the files actually being published.
+
+### Strict live workflow generation
+
+Workflow generation and repair now treat the running ComfyUI instance as authoritative: installed node types, live schemas, installed examples/templates, socket types, required inputs, current Nodes 2.0 serialization, link backreferences, outputs, and layout validation are checked instead of allowing invented or stale workflow structures.
+
+## 0.1.17 historical notes
 
 ## 0.1.17 — real controlling terminal and native panel placement
 

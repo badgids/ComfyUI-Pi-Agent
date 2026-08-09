@@ -19,6 +19,17 @@ python -m unittest discover -s tests -v
 4. Add tests without requiring ComfyUI.
 5. Update the node reference and changelog.
 
+## Release metadata
+
+`MANIFEST.json` is a generated integrity snapshot. Do not hand-edit only its version or a few hashes. After the release tree is final and contains no unrelated untracked files, regenerate it from the exact checkout:
+
+```bash
+python tools/regenerate_manifest.py
+python tools/regenerate_manifest.py --check
+```
+
+The generator excludes `MANIFEST.json` itself, records the current package version from `comfy_pi_agent/version.py`, and hashes every tracked/non-ignored release file. Review the resulting manifest diff before committing.
+
 ## Rules
 
 Do not use hardcoded personal paths, import-time downloads, shell strings, or silent destructive edits.

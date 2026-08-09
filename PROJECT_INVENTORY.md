@@ -7,7 +7,7 @@
 
 ## Release
 
-- Version: 0.1.17
+- Version: 0.1.18
 - Creator: Alan D. Guice (Badgids)
 - License: GPL-3.0-only
 
@@ -17,10 +17,9 @@
 - Bundled Pi skills: 34
 - Core documentation guides: 32
 - Total linked Markdown documentation/procedure files: 77
-- Test modules: 15
+- Test modules: 19
 - Example workflows: 3
 - First-class lazy node-pack integrations: 4
-- Manifest-tracked source files: 178
 
 ## Context-efficiency guarantees
 
@@ -34,9 +33,11 @@
 - Sidebar and Pi Agent Prompt workflow context uses a bounded digest first; full workflow JSON is made available locally only for on-demand reading.
 - Stateful sidebar chat resets Pi's hidden scope when integration/project/workflow context changes, then restores only a bounded clean visible transcript.
 - Installed live ComfyUI schemas and the installed node pack's own example workflows outrank bundled static compatibility profiles.
-- Pi built-in threshold compaction is superseded in both sidebar modes: RPC auto-compaction is disabled when supported, while Terminal mode cancels Pi threshold compaction through its explicit bridge. ComfyUI-Pi performs the bounded continuity handoff/reset at a configurable 80–95% threshold (82.5% default).
+- Context pressure is handled with a bounded durable checkpoint plus Pi native **same-session** compaction at a configurable 80–95% threshold (82.5% default). Terminal normally requests compaction immediately from `turn_end`; no `/new` is used for context-pressure compaction.
 - Current Pi RPC `get_session_stats.contextUsage` is preferred for pressure measurement; assistant usage + model context window remains a compatibility fallback.
-- Handoff generation uses a separate fresh Pi process and references large workflows/assets by path instead of embedding them.
+- Durable handoffs/checkpoints reference large workflows/assets by path/digest instead of embedding them; checkpoint ingestion is verified around same-session compaction.
+- Documentation tooling includes deterministic semantic flowcharts/current Nodes 2.0 schematic node images, plus optional Playwright capture of real ComfyUI-rendered workflow/node screenshots.
+- Release integrity metadata is regenerated from the exact checkout with `tools/regenerate_manifest.py`; `MANIFEST.json` is not hand-edited piecemeal.
 - Pi built-in slash commands are bridged host-side before LLM routing; the slash-command catalog itself does not consume model context.
 - Local-server discovery/configuration is explicit and on-demand; no llama.cpp/Ollama/LM Studio/vLLM endpoint is probed at plugin startup. llama.cpp router model IDs come from its live catalog; unloaded or sleeping models are explicitly woken and the routed model endpoint is verified ready before Pi RPC starts, using the user-configured chat timeout as the wait budget.
 
@@ -187,13 +188,17 @@
 - `test_fountain.py`
 - `test_integrations.py`
 - `test_license_and_release.py`
+- `test_markdown_diagrams.py`
 - `test_media_plans.py`
 - `test_nodes.py`
 - `test_package_entrypoint.py`
 - `test_slash_commands_local_llm.py`
+- `test_settings_scroll.py`
 - `test_terminal_mode.py`
 - `test_tutorial_nle.py`
 - `test_workflow.py`
+- `test_workflow_guard.py`
+- `test_workflow_screenshots.py`
 
 ## Example workflows
 

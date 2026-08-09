@@ -98,11 +98,15 @@ Sidebar chat also prevents old hidden integration context from lingering forever
 See [dynamic-integration-context.md](dynamic-integration-context.md).
 
 
-## Preemptive handoff instead of Pi auto-compaction
+## Preemptive same-session compaction
 
-For stateful sidebar conversations in both Terminal and Chat, ComfyUI-Pi owns context lifecycle instead of relying on Pi's normal threshold compaction. The default trigger is **82.5%** of the model context window and can be adjusted between 80% and 95%.
+For long stateful conversations the default context-pressure threshold is **82.5%**, adjustable from 80% through 95%. ComfyUI-Pi writes a bounded durable continuity checkpoint and then uses Pi's native compaction lifecycle **without resetting the conversation for context pressure**.
 
-Structured Chat uses the existing fresh-summarizer + RPC `new_session` path. Terminal mode creates the bounded durable handoff from Pi's saved visible session state, sends native `/new` through the PTY, and lets the explicit bridge inject that handoff exactly once on the next real prompt. This avoids depending on a weak model to decide to call a file-read tool after reset. Large workflows and node-pack manuals stay referenced by path or dynamic integration ID instead of being copied into the handoff.
+Structured Chat disables Pi RPC automatic threshold compaction when supported, then its own guard creates the durable checkpoint and requests native in-place compaction at the configured earlier boundary. Terminal mode uses Pi's `turn_end` context usage, writes/verifies the checkpoint and same-session anchor, and immediately calls `ctx.compact()` when the threshold is reached. `agent_end`/`agent_settled` remain fallback boundaries, not a reason to let context drift to 100%.
+
+Manual compaction and overflow recovery remain Pi-native lifecycle paths. Large workflows and node-pack manuals stay referenced by path/digest rather than being copied into the handoff.
+
+Pi RPC `new_session` is still intentionally used when **hidden integration/project/workflow scope changes** and stale hidden guidance must be removed. That scope-isolation reset is separate from context-window compaction.
 
 See [context-handoff.md](context-handoff.md).
 

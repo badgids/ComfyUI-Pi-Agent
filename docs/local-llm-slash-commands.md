@@ -29,9 +29,9 @@ For built-in/cloud providers, ComfyUI-Pi asks Pi for its live `get_available_mod
 
 ### Pi built-in providers covered by this release
 
-The dropdown covers the 40 provider IDs in Pi's current public `KnownProvider` catalog:
+The dropdown covers the 38 provider IDs in Pi's current public `KnownProvider` catalog:
 
-`amazon-bedrock`, `ant-ling`, `anthropic`, `google`, `google-vertex`, `openai`, `azure-openai-responses`, `openai-codex`, `radius`, `nvidia`, `deepseek`, `github-copilot`, `xai`, `groq`, `cerebras`, `openrouter`, `vercel-ai-gateway`, `zai`, `zai-coding-cn`, `mistral`, `minimax`, `minimax-cn`, `moonshotai`, `moonshotai-cn`, `huggingface`, `fireworks`, `together`, `baseten`, `opencode`, `opencode-go`, `kimi-coding`, `cloudflare-workers-ai`, `cloudflare-ai-gateway`, `qwen-token-plan`, `qwen-token-plan-cn`, `qwen-token-plan-individual`, `xiaomi`, `xiaomi-token-plan-cn`, `xiaomi-token-plan-ams`, and `xiaomi-token-plan-sgp`.
+`amazon-bedrock`, `ant-ling`, `anthropic`, `google`, `google-vertex`, `openai`, `azure-openai-responses`, `openai-codex`, `radius`, `nvidia`, `deepseek`, `github-copilot`, `xai`, `groq`, `cerebras`, `openrouter`, `vercel-ai-gateway`, `zai`, `zai-coding-cn`, `mistral`, `minimax`, `minimax-cn`, `moonshotai`, `moonshotai-cn`, `huggingface`, `fireworks`, `together`, `opencode`, `opencode-go`, `kimi-coding`, `cloudflare-workers-ai`, `cloudflare-ai-gateway`, `qwen-token-plan`, `qwen-token-plan-cn`, `xiaomi`, `xiaomi-token-plan-cn`, `xiaomi-token-plan-ams`, and `xiaomi-token-plan-sgp`.
 
 The local-host entries are additional convenience providers managed by ComfyUI-Pi. Runtime/custom providers are unioned into the selector so a user-defined provider does not disappear just because it is not in that built-in list.
 
@@ -180,7 +180,7 @@ Type `/` in the composer to open the command picker. Continue typing to filter i
 | `/scoped-models` | Shows or changes model-cycle patterns. |
 | `/settings` | Shows/changes RPC-supported settings and handoff threshold. |
 | `/resume` | Lists/switches saved ComfyUI-Pi chats. |
-| `/new` | Starts a new sidebar chat. |
+| `/new` | Terminal uses Pi's native `/new`; structured Chat creates a new saved sidebar chat/session. |
 | `/name` | Renames the chat/Pi session. |
 | `/session` | Shows Pi session/context statistics. |
 | `/tree` | Displays Pi session-tree information in chat. |

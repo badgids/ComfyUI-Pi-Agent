@@ -1,7 +1,7 @@
 # Dynamic integration context
 
 <!-- DOC_NAV_START -->
-**Navigation:** [Project README](../README.md) · [Documentation home](index.md) · [Previous: MiniMax H3 Turbo integration](minimax-h3-turbo.md) · [Next: Preemptive context handoff](context-handoff.md)
+**Navigation:** [Project README](../README.md) · [Documentation home](index.md) · [Previous: MiniMax H3 Turbo integration](minimax-h3-turbo.md) · [Next: Preemptive same-session context compaction](context-handoff.md)
 <!-- DOC_NAV_END -->
 
 
@@ -181,9 +181,11 @@ A new integration should add:
 Do not add the new pack's entire guide to the global Pi prompt.
 
 
-## Preemptive handoffs
+## Preemptive same-session compaction
 
-Dynamic integration routing and preemptive context handoff work together. A handoff records only the active integration IDs and the task state. It does not copy complete integration guides into the handoff. After the reset, detailed pack knowledge is injected again only when the next request actually needs it. See [context-handoff.md](context-handoff.md).
+Dynamic integration routing and context-pressure compaction work together without conflating two different mechanisms. A durable checkpoint records only the active integration IDs and bounded task state; it does not copy complete integration guides into the checkpoint. When context pressure crosses the configured threshold, Pi compacts the **same session** and detailed pack knowledge remains lazy.
+
+A structured Chat **scope change** can still intentionally use `new_session` to remove stale hidden integration/project/workflow guidance, then restore bounded visible history and inject only the new scope. That scope-isolation reset is separate from context-pressure compaction. See [context-handoff.md](context-handoff.md).
 
 
 ## Additional first-class lazy integrations in 0.1.7
@@ -206,5 +208,5 @@ See [Real Pi terminal](pi-terminal.md).
 ---
 
 <!-- DOC_NAV_FOOTER_START -->
-**Navigate:** [Project README](../README.md) · [Documentation home](index.md) · [Previous: MiniMax H3 Turbo integration](minimax-h3-turbo.md) · [Next: Preemptive context handoff](context-handoff.md)
+**Navigate:** [Project README](../README.md) · [Documentation home](index.md) · [Previous: MiniMax H3 Turbo integration](minimax-h3-turbo.md) · [Next: Preemptive same-session context compaction](context-handoff.md)
 <!-- DOC_NAV_FOOTER_END -->

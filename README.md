@@ -4,7 +4,7 @@ A ComfyUI custom-node package that connects **Pi Agent** reasoning with practica
 
 **Creator:** Alan D. Guice (**Badgids**)  
 **License:** GPL-3.0  
-**Release:** 0.1.17
+**Release:** 0.1.18
 
 > This project is designed to be powerful without being confusing. The documentation uses plain language, short steps, and concrete examples. Technical details are kept intact instead of being hidden or oversimplified.
 
@@ -37,7 +37,9 @@ ComfyUI Pi Agent helps organize that work. It can:
 - understand and operate **ComfyUI-MiniMax-H3-Turbo**, including its Turbo LoRA, dual-schedule 4-step sampler, strength tuning, low-VRAM mode, T2V/I2V use, and H3 joint audio/video constraints;
 - dynamically load node-pack knowledge only when the current request or workflow needs it, instead of filling Pi's context window at startup;
 - deterministically select a small set of task procedures so even weak local models are told how to stay on task, inspect before guessing, act, validate, and report evidence;
-- preemptively create a compact continuity handoff around 82.5% context usage, reset Pi before built-in compaction, and automatically ingest the handoff so long work can continue.
+- preemptively write a durable continuity checkpoint around 82.5% context usage and immediately request Pi's native **same-session** compaction at the completed-turn boundary, preserving the active Pi session instead of using `/new`;
+- generate deterministic semantic flowcharts and current Nodes 2.0 schematic node illustrations for documentation;
+- capture real ComfyUI workflow/node screenshots for tutorials through an optional Playwright browser backend, with node captures retaining at least 300 CSS pixels of surrounding context on every side;
 
 Every major tool is available as a normal ComfyUI node. The optional sidebar is disabled by default and is not required.
 
@@ -45,7 +47,7 @@ Every major tool is available as a normal ComfyUI node. The optional sidebar is 
 
 ## Important first-release boundary
 
-Version 0.1.17 provides the working foundation, project compilers, tutorial compiler, document tools, workflow intelligence, Pi RPC connection, manifests, profiles, examples, and tests.
+Version 0.1.18 adds same-session preemptive compaction, persistent Terminal session recovery, strict live-schema workflow generation, semantic documentation diagrams, real Playwright workflow/node screenshots, and the refreshed Pi Agent session UI on top of the existing production, tutorial, document, workflow-intelligence, and NLE toolset.
 
 It does **not** bundle large AI model weights, third-party custom-node packs, Pi itself, Node.js, FFmpeg, or Kdenlive. It detects those tools when they are installed. Missing optional tools do not stop ComfyUI from starting.
 
@@ -77,7 +79,7 @@ The plugin never downloads anything during import.
 11. [Workflow intelligence](docs/workflow-intelligence.md)
 12. [Model discovery, safetensors, and GGUF](docs/model-formats-gguf.md)
 13. [Dynamic integration context](docs/dynamic-integration-context.md)
-14. [Preemptive context handoff](docs/context-handoff.md)
+14. [Preemptive same-session context compaction](docs/context-handoff.md)
 
 ## Media and production guides
 
@@ -145,7 +147,24 @@ git clone https://github.com/Badgids/ComfyUI-Pi-Agent.git
 
 Restart ComfyUI.
 
-There are no required Python packages beyond the standard library, so there is no mandatory `pip install` command for the first release.
+The core plugin has no mandatory third-party Python dependency. Two optional feature sets can be installed with the **same Python interpreter/environment that runs ComfyUI**:
+
+```bash
+# Existing hand-authored ASCII → SVG conversion with Ascidia
+python -m pip install -e '.[diagrams]'
+
+# Real ComfyUI workflow/node screenshots with Playwright
+python -m pip install -e '.[screenshots]'
+
+# Install both optional feature sets
+python -m pip install -e '.[diagrams,screenshots]'
+```
+
+If the screenshot backend cannot find an installed Chromium/Chrome browser, install Playwright's Chromium build once in that same environment:
+
+```bash
+python -m playwright install chromium
+```
 
 ## Method 2: ZIP
 
@@ -515,7 +534,7 @@ Every generated project begins with `START_HERE.md` and a complete directory gui
 
 Every generated directory and subdirectory contains a `README.md` explaining exactly what belongs there. The compiler also creates `asset-catalog.json` and `directory-map.json`, so users and automation can locate assets without guessing.
 
-The first release supports:
+The current project compiler emits:
 
 - project brief and assumptions;
 - Markdown and DOCX documents;
@@ -560,7 +579,7 @@ Directly below the active view are **Provider** then **Model** selectors. Local 
 
 Terminal mode still uses ComfyUI-Pi's sparse context router. Pi starts with unrelated context/skill/extension discovery disabled and loads one explicit bridge extension that adds only the task procedure or node-pack knowledge needed for the current user request. The user's terminal input is not replaced by a giant generated prompt.
 
-The preemptive handoff system also remains active. Terminal mode watches Pi's real context usage, writes a bounded durable handoff at the configured 80–95% threshold (82.5% default), starts a fresh Pi session with native `/new`, and injects the handoff exactly once on the next real task. Pi's normal threshold-triggered auto-compaction is cancelled by the bridge; manual `/compact` and emergency overflow recovery remain available.
+The preemptive continuity guard also remains active. At the configured 80–95% threshold (82.5% default), the Terminal bridge writes and verifies a bounded durable checkpoint and hidden same-session anchor. When the threshold is observed at `turn_end`, it immediately requests Pi's native `ctx.compact()` **in the current Pi session**. `agent_end` is prepare-only fallback state and `agent_settled` is used only if a prepared checkpoint still needs a safe fallback request. No `/new` is sent for compaction. Manual `/compact` and Pi overflow recovery keep their native same-session lifecycle while ComfyUI-Pi supplies/verifies the durable continuity payload.
 
 Enable the optional interface and choose its placement in ComfyUI settings:
 

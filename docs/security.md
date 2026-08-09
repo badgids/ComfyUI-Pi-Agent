@@ -27,7 +27,7 @@ A tutorial can describe a workflow but cannot certify every custom node it refer
 
 ## Sidebar chat history
 
-The optional Pi Agent sidebar stores chat transcripts as local JSON files under ComfyUI user data. Clear or delete a chat from the sidebar when you no longer want that transcript saved. Do not paste passwords, API keys, access tokens, or other secrets into chat or project-context fields.
+The optional Pi Agent interface stores sidebar Chat transcripts as local JSON files under ComfyUI user data and keeps Terminal Pi sessions in its private per-session directory. Delete a saved sidebar session when you no longer want that sidebar transcript retained. Exported session JSON can also contain conversation text, so store or share it deliberately. Do not paste passwords, API keys, access tokens, or other secrets into chat or project-context fields.
 
 The chat routes are served by the same ComfyUI server as the rest of the plugin. If you expose ComfyUI to other computers, protect the ComfyUI server using the same network and authentication controls you use for the rest of your installation.
 

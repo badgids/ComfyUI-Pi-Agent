@@ -10,159 +10,115 @@ The optional **Pi Agent** interface gives you two ways to work with Pi without a
 ## Enable the interface
 
 1. Open ComfyUI settings.
-2. Enable:
-
-```text
-Pi Agent: Enable interface after restart
-```
-
+2. Enable `Pi Agent: Enable interface after restart`.
 3. Choose **Pi Agent: Interface placement** → **Left sidebar** or **Bottom panel**.
 4. Refresh the ComfyUI browser page.
 5. Open **Pi Agent** in the selected panel.
 
 The interface is optional. All node-based tools continue to work when it is disabled.
 
+## Left sidebar or bottom panel
 
-### Left sidebar or bottom panel
-
-Placement is handled by ComfyUI itself. **Left sidebar** uses ComfyUI's sidebar-tab API. **Bottom panel** uses the official `bottomPanelTabs` extension API and targets the terminal workspace. The plugin registers only the selected location on page load, so the same Pi session is not duplicated in two panels.
+Placement is handled by ComfyUI itself. **Left sidebar** uses ComfyUI's sidebar-tab API. **Bottom panel** uses the native `bottomPanelTabs` extension API. The plugin registers only the selected location on page load, so the same Pi session is not duplicated in two panels.
 
 Changing placement requires a browser refresh so ComfyUI can rebuild its registered extension panels.
 
-## What the interface includes
+## Terminal and Chat are tabs
 
-The interface provides:
+**Terminal** and **Chat** are normal tab controls rather than button-styled actions.
 
-- a default **Terminal** view backed by the real interactive Pi CLI;
-- a secondary **Chat** view with normal user and assistant message bubbles;
-- Pi reasoning and tool activity visible by default in Chat, with settings to hide either;
-- persistent chat sessions;
-- a session picker;
-- **New session**, **Copy chat**, **Clear**, and **Delete** controls;
-- a multiline message box;
-- **Enter** to send;
-- **Shift+Enter** to insert a new line;
-- a **Stop** button while Pi is working;
-- optional current-workflow context;
-- optional project notes/context;
-- **Provider** then **Model** dropdowns directly beneath the active Terminal/Chat interaction area;
-- optional project directory, Pi executable, local endpoint, and timeout overrides in Settings.
+- **Terminal** is default when the POSIX controlling-PTY backend is available.
+- **Chat** is the structured RPC view and the fallback when a native terminal backend is unavailable.
+
+Terminal uses Pi's own TUI, slash commands, menus, footer, streaming, reasoning/tool presentation, and keyboard behavior. Chat renders normal user/assistant messages and can independently show or hide reasoning and tool activity.
+
+## Session toolbar
+
+The session row contains a saved-session selector followed by same-sized icon buttons:
+
+- **+** — create a new sidebar/Pi session;
+- **folder** — load/import a saved sidebar session JSON file;
+- **save** — export the current sidebar session as JSON;
+- **pencil** — rename the selected session;
+- **trash** — delete the selected saved sidebar session.
+
+There is no separate **Copy chat** button and no **Clear** button. Individual Chat messages remain selectable/copyable, and deleting a saved session is the explicit destructive session action.
+
+The JSON export/import format preserves the sidebar Chat document and safe configuration fields. Import creates a **new local session ID** instead of overwriting an existing session. The exported JSON is not a portable copy of the private Terminal `pi-sessions/*.jsonl` history; exact Terminal continuity on the same machine is provided by the Terminal session directory and recovery system described in [pi-terminal.md](pi-terminal.md).
+
+Renaming updates the sidebar session title immediately. A Pi process that is already running keeps the name it was launched with until that Terminal process is restarted/reopened.
+
+## Sending and stopping Chat messages
+
+Structured Chat uses the composer keyboard:
+
+- **Enter** sends;
+- **Shift+Enter** inserts a new line;
+- **Stop** is shown only while structured Chat is actively processing.
+
+There is intentionally no Send button. Terminal input goes directly to Pi's real terminal and is not sent through the Chat composer.
 
 ## Copy and paste
 
-Chat text is deliberately rendered as normal selectable text.
+Chat text is rendered as normal selectable text. Select any part of a message and use Ctrl/Cmd+C. Each message can also expose its own copy affordance. Paste ordinary text, multi-line prompts, scripts, Fountain, JSON, notes, and logs into the Chat composer normally.
 
-You can:
+Terminal follows desktop-terminal clipboard behavior: Ctrl/Cmd+C copies only when xterm has a selection; without a selection it remains Pi's interrupt key. Paste is forwarded to the PTY.
 
-- drag the mouse over part of any message and copy it;
-- use Ctrl+C or Cmd+C after selecting text;
-- click **Copy** on one message;
-- click **Copy chat** to copy the whole transcript;
-- paste text into the message box with Ctrl+V or Cmd+V;
-- paste multi-line prompts, scripts, Fountain text, JSON, notes, and error logs.
+## Provider and Model footer
 
-The plugin does not disable text selection inside chat messages.
-
-## Current workflow context
-
-The **Include the current ComfyUI workflow with each message** option is enabled by default in the chat panel.
-
-When enabled, ComfyUI-Pi sends a compact structural digest of the current workflow. The complete workflow JSON is stored temporarily in ComfyUI user data and is made available to Pi by path, so Pi reads the full graph only when the current request needs graph-level details. This lets you ask things such as:
-
-```text
-Explain this workflow.
-
-Why is this node failing?
-
-Turn this workflow into a complete tutorial.
-
-What models are missing from this graph?
-
-Help me convert this into a Qwen Image Edit workflow.
-```
-
-Turn the option off when the current workflow is unrelated to the conversation or when you do not want to send a large graph to Pi.
-
-## Project context
-
-The Settings area contains two project fields.
-
-### Project directory
-
-This is optional. When provided, Pi runs with that directory as its project working directory.
-
-Leave it blank to use the normal ComfyUI user-data location.
-
-### Project notes/context
-
-Use this for short project information that should accompany a request, for example:
-
-```text
-This is Scene 12 of the workshop sequence.
-Badgids must keep the same black suit and brown fedora.
-The approved storyboard is version 4.
-```
-
-Do not paste secrets such as passwords or API keys into project notes.
-
-## Chat history
-
-Chat history is saved as JSON under ComfyUI user data in the Pi Agent chat-session directory. This lets the sidebar restore the conversation after the panel is closed or the browser page is reloaded.
-
-- **Clear** keeps the chat session but removes its messages.
-- **Delete** removes that saved chat session.
-- **New session** creates a separate conversation/terminal session.
-
-Structured Chat keeps a Pi RPC process for an active chat. Terminal mode instead runs a real interactive Pi process through a PTY and keeps Pi sessions in a per-sidebar-session directory under ComfyUI user data. After a server restart, Pi can continue that terminal session.
-
-## Pi is still optional
-
-The sidebar itself loads even when Pi is not installed. It will show **Pi not configured** and explain what is missing.
-
-Project compilers, workflow inspection, document export, tutorials, and other non-agent nodes can still work without Pi reasoning.
-
-## No separate WebUI
-
-This chat is part of the normal ComfyUI frontend. It does not start another web server or open a private external interface.
-
-## Pi slash commands and local models
-
-Type `/` in the composer to open the Pi command picker. ComfyUI-Pi bridges Pi's built-in interactive slash-command names to RPC/host operations so commands such as `/model`, `/session`, `/tree`, `/compact`, and `/copy` work from the ComfyUI sidebar instead of being sent to the LLM as ordinary text.
-
-Directly beneath the active Terminal/Chat interaction area are two selectors, in this order:
+The lower control area is always ordered:
 
 1. **Provider**
 2. **Model**
 
-The Provider selector includes Pi's current built-in provider IDs, local model hosts, Pi's default/current model, and custom providers visible in Pi's configuration/runtime catalog. Selecting a hosted provider filters the Model selector to models Pi actually reports as available for that provider. This avoids a second hardcoded model list becoming stale.
+In Terminal view the xterm area expands to consume the remaining panel height above the status/provider/model footer. The status line reports **Connected to Pi terminal.** for a live connection.
 
-Selecting llama.cpp, Ollama, LM Studio, vLLM, or another OpenAI-compatible local host queries that host's own model list, registers the reported usable models with Pi, and fills the Model selector. llama.cpp router mode reads the full live `/models` catalog, including configured presets that are currently unloaded. Selecting an unloaded or sleeping preset requests a load, waits for `/models` to report that exact preset as `loaded`, and verifies routing with a lightweight `/tokenize` call before Pi starts, so the first chat prompt cannot race a large local-model load. The implementation never hardcodes the user's llama.cpp model names.
+Hosted models come from Pi's live provider/model catalog. Local llama.cpp, Ollama, LM Studio, vLLM, and generic OpenAI-compatible selections query the selected host on demand; ComfyUI-Pi does not hardcode the user's model names. llama.cpp router mode reads the live `/models` catalog, wakes/loads the selected preset as needed, waits for that exact preset to report loaded, and performs a routed `/tokenize` readiness check before Pi starts.
 
-Local endpoints are hidden in **Settings → Local model host — advanced → Advanced: custom endpoint** because the common loopback defaults work for normal installations. Opening an existing Pi Agent Chat refreshes its selected local host so stale saved dropdown data is replaced by the host's current catalog; this happens only when the chat UI is rendered, not when the plugin is imported at ComfyUI startup. The explicit Refresh button asks a llama.cpp router to re-read its preset source with a longer timeout. Provider/model catalogs are UI/runtime data and are not injected into ordinary LLM conversation context. Expanded Provider/Model menus have explicit dark-mode styling so native options remain readable. The toolbar uses the same compact gear-style settings affordance as the rest of ComfyUI instead of a large Settings text button. When a local model is still preparing, Send waits for the active model-preparation operation rather than racing it.
+## Settings on smaller screens
 
-A built-in provider may appear in Provider while Model is empty. That means Pi does not currently report an authenticated/configured model for that provider; configure its Pi credentials/provider normally, then reopen or refresh the model selector.
+The gear opens project, workflow-context, local-host, timeout, reasoning/tool visibility, and context-compaction settings. The Settings panel has its **own vertical scrollbar** when the available sidebar/panel height is too small to show every setting. Horizontal overflow is suppressed so controls remain usable on narrow displays.
 
-See [Local LLM servers and Pi slash commands](local-llm-slash-commands.md).
+## Current workflow context
 
-## Preemptive context handoff
+**Include the current ComfyUI workflow** is enabled by default. Normal Pi context receives a compact structural digest rather than an entire large workflow. The full serialized graph is stored temporarily under ComfyUI user data and made available by path when exact graph-level work is required.
 
-Long sidebar conversations use ComfyUI-Pi's own continuity system instead of Pi's normal auto-compaction.
+For live tutorial/documentation screenshot capture, the visible browser also supplies a serialized copy of the active workflow to the Playwright screenshot broker. A separate capture page loads that copy into the same running ComfyUI frontend; the visible user's graph is not replaced just to take the screenshot.
 
-The Settings panel contains:
+## Project context
 
-- **Preemptive context handoff and reset** — enabled by default;
+**Project directory** is optional and selects Pi's project working directory. Leave it blank to use normal ComfyUI user data. **Project notes/context** should contain only short working information, never passwords, API keys, or access tokens.
+
+## Saved Terminal recovery
+
+Each sidebar session owns a private Terminal directory and Pi session history under ComfyUI user data. Collapsing the interface keeps the supervised Pi PTY and xterm state alive. If the browser WebSocket drops, reopening reconnects to the existing terminal when possible. If Pi itself exits unexpectedly and a saved Pi JSONL session exists, the supervisor reopens the **exact recorded session file** when available rather than guessing the newest global session.
+
+## Preemptive same-session compaction
+
+The Settings panel exposes:
+
+- **Preemptive context handoff** — enabled by default;
 - **Handoff threshold (%)** — default 82.5, allowed range 80 through 95;
 - **Maximum handoff size** — default 8,000 characters.
 
-The toolbar shows the latest measured context percentage. In structured Chat, the reset uses Pi RPC `new_session`. In Terminal mode, ComfyUI-Pi writes the same bounded durable handoff, sends native Pi `/new` through the PTY, and injects the handoff exactly once on the next real task. See [Real Pi terminal](pi-terminal.md).
+At the completed-turn threshold, ComfyUI-Pi writes a bounded durable checkpoint and then requests Pi's native compaction **in the same session**. Terminal mode does not send `/new` for compaction. The current task/session identity is verified around the compaction boundary, and the durable handoff becomes continuity input for Pi's normal `CompactionEntry` lifecycle. See [context-handoff.md](context-handoff.md) and [pi-terminal.md](pi-terminal.md).
 
-Handoffs are kept under ComfyUI user data. They contain working state and paths, not the complete transcript or full workflow JSON.
+Structured Chat also uses in-place compaction with a durable checkpoint rather than the old reset/bootstrap protocol. Scope changes for hidden integration guidance may still deliberately use Pi RPC `new_session`; that is separate from context-pressure compaction.
 
-See [context-handoff.md](context-handoff.md).
+## Pi is still optional
 
-### Sleeping llama.cpp router models
+The interface can load even when Pi is not installed. It reports the missing Pi runtime while non-agent workflow inspection, project compilers, document export, tutorials, and related nodes remain available.
 
-A llama.cpp router can keep a model entry in `sleeping` state after idle sleep. ComfyUI-Pi treats that differently from `unloaded`: only an unloaded preset is sent to `/models/load`. A sleeping model is woken by a lightweight routed `/tokenize` task, because llama.cpp defines real incoming tasks as the wake trigger. The wait uses the current chat's configured **Timeout in seconds** value; no personal timeout value is hardcoded. HTTP failures include the method, endpoint, status, and response body for troubleshooting.
+## No separate WebUI
+
+The interface is part of the normal ComfyUI frontend. It does not start a second user-facing web server.
+
+## Related setup
+
+- [Real Pi terminal](pi-terminal.md)
+- [Pi runtime and model-provider setup](pi-runtime.md)
+- [Local LLM servers and Pi slash commands](local-llm-slash-commands.md)
+- [Preemptive context handoff](context-handoff.md)
 
 ---
 

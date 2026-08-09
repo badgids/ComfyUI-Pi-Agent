@@ -1,202 +1,142 @@
-# Preemptive context handoff
+# Preemptive same-session context compaction and durable handoff
 
 <!-- DOC_NAV_START -->
 **Navigation:** [Project README](../README.md) · [Documentation home](index.md) · [Previous: Dynamic integration context](dynamic-integration-context.md) · [Next: Project directory layout and asset organization](project-directory-layout.md)
 <!-- DOC_NAV_END -->
 
 
-Long Pi conversations can eventually approach the model's context-window limit. ComfyUI-Pi does not wait for Pi's normal automatic compaction to decide what to keep.
+Long Pi conversations eventually approach the active model's context window. ComfyUI-Pi handles that pressure **before** the hard limit while preserving Pi's current session.
 
-Instead, both sidebar modes use a **preemptive handoff and reset** system.
+The old reset-based design that sent `new_session`/`/new` for context pressure has been retired. Current builds use Pi's native **same-session compaction** plus an additive durable continuity checkpoint.
 
-## Default behavior
+## Defaults
 
-The feature is enabled by default.
-
-The normal trigger is:
+The guard is enabled by default.
 
 ```text
-82.5% of the active model context window
+threshold: 82.5%
+allowed range: 80%–95%
+maximum handoff text: 8,000 characters
+allowed handoff range: 4,000–16,000 characters
 ```
 
-The user may choose a value from **80% through 95%** in the Pi Agent sidebar settings.
+ComfyUI-Pi prefers Pi's exact/current context-usage data. Structured Chat prefers RPC `get_session_stats.contextUsage`; Terminal uses Pi's bridge `getContextUsage()` values. Compatibility fallbacks use model context-window and completed usage counters when exact usage is unavailable.
 
-ComfyUI-Pi prefers Pi's RPC `get_session_stats.contextUsage` values, which report Pi's current context estimate and active model context window. For older compatible Pi builds that do not expose `contextUsage`, ComfyUI-Pi falls back to the completed assistant message usage plus the model `contextWindow` from `get_state`. For usage math it prefers `totalTokens` and otherwise sums input, output, cache-read, and cache-write counters.
+## What the durable checkpoint is for
 
-This is much more reliable than estimating the complete Pi context from the length of the visible chat.
+The handoff is an **additive recovery/audit artifact**, not a replacement Pi session. It preserves bounded working state such as:
 
-## Pi threshold compaction is superseded
+- the user's objective and non-negotiable constraints;
+- decisions and completed work;
+- current/in-progress work;
+- important file, workflow, model, and artifact identifiers;
+- blockers and unresolved questions;
+- concrete next actions;
+- compact workflow/project context and IDs of procedures/integrations that can be reloaded on demand.
 
-In structured Chat, when ComfyUI-Pi starts its supervised Pi RPC process, it sends:
+Large workflows, logs, manuals, media, books, and model files are referenced by path/digest rather than copied into the handoff.
 
-```text
-set_auto_compaction = false
-```
-
-ComfyUI-Pi then owns the long-session lifecycle. In Terminal mode, the explicit Pi bridge cancels `session_before_compact` only for Pi's normal `threshold` reason so ComfyUI-Pi can write its durable handoff first. Manual `/compact` remains native Pi behavior, and `overflow` compaction is left available as an emergency fallback.
-
-If an older Pi build does not support the RPC auto-compaction command, structured Chat reports a warning instead of crashing ComfyUI.
-
-## What happens at the threshold
-
-After a completed Pi turn:
-
-```text
-Pi assistant result
-        ↓
-read exact usage + model context window
-        ↓
-context >= configured threshold?
-        ↓ yes
-create handoff source on disk
-        ↓
-start a separate fresh Pi summarizer process
-        ↓
-write bounded continuity handoff
-        ↓
-remove temporary handoff-source copy
-        ↓
-new_session on the active Pi process
-        ↓
-new session reads handoff exactly once
-        ↓
-HANDOFF_READY
-        ↓
-continue normal chat
-```
-
-The response that the user just received is not lost or replaced. The reset happens after that response has been saved in ComfyUI-Pi's durable sidebar transcript.
-
-
-## Terminal-mode reset
-
-The default real-Pi Terminal view does not translate the terminal into RPC. After every completed agent run, its bridge writes Pi's actual context usage and current session-file path to a tiny host-side state file. The ComfyUI-Pi terminal supervisor watches that state.
-
-At the configured threshold it reads only user/assistant visible text from Pi's JSONL session, creates the bounded handoff, writes a one-time marker, and sends native Pi `/new` through the existing PTY. The browser terminal stays connected. On the next ordinary user task, the bridge reads the bounded handoff, appends it once to that turn's system prompt, and deletes the marker.
-
-This preserves the real Pi CLI while keeping long-session continuity under ComfyUI-Pi control.
-
-## Why a fresh summarizer is used
-
-The near-full Pi session does **not** summarize itself.
-
-Doing that would spend more tokens inside the context window that is already close to full.
-
-Instead, ComfyUI-Pi launches a clean, isolated Pi RPC process using the same configured provider/model. That process reads a temporary source file and creates the handoff. The active near-full Pi conversation is not involved in handoff generation.
-
-The fresh summarizer output is structurally checked before it is trusted. A handoff that is too short or does not contain the required objective/next-action information is rejected. If the isolated summarizer fails or produces an insufficient handoff, ComfyUI-Pi creates a deterministic fallback from the durable chat state, project notes, workflow digest, task-procedure IDs, and integration metadata.
-
-## Handoff size
-
-Default maximum:
-
-```text
-8,000 characters
-```
-
-The sidebar allows a range of 4,000 through 16,000 characters.
-
-The handoff should be detailed enough to continue the task, but it is intentionally **not** a transcript.
-
-It should preserve information such as:
-
-- the primary user goal;
-- non-negotiable constraints;
-- important decisions;
-- completed work;
-- current project state;
-- important filenames and artifact paths;
-- active workflow role and digest;
-- failures, blockers, and unresolved questions;
-- the next useful actions;
-- which dynamic integration knowledge or ComfyUI-Pi task procedures may need to be loaded later.
-
-It should **not** embed:
-
-- complete ComfyUI workflow JSON;
-- giant logs;
-- entire books or screenplays;
-- model files;
-- generated media;
-- full third-party node-pack manuals;
-- the complete chat transcript.
-
-Those are referenced by path or compact digest instead.
-
-## Where handoffs are saved
-
-Handoffs are stored under the ComfyUI user-data directory:
+Handoffs remain under ComfyUI user data:
 
 ```text
 pi-agent/
 └── handoffs/
-    └── <chat-session-id>/
+    └── <sidebar-session-id>/
         ├── handoff-0001.md
         ├── handoff-0001.json
-        ├── handoff-0002.md
-        ├── handoff-0002.json
         └── latest.json
 ```
 
-The temporary full source used by the isolated summarizer is deleted after the compact handoff is successfully written. The normal sidebar chat JSON remains the canonical visible transcript.
+## Terminal threshold sequence
 
-## Handoff ingestion
+The normal Terminal path is deliberately early enough that Pi does not run all the way to 100% before compacting:
 
-After `new_session`, ComfyUI-Pi reads the already bounded handoff file **host-side** and places that compact continuity state directly into one bootstrap prompt. A weak model therefore does not have to remember to call a file-read tool before it can recover the session. The durable handoff path is still included for inspection and verification.
+```text
+Pi completes a turn
+        ↓
+turn_end reports context usage
+        ↓
+usage >= configured threshold?
+        ↓ yes
+write + verify durable checkpoint
+        ↓
+append hidden same-session compaction anchor
+        ↓
+mark one compaction request in flight
+        ↓
+ctx.compact() immediately
+        ↓
+session_before_compact
+        ↓
+use/verify bounded checkpoint as continuity summary
+        ↓
+Pi writes its normal CompactionEntry in the SAME session
+        ↓
+session_compact verifies session file + session id + handoff ingestion
+        ↓
+continue current task in the same Pi session
+```
 
-The fresh context is instructed to internalize the handoff, avoid repeating it to the user, and acknowledge with `HANDOFF_READY`. Successful prompt delivery is sufficient to establish continuity because the handoff text itself is now in the new context; the acknowledgement is recorded separately as a diagnostic.
+The visible status at the threshold is expected to say that the checkpoint was saved and compaction is happening **now**. It must not say that it is merely waiting while context continues toward 100%.
 
-That bootstrap exchange is hidden from the normal visible chat history.
+### Lifecycle fallbacks
 
-On the next real user message, the dynamic integration and task-procedure routers add only the knowledge currently needed. They do not replay every old integration guide or skill.
+`turn_end` is the normal preemptive request boundary. `compactionRequested` is set before `ctx.compact()` so later lifecycle hooks cannot launch a duplicate request.
+
+`agent_end` remains a **prepare-only fallback** for the unusual case where usable context pressure was not available at `turn_end`. It does not start a second compaction that could race Pi's own post-agent checks. If that prepared state still requires a manual same-session request after Pi settles, `agent_settled` performs the one fallback request.
+
+Pi's native `session_before_compact`/`session_compact` events remain authoritative for the actual compaction transaction.
+
+## Manual and overflow compaction
+
+Manual `/compact` remains Pi-native. ComfyUI-Pi uses the same bounded durable checkpoint/continuity rules around the lifecycle.
+
+Overflow recovery remains Pi's emergency path. It is not a reason to deliberately wait until 100%; the configured preemptive threshold should normally compact first.
+
+No context-pressure path intentionally sends `/new`, calls `new_session`, forks the conversation, or selects another saved Pi session.
+
+## Exact same-session verification
+
+Terminal continuity records the active Pi session file and session ID around compaction. A changed session identity is treated as a continuity failure rather than silently accepting a different conversation as the compacted result.
+
+The hidden anchor identifies the exact pre-compaction boundary inside the current Pi branch. `session_compact` verifies that the durable handoff was ingested into the resulting compaction entry. Compaction IDs suppress duplicate automatic continuation turns.
+
+If the Pi **process** crashes independently of compaction, Terminal recovery is a different mechanism: ComfyUI-Pi reopens the exact recorded `pi-sessions/*.jsonl` file when possible. Process recovery must not be confused with context-pressure compaction.
+
+## Structured Chat
+
+Structured Chat also uses a durable checkpoint followed by Pi's native in-place compaction. Pi RPC automatic threshold compaction is disabled when supported so the ComfyUI-Pi guard can own the earlier configured threshold without allowing two competing threshold requests.
+
+This is separate from **hidden-scope changes**. When the selected integration/project/workflow scope changes, structured Chat may intentionally issue Pi RPC `new_session` and rehydrate bounded visible history so stale hidden instructions disappear. That scope-isolation operation is not context-window compaction.
+
+## Handoff generation quality
+
+Where a model-produced bounded summary is used, ComfyUI-Pi validates that it contains useful continuity state before trusting it. A deterministic fallback can be built from durable visible chat/project/workflow/procedure metadata when summarization fails.
+
+The checkpoint is intentionally bounded. It is not a transcript and it does not embed large referenced artifacts.
 
 ## Workflow context remains lazy
 
-A large active ComfyUI workflow is never copied into the handoff.
-
-The handoff includes:
-
-- a compact workflow digest;
-- the path of the on-demand workflow-context JSON when one exists.
-
-Pi reads the complete workflow only when the next task actually requires graph-level detail.
+A large active ComfyUI workflow is not copied into every checkpoint. The continuity state carries a compact digest and, when applicable, a safe local path to the serialized workflow. Pi reads the complete graph only when the next task genuinely needs graph-level detail.
 
 ## Sidebar status
 
-The Pi Agent sidebar shows a small context indicator such as:
-
-```text
-Context 61.3%
-```
-
-Its tooltip shows the configured handoff threshold and handoff count.
-
-After a handoff reset, the indicator reflects the new post-reset usage rather than continuing to display the old near-full percentage.
+The Pi Agent context indicator reports measured context pressure and configured threshold. After same-session compaction, subsequent usage reflects Pi's compacted context while the saved sidebar transcript and project artifacts remain durable on disk.
 
 ## What remains persistent
 
-A context reset does not erase project state.
+Same-session compaction does not delete project state. These remain available:
 
-The following remain on disk:
+- the sidebar's durable visible transcript;
+- the active Pi session and its saved JSONL history;
+- project files and manifests;
+- workflows and references;
+- generated media and tutorial files;
+- prior durable handoff/checkpoint files.
 
-- the visible sidebar transcript;
-- project files;
-- project manifests;
-- workflows;
-- references and bibles;
-- generated media;
-- tutorial files;
-- previous compact handoff files.
+## Safety rule
 
-Only Pi's in-memory conversation context is reset.
-
-## Important limitation
-
-The guard evaluates exact token usage at completed assistant-message boundaries. This is deliberate because resetting Pi in the middle of an active tool operation could corrupt the task state.
-
-ComfyUI-Pi already reduces the risk of a single enormous turn by keeping workflow JSON and third-party integration guides out of ordinary prompts. Large graph details are made available by path and loaded only when needed.
-
-A future release may add projected pre-turn pressure checks for exceptionally large pasted prompts while preserving the same safe handoff protocol.
+ComfyUI-Pi creates the checkpoint at a completed-turn boundary rather than interrupting an arbitrary tool operation. The guard is preemptive because it watches exact context pressure and requests compaction as soon as the configured threshold is reached at that safe boundary.
 
 ---
 

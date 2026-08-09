@@ -22,7 +22,7 @@ The node reads `title`, `profile`, `shots`, and `assets`. A shot can reference a
 - `project-profile.json`;
 - Markdown and DOCX assembly guides.
 
-## Conservative first release
+## Conservative writer
 
 The writer creates a basic main-picture playlist. Finish titles, effects, transitions, audio mixing, nested sequences, and version-specific features in Kdenlive.
 

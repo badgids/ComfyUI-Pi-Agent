@@ -71,6 +71,18 @@ ComfyUI-Pi vendors browser-side xterm.js JavaScript/CSS assets for rendering the
 
 The vendored terminal renderer is a frontend dependency only. It does not change the GPL-3.0-only license of ComfyUI-Pi's own source code.
 
+## Ascidia (optional `diagrams` extra)
+
+ComfyUI-Pi can optionally use **Ascidia 2.0.1** to parse and render existing hand-authored ASCII technical diagrams. Ascidia is separately distributed under the **MIT License**. Installing `.[diagrams]` installs Ascidia through Python package management; ComfyUI-Pi does not vendor or relicense it.
+
+Generated semantic ComfyUI-Pi flowcharts do not require Ascidia. The optional dependency is specifically for the existing-ASCII conversion path.
+
+## Playwright for Python (optional `screenshots` extra)
+
+Real ComfyUI workflow/node documentation screenshots optionally use **Playwright for Python**, separately distributed under the **Apache-2.0 License**. Installing `.[screenshots]` installs the Python package. A compatible system Chromium/Chrome may be used; otherwise the user can install Playwright's Chromium browser binary separately with `python -m playwright install chromium`. Browser binaries and their third-party components keep their own upstream notices/licenses.
+
+ComfyUI-Pi uses Playwright only at screenshot-request time. It is not imported as a required dependency for ordinary plugin startup.
+
 ## ComfyUI and other custom nodes
 
 ComfyUI, KJNodes, ComfyUI-GGUF, ComfyUI-LTXVideo, VideoHelperSuite, and other custom-node packs are not relicensed by ComfyUI-Pi. Their original license terms continue to apply.
