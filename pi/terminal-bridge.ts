@@ -120,6 +120,71 @@ export default function comfyUiPiTerminalBridge(pi: ExtensionAPI) {
     return payload;
   };
 
+  const currentComfyBase = () => String(workflowToolConfig().comfyui_base_url || "").replace(/\/+$/, "");
+
+  pi.registerTool({
+    name: "comfyui_search_paths",
+    label: "ComfyUI Live Search Paths",
+    description:
+      "Return the CURRENT running ComfyUI instance's registered filesystem search roots. " +
+      "These are authoritative for installed assets and already include ComfyUI defaults, startup directory overrides, " +
+      "extra_model_paths.yaml, and every --extra-model-paths-config file loaded by ComfyUI. " +
+      "Use this before assuming default models, workflows, or custom_nodes directories.",
+    parameters: Type.Object({}),
+    async execute() {
+      const base = currentComfyBase();
+      if (!base) {
+        return {
+          content: [{ type: "text", text: "ERROR: no current ComfyUI base URL; live search paths are unavailable." }],
+          details: { ok: false, error: "missing_comfyui_base_url" },
+        };
+      }
+      const result = await requestJson(`${base}/pi-agent/discovery/paths`);
+      return {
+        content: [{ type: "text", text: JSON.stringify(result, null, 2).slice(0, 30000) }],
+        details: result,
+      };
+    },
+  });
+
+  pi.registerTool({
+    name: "comfyui_find_installed",
+    label: "Find Installed ComfyUI Assets",
+    description:
+      "Search the CURRENT ComfyUI installation for real installed models, workflow JSON files, custom-node packs, " +
+      "or files in explicitly requested folder_paths categories. Searches every live registered root, including paths " +
+      "loaded from extra_model_paths.yaml and --extra-model-paths-config. Use this instead of guessing default locations.",
+    parameters: Type.Object({
+      query: Type.Optional(Type.String()),
+      kinds: Type.Optional(Type.Array(Type.String())),
+      categories: Type.Optional(Type.Array(Type.String())),
+      limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 500 })),
+    }),
+    async execute(_toolCallId, params) {
+      const base = currentComfyBase();
+      if (!base) {
+        return {
+          content: [{ type: "text", text: "ERROR: no current ComfyUI base URL; installed-asset discovery cannot run." }],
+          details: { ok: false, error: "missing_comfyui_base_url" },
+        };
+      }
+      const result = await requestJson(`${base}/pi-agent/discovery/find`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          query: String(params.query || ""),
+          kinds: Array.isArray(params.kinds) ? params.kinds : undefined,
+          categories: Array.isArray(params.categories) ? params.categories : undefined,
+          limit: Number(params.limit || 200),
+        }),
+      });
+      return {
+        content: [{ type: "text", text: JSON.stringify(result, null, 2).slice(0, 30000) }],
+        details: result,
+      };
+    },
+  });
+
   pi.registerTool({
     name: "comfyui_live_nodes",
     label: "ComfyUI Live Nodes",

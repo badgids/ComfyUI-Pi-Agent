@@ -13,6 +13,12 @@ Python 3.10 or newer.
 
 The release uses the widely supported node registration mapping plus current frontend extension APIs defensively. Integration-specific workflow edits must still validate the user's live `/object_info` schemas because third-party node packs can change independently of ComfyUI-Pi.
 
+### ComfyUI search paths and `extra_model_paths.yaml`
+
+ComfyUI-Pi treats the running ComfyUI `folder_paths` registry as authoritative for installed-file discovery. It does not assume that models, custom nodes, or workflows exist only beneath the default ComfyUI directory. The live registry already contains ComfyUI's normal folders plus `--base-directory`/`--models-directory` overrides, `extra_model_paths.yaml`, and every file supplied through `--extra-model-paths-config`.
+
+Model inventory uses ComfyUI's live `get_filename_list()` results. Custom-node discovery uses the live `custom_nodes` roots. Workflow discovery includes configured `workflows`/`workflow` categories and installed custom-node packs' common example-workflow directories. Because ComfyUI's extra-path loader registers arbitrary YAML keys through `folder_paths.add_model_folder_path()`, users may also expose additional categories without ComfyUI-Pi hardcoding machine paths. Restart ComfyUI after changing startup path configuration so the live registry reflects the new paths.
+
 ## Platforms
 
 Windows, Linux, macOS, WSL, Docker, and portable installations are supported when the underlying ComfyUI instance can read the repository and write the selected output directory. The real controlling-PTY Terminal backend is available on POSIX environments (including WSL). Native Windows without a POSIX PTY falls back to structured Chat until a ConPTY backend is provided.
