@@ -572,16 +572,68 @@ function terminalScrollbarWidth(term) {
   return Math.max(0, Number(term?.viewport?.scrollBarWidth || 0));
 }
 
+function repaintTerminal(term) {
+  if (!term) return false;
+  term._comfyPiNeedsRepaint = true;
+  const element = term.element;
+  if (!element || !element.isConnected || Number(term.rows || 0) <= 0) return false;
+  const rect = element.getBoundingClientRect?.();
+  if (!rect || rect.width < 20 || rect.height < 20) return false;
+  try {
+    if (typeof term.refresh === "function") term.refresh(0, term.rows - 1);
+    term._comfyPiNeedsRepaint = false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function scheduleTerminalRepaint(term, ui, { focus = false } = {}) {
+  if (!term) return;
+  term._comfyPiNeedsRepaint = true;
+  term._comfyPiRepaintFocus = Boolean(term._comfyPiRepaintFocus || focus);
+  if (term._comfyPiRepaintFrame) return;
+  term._comfyPiRepaintFrame = requestAnimationFrame(() => {
+    term._comfyPiRepaintFrame = null;
+    const shouldFocus = Boolean(term._comfyPiRepaintFocus);
+    term._comfyPiRepaintFocus = false;
+    repaintTerminal(term);
+    if (shouldFocus && term.element?.isConnected && !ui?.terminalPane?.hidden) term.focus();
+  });
+}
+
+function writeTerminalOutput(term, ui, data) {
+  if (!term) return;
+  term._comfyPiNeedsRepaint = true;
+  const normalized = normalizePiTerminalOutput(data);
+  try {
+    term.write(normalized, () => scheduleTerminalRepaint(term, ui));
+  } catch (error) {
+    console.warn("ComfyUI-Pi terminal write failed", error);
+  }
+  // The bundled legacy xterm renderer may not invoke write callbacks reliably after
+  // a DOM detach/reattach. A coalesced animation-frame repaint is a safe fallback;
+  // the callback schedules another repaint after parsing when it is supported.
+  scheduleTerminalRepaint(term, ui);
+}
+
 function resizeTerminalToElement(term) {
   const element = term?.element;
-  if (!term || !element) return false;
+  if (!term || !element || !element.isConnected) {
+    if (term) term._comfyPiNeedsRepaint = true;
+    return false;
+  }
 
   const rect = element.getBoundingClientRect();
-  if (rect.width < 20 || rect.height < 20) return false;
+  if (rect.width < 20 || rect.height < 20) {
+    term._comfyPiNeedsRepaint = true;
+    return false;
+  }
 
   const cell = terminalCellGeometry(term);
   if (!cell) {
     if (typeof term.fit === "function") term.fit();
+    repaintTerminal(term);
     return true;
   }
 
@@ -600,22 +652,27 @@ function resizeTerminalToElement(term) {
   if (Number(term.cols) !== cols || Number(term.rows) !== rows) {
     term.resize(cols, rows);
   }
-  if (typeof term.refresh === "function" && term.rows > 0) {
-    term.refresh(0, term.rows - 1);
-  }
+  repaintTerminal(term);
   return true;
 }
 
 function fitTerminalToHost(term, ui, { notifyPty = true, focus = false } = {}) {
-  if (!term || !ui?.terminalHost || ui.terminalPane?.hidden) return;
+  if (!term || !ui?.terminalHost || ui.terminalPane?.hidden) {
+    if (term) term._comfyPiNeedsRepaint = true;
+    return false;
+  }
   const hostRect = ui.terminalHost.getBoundingClientRect();
-  if (hostRect.width < 20 || hostRect.height < 20) return;
+  if (hostRect.width < 20 || hostRect.height < 20) {
+    term._comfyPiNeedsRepaint = true;
+    return false;
+  }
 
   // Bypass the bundled legacy fit addon's parent-computed-height path. Size the
   // actual rendered terminal element directly so xterm rows fill the flex host.
-  resizeTerminalToElement(term);
+  const resized = resizeTerminalToElement(term);
   if (notifyPty) terminalNotifyPtySize(term);
   if (focus) term.focus();
+  return resized;
 }
 
 function scheduleTerminalFit(term, ui, { notifyPty = true, focus = false } = {}) {
@@ -636,9 +693,11 @@ function scheduleTerminalFit(term, ui, { notifyPty = true, focus = false } = {})
     term._comfyPiFitFrame = requestAnimationFrame(() => {
       term._comfyPiFitFrame = null;
       fitTerminalToHost(term, ui, { notifyPty, focus: false });
+      repaintTerminal(term);
       term._comfyPiFitTimer = setTimeout(() => {
         term._comfyPiFitTimer = null;
         fitTerminalToHost(term, ui, { notifyPty, focus });
+        repaintTerminal(term);
       }, 90);
     });
   });
@@ -667,6 +726,12 @@ function detachPiInterface() {
     clearTimeout(term._comfyPiFitTimer);
     term._comfyPiFitTimer = null;
   }
+  if (term?._comfyPiRepaintFrame) {
+    try { cancelAnimationFrame(term._comfyPiRepaintFrame); } catch {}
+    term._comfyPiRepaintFrame = null;
+  }
+  if (term) term._comfyPiNeedsRepaint = true;
+  if (term) term._comfyPiRepaintFocus = false;
   try { term?._comfyPiClipboardCleanup?.(); } catch {}
   try { term?._comfyPiPointerCleanup?.(); } catch {}
 }
@@ -686,6 +751,7 @@ function attachTerminalHost(term, ui) {
   if (term.element && term.element.parentElement !== ui.terminalHost) {
     ui.terminalHost.appendChild(term.element);
   }
+  term._comfyPiNeedsRepaint = true;
 
   const copyTerminalSelection = term._comfyPiCopyTerminalSelection;
   const pasteTerminalClipboard = term._comfyPiPasteTerminalClipboard;
@@ -805,7 +871,9 @@ async function connectTerminalSocket(ui) {
     if (CHAT_STATE.terminalSocket !== ws || CHAT_STATE.sessionId !== sessionId) return;
     let payload;
     try { payload = JSON.parse(event.data); } catch { payload = { type: "output", data: String(event.data || "") }; }
-    if (payload.type === "output") CHAT_STATE.terminal?.write(normalizePiTerminalOutput(payload.data));
+    if (payload.type === "output") {
+      writeTerminalOutput(CHAT_STATE.terminal, ui, payload.data);
+    }
     if (payload.type === "exit") {
       const code = payload.status?.exit_code;
       const resumable = Boolean(payload.status?.resumable);
