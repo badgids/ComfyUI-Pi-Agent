@@ -158,9 +158,11 @@ def register_routes() -> bool:
             "X-ComfyUI-Pi-Height": str(metadata.get("height") or 0),
             "X-ComfyUI-Pi-Mode": str(metadata.get("mode") or ""),
             "X-ComfyUI-Pi-Node-Id": str(metadata.get("node_id") or ""),
+            "X-ComfyUI-Pi-Node-Type": str(metadata.get("node_type") or ""),
             "X-ComfyUI-Pi-Padding": str(metadata.get("padding_px") or 0),
             "X-ComfyUI-Pi-Node-Width": str(metadata.get("node_width_px") or 0),
             "X-ComfyUI-Pi-Node-Height": str(metadata.get("node_height_px") or 0),
+            "X-ComfyUI-Pi-Capture-Backend": str(metadata.get("capture_backend") or ""),
         }
         return web.Response(body=result["png"], content_type="image/png", headers=headers)
 
@@ -186,6 +188,7 @@ def register_routes() -> bool:
             "X-ComfyUI-Pi-Height": str(metadata.get("height") or 0),
             "X-ComfyUI-Pi-Mode": str(metadata.get("mode") or ""),
             "X-ComfyUI-Pi-Node-Id": str(metadata.get("node_id") or ""),
+            "X-ComfyUI-Pi-Node-Type": str(metadata.get("node_type") or ""),
             "X-ComfyUI-Pi-Padding": str(metadata.get("padding_px") or 0),
             "X-ComfyUI-Pi-Node-Width": str(metadata.get("node_width_px") or 0),
             "X-ComfyUI-Pi-Node-Height": str(metadata.get("node_height_px") or 0),
@@ -207,9 +210,11 @@ def register_routes() -> bool:
                 "height": request.query.get("height", "0"),
                 "mode": request.query.get("mode", ""),
                 "node_id": request.query.get("node_id", ""),
+                "node_type": request.query.get("node_type", ""),
                 "padding_px": request.query.get("padding_px", "0"),
                 "node_width_px": request.query.get("node_width_px", "0"),
                 "node_height_px": request.query.get("node_height_px", "0"),
+                "capture_backend": request.query.get("capture_backend", ""),
             }
             accepted = SCREENSHOT_BROKER.complete(request_id, png, metadata)
         else:

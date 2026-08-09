@@ -11,6 +11,7 @@ from typing import Any
 
 
 MIN_NODE_SCREENSHOT_PADDING = 300
+EXACT_NODE_SCREENSHOT_MODE = "node_exact"
 DEFAULT_WORKFLOW_SCREENSHOT_PADDING = 80
 DEFAULT_SCREENSHOT_TIMEOUT = 35.0
 DEFAULT_PLAYWRIGHT_VIEWPORT = (2200, 1800)
@@ -40,22 +41,32 @@ class ScreenshotBroker:
     def normalize_payload(payload: dict[str, Any] | None) -> dict[str, Any]:
         raw = dict(payload or {})
         mode = str(raw.get("mode") or "workflow").strip().lower()
-        if mode not in {"workflow", "node"}:
-            raise ValueError("Screenshot mode must be 'workflow' or 'node'.")
+        if mode not in {"workflow", "node", EXACT_NODE_SCREENSHOT_MODE}:
+            raise ValueError("Screenshot mode must be 'workflow', 'node', or 'node_exact'.")
 
         node_id = str(raw.get("node_id") or "").strip()
+        node_type = str(raw.get("node_type") or "").strip()
         if mode == "node" and not node_id:
             raise ValueError("node_id is required for a node screenshot.")
+        if mode == EXACT_NODE_SCREENSHOT_MODE and not (node_id or node_type):
+            raise ValueError("node_id or node_type is required for an exact node image.")
+
+        workflow = raw.get("workflow")
+        if workflow is not None and (
+            not isinstance(workflow, dict) or not isinstance(workflow.get("nodes"), list)
+        ):
+            raise ValueError("Screenshot workflow override must be a serialized ComfyUI UI workflow.")
 
         try:
             requested_padding = int(raw.get("padding_px", DEFAULT_WORKFLOW_SCREENSHOT_PADDING))
         except (TypeError, ValueError):
             requested_padding = DEFAULT_WORKFLOW_SCREENSHOT_PADDING
-        padding_px = (
-            max(MIN_NODE_SCREENSHOT_PADDING, requested_padding)
-            if mode == "node"
-            else max(0, requested_padding)
-        )
+        if mode == EXACT_NODE_SCREENSHOT_MODE:
+            padding_px = 0
+        elif mode == "node":
+            padding_px = max(MIN_NODE_SCREENSHOT_PADDING, requested_padding)
+        else:
+            padding_px = max(0, requested_padding)
 
         try:
             pixel_ratio = float(raw.get("pixel_ratio", 1.5))
@@ -63,12 +74,16 @@ class ScreenshotBroker:
             pixel_ratio = 1.5
         pixel_ratio = max(1.0, min(3.0, pixel_ratio))
 
-        return {
+        normalized = {
             "mode": mode,
             "node_id": node_id,
+            "node_type": node_type,
             "padding_px": padding_px,
             "pixel_ratio": pixel_ratio,
         }
+        if workflow is not None:
+            normalized["workflow"] = workflow
+        return normalized
 
     async def request(
         self,
@@ -154,8 +169,9 @@ def _required_node_viewport(
     box: dict[str, Any],
     padding: int,
     current: dict[str, int],
+    minimum_padding: int = MIN_NODE_SCREENSHOT_PADDING,
 ) -> dict[str, int]:
-    pad = max(MIN_NODE_SCREENSHOT_PADDING, int(padding))
+    pad = max(max(0, int(minimum_padding)), int(padding))
     required_width = int(math.ceil(float(box["width"]) + pad * 2 + 160))
     required_height = int(math.ceil(float(box["height"]) + pad * 2 + 160))
     return {
@@ -294,9 +310,10 @@ async def capture_with_playwright(
                 "workflow": workflow,
                 "mode": request["mode"],
                 "node_id": request["node_id"],
+                "node_type": request["node_type"],
                 "padding_px": request["padding_px"],
             }
-            await page.evaluate(
+            prepared = await page.evaluate(
                 "(payload) => globalThis.__COMFYUI_PI_PREPARE_PLAYWRIGHT_CAPTURE__(payload)",
                 prepare_payload,
             )
@@ -304,7 +321,8 @@ async def capture_with_playwright(
             await page.wait_for_timeout(180)
 
             node_box: dict[str, float] | None = None
-            if request["mode"] == "node":
+            node_capture = request["mode"] in {"node", EXACT_NODE_SCREENSHOT_MODE}
+            if node_capture:
                 locator = page.locator(_node_selector(request["node_id"])).first
                 await locator.wait_for(state="visible")
                 node_box = await locator.bounding_box()
@@ -317,11 +335,15 @@ async def capture_with_playwright(
                     node_box,
                     request["padding_px"],
                     viewport,
+                    minimum_padding=(
+                        0 if request["mode"] == EXACT_NODE_SCREENSHOT_MODE
+                        else MIN_NODE_SCREENSHOT_PADDING
+                    ),
                 )
                 if required_viewport != viewport:
                     viewport = required_viewport
                     await page.set_viewport_size(viewport)
-                    await page.evaluate(
+                    prepared = await page.evaluate(
                         "(payload) => globalThis.__COMFYUI_PI_PREPARE_PLAYWRIGHT_CAPTURE__(payload)",
                         prepare_payload,
                     )
@@ -385,11 +407,15 @@ async def capture_with_playwright(
                 scale="device",
             )
             ratio = float(request["pixel_ratio"])
+            prepared_node_type = (
+                str(prepared.get("node_type") or "") if isinstance(prepared, dict) else ""
+            )
             metadata = {
                 "width": int(round(float(clip["width"]) * ratio)),
                 "height": int(round(float(clip["height"]) * ratio)),
                 "mode": request["mode"],
                 "node_id": request["node_id"],
+                "node_type": prepared_node_type or request["node_type"],
                 "padding_px": request["padding_px"],
                 "node_width_px": (
                     int(round(float(node_box["width"]) * ratio)) if node_box else 0

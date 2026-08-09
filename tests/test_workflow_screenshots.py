@@ -4,6 +4,7 @@ from pathlib import Path
 
 from comfy_pi_agent.agent_guidance import select_skills
 from comfy_pi_agent.workflow_screenshots import (
+    EXACT_NODE_SCREENSHOT_MODE,
     MIN_NODE_SCREENSHOT_PADDING,
     ScreenshotBroker,
     _box_clip,
@@ -46,6 +47,51 @@ class ScreenshotBrokerTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(ValueError):
             await broker.request({"mode": "node", "node_id": ""}, timeout=1)
 
+    async def test_exact_node_request_forces_zero_padding_and_preserves_override(self):
+        broker = ScreenshotBroker()
+        workflow = {"nodes": [{"id": 7, "type": "KSampler"}], "links": []}
+        waiter = asyncio.create_task(
+            broker.request(
+                {
+                    "mode": EXACT_NODE_SCREENSHOT_MODE,
+                    "node_type": "KSampler",
+                    "workflow": workflow,
+                    "padding_px": 999,
+                },
+                timeout=2,
+            )
+        )
+        await asyncio.sleep(0)
+        claimed = broker.claim()
+        self.assertIsNotNone(claimed)
+        self.assertEqual(claimed["mode"], EXACT_NODE_SCREENSHOT_MODE)
+        self.assertEqual(claimed["node_type"], "KSampler")
+        self.assertEqual(claimed["padding_px"], 0)
+        self.assertEqual(claimed["workflow"], workflow)
+        self.assertTrue(
+            broker.complete(
+                claimed["request_id"],
+                b"\x89PNG\r\n\x1a\npayload",
+                {
+                    "width": "420",
+                    "height": "260",
+                    "padding_px": "0",
+                    "node_width_px": "420",
+                    "node_height_px": "260",
+                    "node_type": "KSampler",
+                    "capture_backend": "playwright-page-screenshot",
+                },
+            )
+        )
+        result = await waiter
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["metadata"]["padding_px"], "0")
+
+    async def test_exact_node_request_requires_id_or_type(self):
+        broker = ScreenshotBroker()
+        with self.assertRaises(ValueError):
+            await broker.request({"mode": EXACT_NODE_SCREENSHOT_MODE}, timeout=1)
+
 
 class ScreenshotGeometryTests(unittest.TestCase):
     def test_node_clip_adds_300_css_pixels_on_every_side(self):
@@ -64,6 +110,20 @@ class ScreenshotGeometryTests(unittest.TestCase):
         self.assertGreaterEqual(viewport["width"], 882 + 600)
         self.assertGreaterEqual(viewport["height"], 1077 + 600)
 
+    def test_exact_node_clip_uses_measured_dom_box_without_context_padding(self):
+        box = {"x": 500, "y": 650, "width": 240, "height": 180}
+        self.assertEqual(_box_clip(box, 0), {
+            "x": 500.0, "y": 650.0, "width": 240.0, "height": 180.0
+        })
+        viewport = _required_node_viewport(
+            box,
+            0,
+            {"width": 800, "height": 600},
+            minimum_padding=0,
+        )
+        self.assertGreaterEqual(viewport["width"], 240 + 160)
+        self.assertGreaterEqual(viewport["height"], 180 + 160)
+
 
 class ScreenshotArchitectureTests(unittest.TestCase):
     def test_active_browser_supplies_workflow_but_playwright_owns_png_capture(self):
@@ -74,6 +134,8 @@ class ScreenshotArchitectureTests(unittest.TestCase):
         self.assertIn('"/pi-agent/screenshot/playwright"', js)
         self.assertIn("comfyui_pi_playwright_capture", js)
         self.assertIn("SCREENSHOT_MIN_NODE_PADDING = 300", js)
+        self.assertIn('SCREENSHOT_EXACT_NODE_MODE = "node_exact"', js)
+        self.assertIn("screenshotInstalledNodeWorkflow", js)
         self.assertNotIn("screenshotNodeForeignObject", js)
         self.assertNotIn("screenshotRenderGraphRegion", js)
         self.assertNotIn("XMLSerializer", js)
@@ -104,6 +166,14 @@ class ScreenshotArchitectureTests(unittest.TestCase):
         self.assertIn("upsertScreenshotMarkdown", text)
         self.assertIn("Buffer.from(await response.arrayBuffer())", text)
         self.assertIn("minimum 300px", text)
+
+    def test_markdown_node_image_uses_exact_real_frontend_capture(self):
+        bridge = (ROOT / "pi" / "terminal-bridge.ts").read_text(encoding="utf-8")
+        self.assertIn('name: "comfyui_markdown_node_image"', bridge)
+        self.assertIn('mode: "node_exact"', bridge)
+        self.assertIn('renderer: "real-comfyui-playwright-png"', bridge)
+        self.assertIn('captureBackend !== "playwright-page-screenshot"', bridge)
+        self.assertNotIn('runMarkdownDiagramCli("node"', bridge)
 
     def test_screenshot_requests_route_to_document_export_skill(self):
         matches = select_skills("Take a close-up screenshot of node 24 for this Markdown tutorial")

@@ -121,6 +121,7 @@ function currentWorkflow() {
 }
 
 const SCREENSHOT_MIN_NODE_PADDING = 300;
+const SCREENSHOT_EXACT_NODE_MODE = "node_exact";
 const SCREENSHOT_DEFAULT_WORKFLOW_PADDING = 80;
 let SCREENSHOT_WORKER_TIMER = null;
 let SCREENSHOT_WORKER_BUSY = false;
@@ -189,6 +190,29 @@ function screenshotFindGraphNode(nodeId) {
   return screenshotGraphNodes().find((node) => String(node?.id ?? "") === wanted) || null;
 }
 
+function screenshotInstalledNodeWorkflow(nodeType) {
+  const type = String(nodeType || "").trim();
+  if (!type) throw new Error("Exact installed-node capture requires node_type.");
+  return {
+    last_node_id: 1,
+    last_link_id: 0,
+    nodes: [{
+      id: 1,
+      type,
+      pos: [0, 0],
+      flags: {},
+      order: 0,
+      mode: 0,
+      properties: {},
+    }],
+    links: [],
+    groups: [],
+    config: {},
+    extra: { workflowRendererVersion: "Vue-corrected" },
+    version: 0.4,
+  };
+}
+
 function screenshotFitBounds(bounds, paddingPx, maxScale = 1.0) {
   const graphCanvas = screenshotGraphCanvas();
   const ds = app.canvas?.ds;
@@ -225,16 +249,23 @@ async function preparePlaywrightWorkflowCapture(payload) {
   await screenshotNextPaint(6);
 
   const mode = String(payload?.mode || "workflow").toLowerCase();
+  const nodeCapture = mode === "node" || mode === SCREENSHOT_EXACT_NODE_MODE;
   const padding = mode === "node"
     ? Math.max(SCREENSHOT_MIN_NODE_PADDING, Number(payload?.padding_px || SCREENSHOT_MIN_NODE_PADDING))
-    : Math.max(0, Number(payload?.padding_px ?? SCREENSHOT_DEFAULT_WORKFLOW_PADDING));
+    : mode === SCREENSHOT_EXACT_NODE_MODE
+      ? 0
+      : Math.max(0, Number(payload?.padding_px ?? SCREENSHOT_DEFAULT_WORKFLOW_PADDING));
 
-  if (mode === "node") {
+  let graphNode = null;
+  if (nodeCapture) {
     const nodeId = String(payload?.node_id || "");
-    const graphNode = screenshotFindGraphNode(nodeId);
+    graphNode = screenshotFindGraphNode(nodeId);
     if (!graphNode?.pos || !graphNode?.size) {
       throw new Error(`Workflow node ${nodeId} does not exist or has no position/size.`);
     }
+    // Exact-node capture still centers the real node comfortably in the Playwright
+    // viewport, but only the measured Vue node DOM box is written to the PNG.
+    const fitPadding = mode === SCREENSHOT_EXACT_NODE_MODE ? 80 : padding;
     screenshotFitBounds(
       [
         Number(graphNode.pos[0]),
@@ -242,8 +273,8 @@ async function preparePlaywrightWorkflowCapture(payload) {
         Number(graphNode.size[0]),
         Number(graphNode.size[1]),
       ],
-      padding,
-      1.5,
+      fitPadding,
+      mode === SCREENSHOT_EXACT_NODE_MODE ? 1.0 : 1.5,
     );
   } else {
     const bounds = screenshotGraphBounds();
@@ -257,6 +288,7 @@ async function preparePlaywrightWorkflowCapture(payload) {
   return {
     mode,
     node_id: String(payload?.node_id || ""),
+    node_type: String(graphNode?.type || payload?.node_type || ""),
     node_count: screenshotGraphNodes().length,
     canvas: canvasRect ? {
       x: canvasRect.x,
@@ -288,16 +320,25 @@ async function completeLiveScreenshotRequest(request) {
   if (!requestId) return;
   const endpoint = `/pi-agent/screenshot/complete/${encodeURIComponent(requestId)}`;
   try {
-    const workflow = currentWorkflow();
+    const captureRequest = { ...request };
+    let workflow = request?.workflow;
+    delete captureRequest.workflow;
+
+    if (!workflow && String(request?.mode || "") === SCREENSHOT_EXACT_NODE_MODE &&
+        String(request?.node_type || "") && !String(request?.node_id || "")) {
+      workflow = screenshotInstalledNodeWorkflow(request.node_type);
+      captureRequest.node_id = "1";
+    }
+    if (!workflow) workflow = currentWorkflow();
     if (!workflow || !Array.isArray(workflow.nodes)) {
-      throw new Error("The active ComfyUI page has no serialized workflow to capture.");
+      throw new Error("No serialized ComfyUI workflow is available for the requested capture.");
     }
 
     const response = await api.fetchApi("/pi-agent/screenshot/playwright", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        request,
+        request: captureRequest,
         workflow,
         viewport: {
           width: Math.max(800, Number(window.innerWidth || 0)),
@@ -321,11 +362,13 @@ async function completeLiveScreenshotRequest(request) {
     const query = new URLSearchParams({
       width: String(response.headers.get("X-ComfyUI-Pi-Width") || 0),
       height: String(response.headers.get("X-ComfyUI-Pi-Height") || 0),
-      mode: String(response.headers.get("X-ComfyUI-Pi-Mode") || request.mode || ""),
-      node_id: String(response.headers.get("X-ComfyUI-Pi-Node-Id") || request.node_id || ""),
-      padding_px: String(response.headers.get("X-ComfyUI-Pi-Padding") || request.padding_px || 0),
+      mode: String(response.headers.get("X-ComfyUI-Pi-Mode") || captureRequest.mode || ""),
+      node_id: String(response.headers.get("X-ComfyUI-Pi-Node-Id") || captureRequest.node_id || ""),
+      node_type: String(response.headers.get("X-ComfyUI-Pi-Node-Type") || captureRequest.node_type || ""),
+      padding_px: String(response.headers.get("X-ComfyUI-Pi-Padding") || captureRequest.padding_px || 0),
       node_width_px: String(response.headers.get("X-ComfyUI-Pi-Node-Width") || 0),
       node_height_px: String(response.headers.get("X-ComfyUI-Pi-Node-Height") || 0),
+      capture_backend: String(response.headers.get("X-ComfyUI-Pi-Capture-Backend") || ""),
     });
     const completed = await api.fetchApi(`${endpoint}?${query.toString()}`, {
       method: "POST",
