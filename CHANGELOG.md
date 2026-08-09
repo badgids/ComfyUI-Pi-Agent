@@ -16,6 +16,7 @@
 - Synchronized the built-in Provider selector with Pi's current 38-ID `KnownProvider` union; removed stale built-in Baseten and Qwen Token Plan Individual entries while preserving runtime/custom provider discovery.
 - Added `tools/regenerate_manifest.py` so release manifests are regenerated from the exact checkout instead of hand-editing a version while leaving stale sizes/hashes.
 - Updated public documentation to remove the obsolete reset/bootstrap compaction design and accurately distinguish structured-Chat hidden-scope `new_session` from context-pressure compaction.
+- Added an optional dependency-free MCP stdio adapter with the 128-name FL-MCP compatibility surface, deterministic dynamic tool exposure for weak/local models, a live-schema/catalog-hashed graph transaction engine with verified rollback, browser contract revisions, centralized capability gates, and a schema-scoped persistent node catalog.
 
 ## 0.1.17 — controlling PTY terminal and selectable ComfyUI placement
 

@@ -10,6 +10,7 @@ import { Buffer } from "buffer";
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "fs";
 import { dirname, isAbsolute, relative, resolve } from "path";
 import { Type } from "typebox";
+import { registerDynamicMcpTools } from "./dynamic-mcp-tools";
 
 const COMFYUI_PI_COMPACTION_INSTRUCTIONS =
   "Preserve continuity for the current ComfyUI task using Pi's normal compaction format. " +
@@ -84,6 +85,8 @@ function writeBridgeState(ctx: any, extra: Record<string, unknown> = {}) {
 }
 
 export default function comfyUiPiTerminalBridge(pi: ExtensionAPI) {
+  registerDynamicMcpTools(pi);
+
   let latestInput = "";
   let latestSource = "interactive";
   let activeTaskInput = "";

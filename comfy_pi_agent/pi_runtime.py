@@ -5,6 +5,7 @@ import os
 import queue
 import shutil
 import subprocess
+import sys
 import threading
 import time
 import hashlib
@@ -16,6 +17,11 @@ from .compat import get_comfy_user_directory
 from .integrations.router import build_dynamic_integration_context
 from .agent_guidance import build_request_guidance
 from .io_utils import load_json
+from .mcp.runtime_context import runtime_context_path
+
+
+_PLUGIN_ROOT = Path(__file__).resolve().parents[1]
+_DYNAMIC_MCP_EXTENSION = _PLUGIN_ROOT / "pi" / "dynamic-mcp-tools.ts"
 
 
 @dataclass
@@ -80,6 +86,7 @@ def build_pi_command(
         "--no-approve",
         "--no-context-files",
         "--no-extensions",
+        "-e", str(_DYNAMIC_MCP_EXTENSION),
         "--no-skills",
         "--no-prompt-templates",
         "--no-themes",
@@ -113,6 +120,12 @@ class PiRpcClient:
         for key, value in (env_overrides or {}).items():
             if key and value is not None:
                 process_env[str(key)] = str(value)
+        process_env["COMFYUI_PI_PYTHON"] = sys.executable
+        process_env["COMFYUI_PI_MCP_RUNTIME_FILE"] = str(runtime_context_path())
+        existing_pythonpath = process_env.get("PYTHONPATH", "")
+        process_env["PYTHONPATH"] = str(_PLUGIN_ROOT) + (
+            os.pathsep + existing_pythonpath if existing_pythonpath else ""
+        )
         self.process = subprocess.Popen(
             command,
             cwd=str(cwd),

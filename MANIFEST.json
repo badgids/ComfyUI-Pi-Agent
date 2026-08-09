@@ -4,7 +4,7 @@
   "version": "0.1.18",
   "creator": "Alan D. Guice (Badgids)",
   "license": "GPL-3.0-only",
-  "file_count": 189,
+  "file_count": 224,
   "files": [
     {
       "path": ".gitattributes",
@@ -13,8 +13,8 @@
     },
     {
       "path": ".github/workflows/tests.yml",
-      "size": 365,
-      "sha256": "416bec8a0968a08119d7a9428bcf8cdfe05aa8fccfbc7f8bdde8ad8dae4514d0"
+      "size": 761,
+      "sha256": "71abe4767055af7f25151e4626a29f2cd6e210b2c6dad4404584868f3d54b85b"
     },
     {
       "path": ".gitignore",
@@ -28,8 +28,8 @@
     },
     {
       "path": "CHANGELOG.md",
-      "size": 18662,
-      "sha256": "fd21262b2388da56955955a768e24aabe74131fe90084726ee366c41d6a5bfe5"
+      "size": 19004,
+      "sha256": "a49f1620643ab2621ceefd4456397583975b495f406518b9aded8e777d1daaff"
     },
     {
       "path": "CODE_OF_CONDUCT.md",
@@ -68,13 +68,13 @@
     },
     {
       "path": "THIRD_PARTY_NOTICES.md",
-      "size": 5453,
-      "sha256": "287390c26b5307293402231660ae0b319d0b9a154c61d14cd3692fffc8222039"
+      "size": 6255,
+      "sha256": "b9e73aaf548158d07ab6924e0ac5c92364f9a74000b14d708a60f69502606a36"
     },
     {
       "path": "__init__.py",
-      "size": 1063,
-      "sha256": "147ea682e95079985ce5bac4a0554f8d118158bdf2c50b056f18b40dbe6eb9d7"
+      "size": 1455,
+      "sha256": "6d25a6a2be97fbfad155d5dc861f5a115ac3b2b6a849529e4836248fdd15b567"
     },
     {
       "path": "comfy_pi_agent/__init__.py",
@@ -158,13 +158,138 @@
     },
     {
       "path": "comfy_pi_agent/markdown_diagram_cli.py",
-      "size": 1973,
-      "sha256": "1eaa7c9cab800f3d1253fd649d4b9f2be44e8d9007a19fcedc8a367650e8a6ea"
+      "size": 1360,
+      "sha256": "0ae1a796ef368e5679c19e3d58b8d31c273cd5755b4d793d7a790e3f2eab00d0"
     },
     {
       "path": "comfy_pi_agent/markdown_diagrams.py",
-      "size": 56944,
-      "sha256": "ba33b010902bb4b47c5f0ce298738baaaaca03254f5d8f91a9bcd0d792b27948"
+      "size": 57329,
+      "sha256": "37ee1a9ff9ff06ec791dd704bc31e247cb7d3cab0a8c51d2f2cedf868f3653d4"
+    },
+    {
+      "path": "comfy_pi_agent/mcp/__init__.py",
+      "size": 380,
+      "sha256": "eddb50b3fb7404a8be55b93dee05c2beac8b797c1ab65151304148de7a656fbc"
+    },
+    {
+      "path": "comfy_pi_agent/mcp/browser_broker.py",
+      "size": 2893,
+      "sha256": "d1f6c2603f7bb98b9eeac5d672785c6430da603a84b1730a2d9b1a35b1c43a50"
+    },
+    {
+      "path": "comfy_pi_agent/mcp/catalog.py",
+      "size": 20529,
+      "sha256": "70dffb226b14a6621de2e52da4b1d4a0d56808c61e43e0de92b44e75c8efef6f"
+    },
+    {
+      "path": "comfy_pi_agent/mcp/cli.py",
+      "size": 2592,
+      "sha256": "ab1ab797d52e58744ffe2327c1417fca36a7748f8bfef872a83d33ea840d0c8c"
+    },
+    {
+      "path": "comfy_pi_agent/mcp/families/__init__.py",
+      "size": 55,
+      "sha256": "ba1ea3fdc18758bd723995964cfc6f7451cc70268bcfdd064484a57cc4528f91"
+    },
+    {
+      "path": "comfy_pi_agent/mcp/families/custom_nodes.py",
+      "size": 6315,
+      "sha256": "992945527fc0885a122911c436bc7d9f535bee472c03b0939b0a7ef00fbcf553"
+    },
+    {
+      "path": "comfy_pi_agent/mcp/families/files.py",
+      "size": 2388,
+      "sha256": "bde1be55375668dc179d0d4de9372d4cf7379e9602b6f33648ffd4b3c340ffe5"
+    },
+    {
+      "path": "comfy_pi_agent/mcp/families/graph.py",
+      "size": 7278,
+      "sha256": "37c1ad9d6968aa9d6abe34d5531055593fc5a9eba12bafd7388c484737a971d9"
+    },
+    {
+      "path": "comfy_pi_agent/mcp/families/images.py",
+      "size": 2626,
+      "sha256": "c38ba54fee7c2af365d91e7d391b5420ab2817e5022477c42993084c28984a4f"
+    },
+    {
+      "path": "comfy_pi_agent/mcp/families/manager.py",
+      "size": 4061,
+      "sha256": "6617bc2a0d931fd84e682649dcc54dd4a4a6f7e8146fed3e06bdecac8cf3f046"
+    },
+    {
+      "path": "comfy_pi_agent/mcp/families/node_library.py",
+      "size": 3674,
+      "sha256": "e90ae68cde944e5683ce5616d5c314382d1b0c8a6dbe7126305b5a9a2e9c9e12"
+    },
+    {
+      "path": "comfy_pi_agent/mcp/families/process.py",
+      "size": 827,
+      "sha256": "53f6efcef585ecb5131f09d5f2368df600c358f6bdeaa38e62ecfb6826d299a2"
+    },
+    {
+      "path": "comfy_pi_agent/mcp/families/registry.py",
+      "size": 1452,
+      "sha256": "f65bce10315e77d8ef95458af3f89a6992a1fc5b0f4980e2940553cf3e8a1da2"
+    },
+    {
+      "path": "comfy_pi_agent/mcp/families/rest.py",
+      "size": 9048,
+      "sha256": "b159fcaaacc4558c1dee06dcaa24077251d16d31b3d7ced4f4f6aa05368cca56"
+    },
+    {
+      "path": "comfy_pi_agent/mcp/families/utility.py",
+      "size": 3036,
+      "sha256": "6621b4e11d01f2bdb3a520c141852bbf28aa6c64410852a487e0dd9f8074d304"
+    },
+    {
+      "path": "comfy_pi_agent/mcp/families/web.py",
+      "size": 4942,
+      "sha256": "ab47634eabbc71840d54602c671009bd59c57bbb6e0290982e6efd5fafe020b8"
+    },
+    {
+      "path": "comfy_pi_agent/mcp/families/workflow.py",
+      "size": 349,
+      "sha256": "5220d38ab026fde9a59130fde672b82f06b0417cdf1cdb9a362c4cba048a429d"
+    },
+    {
+      "path": "comfy_pi_agent/mcp/graph_patch.py",
+      "size": 24605,
+      "sha256": "2705de5f79664f0dedbe143056de0aba8c8943e6162fc8766363f45937952ae1"
+    },
+    {
+      "path": "comfy_pi_agent/mcp/http_client.py",
+      "size": 5218,
+      "sha256": "c75161ff204f80ffdbc97fcbeb7232de594b17a84a06bc3444bbaa22c4d412bc"
+    },
+    {
+      "path": "comfy_pi_agent/mcp/node_catalog.py",
+      "size": 12604,
+      "sha256": "eb895b139853d5056f10545f566ac2f887066da52919f3cf4a4fb895815b3067"
+    },
+    {
+      "path": "comfy_pi_agent/mcp/routes.py",
+      "size": 4267,
+      "sha256": "693465d73219a64e9a2054f8c655e6d00b1a23db34e4269a4b76d2725f0658bd"
+    },
+    {
+      "path": "comfy_pi_agent/mcp/runtime.py",
+      "size": 1463,
+      "sha256": "74f8c131ce2c977703b1206e03eeee7597e63b828a72f6cee9fe20cb95883b28"
+    },
+    {
+      "path": "comfy_pi_agent/mcp/runtime_context.py",
+      "size": 3101,
+      "sha256": "fe62e4022b9561b2245f2a06d6a761798608e21d58be22cd28a2ab25870f5dda"
+    },
+    {
+      "path": "comfy_pi_agent/mcp/security.py",
+      "size": 2941,
+      "sha256": "df1e55a6500b2ae8e4a35d56409699920a5a45c6b9b54752da6bf6ab3e704a26"
+    },
+    {
+      "path": "comfy_pi_agent/mcp/server.py",
+      "size": 6690,
+      "sha256": "6190f88cbe997d6dde2e579ce236932c565043d14965c280a37f9ded43ac1f27"
     },
     {
       "path": "comfy_pi_agent/media_plans.py",
@@ -193,8 +318,8 @@
     },
     {
       "path": "comfy_pi_agent/pi_runtime.py",
-      "size": 25917,
-      "sha256": "5df4dc0803b7eba90cdad8d62ce66e1cce138d2a907f03d100ea6aae16eaf306"
+      "size": 26495,
+      "sha256": "49e80098536c4eedf4813c3da7cb7f6b2f4709d6993bc10bd2903b4307baeb38"
     },
     {
       "path": "comfy_pi_agent/projects.py",
@@ -248,8 +373,8 @@
     },
     {
       "path": "comfy_pi_agent/workflow_screenshots.py",
-      "size": 16873,
-      "sha256": "a9d29f2406c60a6fadf02007335cf7db44d874aef0a0efadcadcc8162ee1d4d5"
+      "size": 18887,
+      "sha256": "abd7d9bf4fa862fbf5b69bd376d63f723c3f5f70899e85301953d8ec73fbcf54"
     },
     {
       "path": "data/integrations/minimax_h3_director.json",
@@ -293,8 +418,8 @@
     },
     {
       "path": "docs/compatibility.md",
-      "size": 5616,
-      "sha256": "181d3ac790ce849e97a2bf20414f9e367cac6f371e3e41d6583b0c8e46142f2c"
+      "size": 5698,
+      "sha256": "a365cb406f60995b206a8395264d40e32280f99d540b432a06ab6ff4b87512ad"
     },
     {
       "path": "docs/context-handoff.md",
@@ -303,13 +428,18 @@
     },
     {
       "path": "docs/development.md",
-      "size": 1403,
-      "sha256": "363da464db2ff26f6d129f726d7fdcce4771d3460623e01faab63096fec385ab"
+      "size": 1668,
+      "sha256": "ed738e7499a5768ce2e2f114b5240dea6ba40e86c87d3c90d4a7a91ba3540e83"
     },
     {
       "path": "docs/dynamic-integration-context.md",
       "size": 9512,
       "sha256": "4df05910d0a0eb125a43ed6a0ed5caa206c29edddbf58bbfa18b27004d3a2221"
+    },
+    {
+      "path": "docs/dynamic-mcp-tools.md",
+      "size": 9999,
+      "sha256": "6c5496dc69fc8d55f651e5ab79854641b65239a5b0bdf65f5363a861ef495a2a"
     },
     {
       "path": "docs/image-generation-editing.md",
@@ -318,8 +448,8 @@
     },
     {
       "path": "docs/index.md",
-      "size": 3760,
-      "sha256": "9c95b1bb99a32e9bc1ce21204216d897946ec8e270c4231d58e55455c0357600"
+      "size": 3841,
+      "sha256": "1406e786d2821524a735f771ecdca61d3c69e68672227d16b37ae7ac25c4f3f6"
     },
     {
       "path": "docs/installation.md",
@@ -807,9 +937,14 @@
       "sha256": "838c22cc7a16e7d3eb024e3e3ac26b1b6d8e72b1676f26b9dd79eab511e254ed"
     },
     {
+      "path": "pi/dynamic-mcp-tools.ts",
+      "size": 8421,
+      "sha256": "ef09f45f7dd9fe775af488bf16bf1b8bec564c46c9d7a14b17db61a1402c885b"
+    },
+    {
       "path": "pi/terminal-bridge.ts",
-      "size": 54234,
-      "sha256": "080ac46e4c7d540806268ebf501d4acb17ee02bd436d27e74fd84d329120d0eb"
+      "size": 54329,
+      "sha256": "64a172f13efd5f361347516f69efd25e0ab0b5618e7c533642818c0833b51def"
     },
     {
       "path": "pyproject.toml",
@@ -852,9 +987,19 @@
       "sha256": "181114c9c1abf9786ecd3af5466badb66ab51fa98c38ed238d5f32ec2b9f2c9d"
     },
     {
+      "path": "tests/test_dynamic_mcp_integration.py",
+      "size": 1112,
+      "sha256": "efbd2efa28ad809dc04fc6e96aa04f1d9cbec42d0f53f4cb915fc994625436ab"
+    },
+    {
       "path": "tests/test_fountain.py",
       "size": 1096,
       "sha256": "86d7935e7f2de7c4e159f63cbdee349c033aea8a97adf5af827f30a49105768e"
+    },
+    {
+      "path": "tests/test_graph_patch.py",
+      "size": 5552,
+      "sha256": "6966d9072e68371a46808f1ed728910a171f93247ecae70e08e5ca0dd122658a"
     },
     {
       "path": "tests/test_integrations.py",
@@ -868,8 +1013,33 @@
     },
     {
       "path": "tests/test_markdown_diagrams.py",
-      "size": 11275,
-      "sha256": "717d4fc6d6e1917568e2c68fc0efd2480c7601ed8f366e73adf2b958ba520083"
+      "size": 9364,
+      "sha256": "54950bd33d47674617b13f1eac1d57406e68bb3944a973136d37e13c6dc1a310"
+    },
+    {
+      "path": "tests/test_mcp_browser_contract.py",
+      "size": 1769,
+      "sha256": "a601c1b6df84c706e587f5bdd6949e028a65e72e795c1cf409f401c7b5baeca9"
+    },
+    {
+      "path": "tests/test_mcp_catalog.py",
+      "size": 5010,
+      "sha256": "faf0c5df7aaf466e262e9aeb17020a5f4d88875822ddd02394f8975f615b1c0f"
+    },
+    {
+      "path": "tests/test_mcp_hardening.py",
+      "size": 2417,
+      "sha256": "c591b74037d4557ee570d8a9cff9184d7ed43aca6e1551aa0928995762542ea9"
+    },
+    {
+      "path": "tests/test_mcp_node_catalog.py",
+      "size": 1488,
+      "sha256": "13f420652f8b27fb169d7b43a9cd8ab2131d51a933c97eb76d1e5435de3d0dae"
+    },
+    {
+      "path": "tests/test_mcp_server.py",
+      "size": 1589,
+      "sha256": "a5ddfec7694dd4e3fe524741b9e5d580c2a57827b105b6c3031e95b13d3b9ab2"
     },
     {
       "path": "tests/test_media_plans.py",
@@ -918,8 +1088,8 @@
     },
     {
       "path": "tests/test_workflow_screenshots.py",
-      "size": 7962,
-      "sha256": "e0923ff1b00a75a801ebb4fb83b6b1e033e550f1ef5f4d7795dbe9f184f35acd"
+      "size": 8575,
+      "sha256": "e5ede41b035a9812e6bfe2eddfa7cb21722330215e211ce309417197d0326389"
     },
     {
       "path": "tools/regenerate_manifest.py",
@@ -927,9 +1097,14 @@
       "sha256": "226f2fdd6ff06d00670cbfbc84039bc7b02f3d4dad808abe230dd9d81049c136"
     },
     {
+      "path": "web/mcp_bridge.js",
+      "size": 37043,
+      "sha256": "8b13d8e0b43513e94d55cac6331d2f934b72a86e678b23e9875071fa7fdac8d3"
+    },
+    {
       "path": "web/pi_agent.js",
-      "size": 99956,
-      "sha256": "faeee68bf2e5be121936d984479a0ddbc9610abd2e9bbd113c8ed43a506e309d"
+      "size": 101552,
+      "sha256": "265950ac211ad4a58200d41c586a009b7602106fc3fdc940ca0cd27977dd8f63"
     },
     {
       "path": "web/vendor/XTERM_LICENSE.txt",
