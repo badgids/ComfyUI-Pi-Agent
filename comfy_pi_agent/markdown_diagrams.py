@@ -1202,6 +1202,10 @@ def render_comfyui_v2_node_svg(
     object_info: dict[str, Any],
     node: dict[str, Any] | None = None,
 ) -> str:
+    raise RuntimeError(
+        "Synthetic ComfyUI node rendering has been retired. "
+        "Use comfyui_markdown_node_image so the running ComfyUI frontend renders the real installed node."
+    )
     node = node or {}
     title = str(node.get("title") or object_info.get("display_name") or node_type)
     live_inputs, widget_defs = _input_schema_rows(object_info)
@@ -1332,6 +1336,10 @@ def create_comfyui_v2_node_markdown(
     image_id: str = "",
     alt_text: str = "",
 ) -> dict[str, Any]:
+    raise RuntimeError(
+        "Synthetic ComfyUI node Markdown rendering has been retired. "
+        "Use the comfyui_markdown_node_image Pi tool for a real Playwright capture."
+    )
     markdown = Path(markdown_path).expanduser().resolve()
     node: dict[str, Any] = {}
     workflow_file = Path(workflow_path).expanduser().resolve() if workflow_path else None

@@ -10,6 +10,7 @@ import { Buffer } from "buffer";
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "fs";
 import { dirname, isAbsolute, relative, resolve } from "path";
 import { Type } from "typebox";
+import { registerDynamicMcpTools } from "./dynamic-mcp-tools";
 
 const COMFYUI_PI_COMPACTION_INSTRUCTIONS =
   "Preserve continuity for the current ComfyUI task using Pi's normal compaction format. " +
@@ -84,6 +85,8 @@ function writeBridgeState(ctx: any, extra: Record<string, unknown> = {}) {
 }
 
 export default function comfyUiPiTerminalBridge(pi: ExtensionAPI) {
+  registerDynamicMcpTools(pi);
+
   let latestInput = "";
   let latestSource = "interactive";
   let activeTaskInput = "";
@@ -119,6 +122,71 @@ export default function comfyUiPiTerminalBridge(pi: ExtensionAPI) {
     if (!response.ok && !payload?.error) payload.error = `HTTP ${response.status}`;
     return payload;
   };
+
+  const currentComfyBase = () => String(workflowToolConfig().comfyui_base_url || "").replace(/\/+$/, "");
+
+  pi.registerTool({
+    name: "comfyui_search_paths",
+    label: "ComfyUI Live Search Paths",
+    description:
+      "Return the CURRENT running ComfyUI instance's registered filesystem search roots. " +
+      "These are authoritative for installed assets and already include ComfyUI defaults, startup directory overrides, " +
+      "extra_model_paths.yaml, and every --extra-model-paths-config file loaded by ComfyUI. " +
+      "Use this before assuming default models, workflows, or custom_nodes directories.",
+    parameters: Type.Object({}),
+    async execute() {
+      const base = currentComfyBase();
+      if (!base) {
+        return {
+          content: [{ type: "text", text: "ERROR: no current ComfyUI base URL; live search paths are unavailable." }],
+          details: { ok: false, error: "missing_comfyui_base_url" },
+        };
+      }
+      const result = await requestJson(`${base}/pi-agent/discovery/paths`);
+      return {
+        content: [{ type: "text", text: JSON.stringify(result, null, 2).slice(0, 30000) }],
+        details: result,
+      };
+    },
+  });
+
+  pi.registerTool({
+    name: "comfyui_find_installed",
+    label: "Find Installed ComfyUI Assets",
+    description:
+      "Search the CURRENT ComfyUI installation for real installed models, workflow JSON files, custom-node packs, " +
+      "or files in explicitly requested folder_paths categories. Searches every live registered root, including paths " +
+      "loaded from extra_model_paths.yaml and --extra-model-paths-config. Use this instead of guessing default locations.",
+    parameters: Type.Object({
+      query: Type.Optional(Type.String()),
+      kinds: Type.Optional(Type.Array(Type.String())),
+      categories: Type.Optional(Type.Array(Type.String())),
+      limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 500 })),
+    }),
+    async execute(_toolCallId, params) {
+      const base = currentComfyBase();
+      if (!base) {
+        return {
+          content: [{ type: "text", text: "ERROR: no current ComfyUI base URL; installed-asset discovery cannot run." }],
+          details: { ok: false, error: "missing_comfyui_base_url" },
+        };
+      }
+      const result = await requestJson(`${base}/pi-agent/discovery/find`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          query: String(params.query || ""),
+          kinds: Array.isArray(params.kinds) ? params.kinds : undefined,
+          categories: Array.isArray(params.categories) ? params.categories : undefined,
+          limit: Number(params.limit || 200),
+        }),
+      });
+      return {
+        content: [{ type: "text", text: JSON.stringify(result, null, 2).slice(0, 30000) }],
+        details: result,
+      };
+    },
+  });
 
   pi.registerTool({
     name: "comfyui_live_nodes",
@@ -326,11 +394,12 @@ export default function comfyUiPiTerminalBridge(pi: ExtensionAPI) {
 
   pi.registerTool({
     name: "comfyui_markdown_node_image",
-    label: "Markdown ComfyUI v2 Node Image",
+    label: "Markdown Exact ComfyUI Node Image",
     description:
-      "Render a current ComfyUI Nodes 2.0 documentation image into Markdown. " +
-      "Resolve the real workflow node or exact node_type and require the CURRENT ComfyUI /object_info schema. " +
-      "Never fabricate a generic or legacy LiteGraph node.",
+      "Capture an EXACT image of the actual installed ComfyUI node as rendered by the CURRENT ComfyUI frontend. " +
+      "ComfyUI itself creates and renders the node; ComfyUI-Pi only validates the installed type, measures the real Vue node DOM, " +
+      "captures that exact bounding box with Playwright, and inserts the PNG into Markdown. " +
+      "Never reconstruct, approximate, synthesize, or fall back to SVG/HTML/CSS/Canvas artwork.",
     parameters: Type.Object({
       markdown_path: Type.String(),
       workflow_path: Type.Optional(Type.String()),
@@ -340,44 +409,206 @@ export default function comfyUiPiTerminalBridge(pi: ExtensionAPI) {
       alt_text: Type.Optional(Type.String()),
     }),
     async execute(_toolCallId, params) {
-      const markdownPath = String(params.markdown_path || "");
-      const workflowPath = String(params.workflow_path || "");
-      if (!markdownPath || !workflowPathAllowed(markdownPath) ||
+      const markdownPath = resolve(String(params.markdown_path || ""));
+      const workflowPath = String(params.workflow_path || "")
+        ? resolve(String(params.workflow_path))
+        : "";
+      if (!String(params.markdown_path || "") || !workflowPathAllowed(markdownPath) ||
           (workflowPath && !workflowPathAllowed(workflowPath))) {
         return {
           content: [{ type: "text", text: "ERROR: Markdown/workflow path is outside the current project/cwd safety boundary." }],
           details: { ok: false, error: "path_outside_allowed_roots" },
         };
       }
+      if (workflowPath && !existsSync(workflowPath)) {
+        return {
+          content: [{ type: "text", text: `ERROR: workflow file does not exist: ${workflowPath}` }],
+          details: { ok: false, error: "workflow_missing" },
+        };
+      }
+
+      let nodeId = String(params.node_id || "").trim();
+      let nodeType = String(params.node_type || "").trim();
+      let workflow: any = undefined;
+      if (workflowPath) {
+        try {
+          workflow = JSON.parse(readFileSync(workflowPath, "utf8"));
+        } catch (error) {
+          return {
+            content: [{ type: "text", text: `ERROR: could not read workflow JSON: ${String(error)}` }],
+            details: { ok: false, error: String(error) },
+          };
+        }
+        if (!workflow || !Array.isArray(workflow.nodes)) {
+          return {
+            content: [{ type: "text", text: "ERROR: workflow_path must contain a serialized ComfyUI UI workflow." }],
+            details: { ok: false, error: "invalid_workflow" },
+          };
+        }
+        if (!nodeId && !nodeType) {
+          return {
+            content: [{ type: "text", text: "ERROR: workflow_path requires node_id or node_type to select the node to capture." }],
+            details: { ok: false, error: "missing_node_target" },
+          };
+        }
+        const target = workflow.nodes.find((item: any) =>
+          item && typeof item === "object" &&
+          (nodeId ? String(item.id) === nodeId : (nodeType && String(item.type) === nodeType))
+        );
+        if (!target) {
+          const wanted = nodeId ? `node id '${nodeId}'` : `node type '${nodeType}'`;
+          return {
+            content: [{ type: "text", text: `ERROR: ${wanted} was not found in the supplied workflow.` }],
+            details: { ok: false, error: "workflow_node_missing" },
+          };
+        }
+        nodeId = String(target.id ?? nodeId);
+        nodeType = String(target.type || nodeType).trim();
+      }
+
+      if (!nodeId && !nodeType) {
+        return {
+          content: [{ type: "text", text: "ERROR: provide node_id, node_type, or a workflow containing the requested node." }],
+          details: { ok: false, error: "missing_node_target" },
+        };
+      }
+
       const config = workflowToolConfig();
       const base = String(config.comfyui_base_url || "").replace(/\/+$/, "");
       if (!base) {
         return {
-          content: [{ type: "text", text: "ERROR: current ComfyUI base URL is unavailable; a live v2 node image will not be guessed." }],
+          content: [{ type: "text", text: "ERROR: current ComfyUI base URL is unavailable; exact node capture cannot run." }],
           details: { ok: false, error: "missing_comfyui_base_url" },
         };
       }
-      try {
-        const result = await runMarkdownDiagramCli("node", {
-          markdown_path: markdownPath,
-          workflow_path: workflowPath,
-          node_id: String(params.node_id || ""),
-          node_type: String(params.node_type || ""),
-          image_id: String(params.image_id || ""),
-          alt_text: String(params.alt_text || ""),
-          comfyui_base_url: base,
-        });
+
+      let liveSchemaVerified = false;
+      if (nodeType) {
+        const live = await requestJson(`${base}/object_info/${encodeURIComponent(nodeType)}`);
+        if (!live?.[nodeType]) {
+          return {
+            content: [{ type: "text", text: `ERROR: node type '${nodeType}' is not installed in the current ComfyUI instance.` }],
+            details: { ok: false, error: "node_not_installed", node_type: nodeType },
+          };
+        }
+        liveSchemaVerified = true;
+      }
+
+      const markdownStem = markdownPath.replace(/^.*[\\/]/, "").replace(/\.[^.]+$/, "") || "document";
+      const rawImageId = String(params.image_id || `node-${nodeId || nodeType}`);
+      const imageId = rawImageId
+        .replace(/[^a-zA-Z0-9._-]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 96) || "node";
+      const outputPath = resolve(dirname(markdownPath), `${markdownStem}_assets`, `${imageId}.png`);
+      if (!workflowPathAllowed(outputPath)) {
         return {
-          content: [{ type: "text", text:
-            `Live-schema Nodes 2.0 image written.\nMarkdown: ${result.markdown_path}\nImage: ${result.image_path}\nNode: ${result.node_type}` }],
-          details: result,
+          content: [{ type: "text", text: "ERROR: generated node-image path is outside the current project/cwd safety boundary." }],
+          details: { ok: false, error: "path_outside_allowed_roots" },
         };
+      }
+
+      let response: any;
+      try {
+        response = await fetch(`${base}/pi-agent/screenshot/request`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            mode: "node_exact",
+            node_id: nodeId,
+            node_type: nodeType,
+            workflow,
+            padding_px: 0,
+            pixel_ratio: 1.5,
+            timeout_seconds: 35,
+          }),
+        });
       } catch (error) {
         return {
-          content: [{ type: "text", text: `ERROR: ${String(error)}` }],
+          content: [{ type: "text", text: `ERROR: could not contact ComfyUI exact-node capture broker: ${String(error)}` }],
           details: { ok: false, error: String(error) },
         };
       }
+      if (!response.ok) {
+        let message = `HTTP ${response.status}`;
+        try {
+          const body = await response.json() as any;
+          message = String(body?.error || message);
+        } catch {
+          try { message = await response.text(); } catch {}
+        }
+        return {
+          content: [{ type: "text", text: `ERROR: exact installed-node capture failed: ${message}` }],
+          details: { ok: false, error: message },
+        };
+      }
+
+      const png = Buffer.from(await response.arrayBuffer());
+      if (!png.length) {
+        return {
+          content: [{ type: "text", text: "ERROR: ComfyUI returned an empty exact-node PNG." }],
+          details: { ok: false, error: "empty_png" },
+        };
+      }
+
+      const width = Number(response.headers.get("x-comfyui-pi-width") || 0);
+      const height = Number(response.headers.get("x-comfyui-pi-height") || 0);
+      const actualPadding = Number(response.headers.get("x-comfyui-pi-padding") || 0);
+      const nodeWidth = Number(response.headers.get("x-comfyui-pi-node-width") || 0);
+      const nodeHeight = Number(response.headers.get("x-comfyui-pi-node-height") || 0);
+      const actualNodeId = String(response.headers.get("x-comfyui-pi-node-id") || nodeId);
+      const actualNodeType = String(response.headers.get("x-comfyui-pi-node-type") || nodeType);
+      const captureBackend = String(response.headers.get("x-comfyui-pi-capture-backend") || "");
+      if (actualPadding !== 0 || width <= 0 || height <= 0 ||
+          nodeWidth <= 0 || nodeHeight <= 0 || width !== nodeWidth || height !== nodeHeight ||
+          captureBackend !== "playwright-page-screenshot") {
+        return {
+          content: [{ type: "text", text:
+            "ERROR: exact-node capture contract was not satisfied; refusing to save an approximate image." }],
+          details: {
+            ok: false,
+            error: "exact_node_crop_mismatch",
+            padding_px: actualPadding,
+            width,
+            height,
+            node_width_px: nodeWidth,
+            node_height_px: nodeHeight,
+            capture_backend: captureBackend,
+          },
+        };
+      }
+
+      mkdirSync(dirname(outputPath), { recursive: true });
+      writeFileSync(outputPath, png);
+      upsertScreenshotMarkdown(
+        markdownPath,
+        outputPath,
+        imageId,
+        String(params.alt_text || actualNodeType || `ComfyUI node ${actualNodeId}`),
+      );
+
+      const details = {
+        ok: true,
+        exact_node_capture: true,
+        markdown_path: markdownPath,
+        image_path: outputPath,
+        node_id: actualNodeId,
+        node_type: actualNodeType,
+        padding_px: actualPadding,
+        width,
+        height,
+        node_width_px: nodeWidth,
+        node_height_px: nodeHeight,
+        renderer: "real-comfyui-playwright-png",
+        capture_backend: captureBackend,
+        live_schema_verified: liveSchemaVerified,
+      };
+      return {
+        content: [{ type: "text", text:
+          `Captured exact installed ComfyUI node.\nMarkdown: ${markdownPath}\nImage: ${outputPath}\n` +
+          `Node: ${actualNodeType || actualNodeId}\nImage size: ${width}x${height}px` }],
+        details,
+      };
     },
   });
 

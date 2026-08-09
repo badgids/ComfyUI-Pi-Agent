@@ -6,6 +6,8 @@ from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Any
 
+from .discovery import installation_search_context
+
 ROOT = Path(__file__).resolve().parents[1]
 SKILLS_ROOT = ROOT / "pi" / "bundled-skills"
 
@@ -15,7 +17,7 @@ SKILLS_ROOT = ROOT / "pi" / "bundled-skills"
 CORE_AGENT_CONTRACT = """ComfyUI-Pi operating contract:
 1. Stay on the user's current task. Do not broaden the job or restart completed work.
 2. Act when the user asked for work. Do not replace execution with a plan unless execution is impossible or the user asked only for a plan.
-3. Inspect before guessing. For workflows, nodes, models, files, errors, and paths, use available live/file evidence. Never invent node classes, model filenames, paths, or success claims.
+3. Inspect before guessing. For workflows, nodes, models, files, errors, and paths, use available live/file evidence. Before searching the ComfyUI installation, use the live ComfyUI search-path/installed-asset tools or the live runtime paths supplied in the current-job context; never assume only default models, workflows, or custom_nodes directories because the running instance may load extra_model_paths.yaml or --extra-model-paths-config roots. Never invent node classes, model filenames, paths, or success claims.
 4. For multi-step work, follow dependency order and keep a small internal checklist: target -> inspect -> change/create -> validate -> finish.
 5. Make the smallest safe change. Preserve originals and user-approved/locked/manual work. Never silently overwrite important artifacts. Preserve exact filenames, node IDs, paths, and user wording when they are identifiers.
 6. Use tools conservatively: prefer exact reads/edits over broad shell operations; never use destructive shell commands when a targeted operation is sufficient.
@@ -261,7 +263,7 @@ def build_task_envelope(message: str, matches: list[SkillMatch], workflow_presen
     kind = task_kind(message, matches)
     skill_names = ", ".join(item.name for item in matches) if matches else "none"
     workflow_line = "An active/supplied workflow is available; inspect its exact file only if the task needs graph-level details." if workflow_present else "No workflow graph was supplied with this turn."
-    return (
+    envelope = (
         "CURRENT JOB (do not drift):\n"
         f"- User instruction: {str(message or '').strip()}\n"
         f"- Task class: {kind}\n"
@@ -269,6 +271,8 @@ def build_task_envelope(message: str, matches: list[SkillMatch], workflow_presen
         f"- Completion rule: {completion_rule(kind)}\n"
         f"- Context rule: {workflow_line}"
     )
+    installation = installation_search_context(message)
+    return f"{envelope}\n\n{installation}" if installation else envelope
 
 
 def build_request_guidance(message: str, workflow: Any = None, max_skills: int = 3) -> dict[str, Any]:

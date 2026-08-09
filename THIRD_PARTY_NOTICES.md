@@ -65,6 +65,20 @@ ComfyUI-Pi includes original GPL-3.0 adapter logic, metadata, tests, and lazily 
 
 The separately distributed MiniMax H3 base models, Turbo LoRA weights, VAEs, text encoders, and other model assets keep their own license and usage terms; ComfyUI-Pi does not relicense or automatically redistribute them.
 
+## ComfyUI_FL-MCP compatibility reference
+
+Project:
+
+```text
+https://github.com/filliptm/ComfyUI_FL-MCP
+```
+
+Upstream license: **MIT**.
+
+ComfyUI-Pi's optional MCP compatibility layer preserves the public FL-MCP tool-name surface so users and agents can use familiar ComfyUI MCP operations while retaining ComfyUI-Pi's own Pi-first, weak-model, service-module architecture. The implementation in `comfy_pi_agent/mcp/`, `web/mcp_bridge.js`, and `pi/dynamic-mcp-tools.ts` is original ComfyUI-Pi code; it does not vendor FL-MCP's backend or browser implementation.
+
+FL-MCP remains a separately distributed project and retains its own copyrights, license, branding, dependencies, and implementation. Public interface-name compatibility does not imply that FL-MCP is bundled with or required by ComfyUI-Pi.
+
 ## xterm.js
 
 ComfyUI-Pi vendors browser-side xterm.js JavaScript/CSS assets for rendering the real Pi PTY inside the ComfyUI sidebar. xterm.js is distributed under the **MIT License**. Its license text is included at [`web/vendor/XTERM_LICENSE.txt`](web/vendor/XTERM_LICENSE.txt).

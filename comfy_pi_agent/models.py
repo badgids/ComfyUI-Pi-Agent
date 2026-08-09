@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .compat import get_model_filenames
+from .compat import get_comfy_search_paths, get_model_filenames
 from .io_utils import load_json
 
 MODEL_CATEGORIES = [
@@ -16,8 +16,12 @@ MODEL_CATEGORIES = [
 
 def inventory_models(limit_per_category: int = 500) -> dict[str, Any]:
     categories: dict[str, list[dict[str, str]]] = {}
+    search_paths: dict[str, list[str]] = {}
     total = 0
     for category in MODEL_CATEGORIES:
+        paths = [str(path) for path in get_comfy_search_paths(category, existing_only=False)]
+        if paths:
+            search_paths[category] = paths
         files = get_model_filenames(category)[: max(1, limit_per_category)]
         rows = []
         for filename in files:
@@ -26,7 +30,12 @@ def inventory_models(limit_per_category: int = 500) -> dict[str, Any]:
         if rows:
             categories[category] = rows
             total += len(rows)
-    return {"total": total, "categories": categories}
+    return {
+        "total": total,
+        "categories": categories,
+        "search_paths": search_paths,
+        "search_path_source": "live_comfyui_folder_paths",
+    }
 
 
 def _flatten_inventory(inventory: dict[str, Any]) -> list[dict[str, str]]:

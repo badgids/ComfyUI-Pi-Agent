@@ -121,6 +121,7 @@ function currentWorkflow() {
 }
 
 const SCREENSHOT_MIN_NODE_PADDING = 300;
+const SCREENSHOT_EXACT_NODE_MODE = "node_exact";
 const SCREENSHOT_DEFAULT_WORKFLOW_PADDING = 80;
 let SCREENSHOT_WORKER_TIMER = null;
 let SCREENSHOT_WORKER_BUSY = false;
@@ -139,7 +140,23 @@ function screenshotNextPaint(frames = 2) {
 }
 
 function screenshotGraphCanvas() {
-  return document.getElementById("graph-canvas");
+  return app.canvas?.canvas ?? document.getElementById("graph-canvas");
+}
+
+function screenshotCaptureFrontendReady() {
+  return Boolean(
+    app?.canvas &&
+    app?.rootGraph &&
+    screenshotGraphCanvas() &&
+    typeof app.loadGraphData === "function"
+  );
+}
+
+function installPlaywrightCaptureBridge() {
+  if (!screenshotCaptureFrontendReady()) return false;
+  globalThis.__COMFYUI_PI_PLAYWRIGHT_CAPTURE_READY__ = true;
+  globalThis.__COMFYUI_PI_PREPARE_PLAYWRIGHT_CAPTURE__ = preparePlaywrightWorkflowCapture;
+  return true;
 }
 
 function screenshotGraphNodes() {
@@ -189,6 +206,29 @@ function screenshotFindGraphNode(nodeId) {
   return screenshotGraphNodes().find((node) => String(node?.id ?? "") === wanted) || null;
 }
 
+function screenshotInstalledNodeWorkflow(nodeType) {
+  const type = String(nodeType || "").trim();
+  if (!type) throw new Error("Exact installed-node capture requires node_type.");
+  return {
+    last_node_id: 1,
+    last_link_id: 0,
+    nodes: [{
+      id: 1,
+      type,
+      pos: [0, 0],
+      flags: {},
+      order: 0,
+      mode: 0,
+      properties: {},
+    }],
+    links: [],
+    groups: [],
+    config: {},
+    extra: { workflowRendererVersion: "Vue-corrected" },
+    version: 0.4,
+  };
+}
+
 function screenshotFitBounds(bounds, paddingPx, maxScale = 1.0) {
   const graphCanvas = screenshotGraphCanvas();
   const ds = app.canvas?.ds;
@@ -212,29 +252,63 @@ function screenshotFitBounds(bounds, paddingPx, maxScale = 1.0) {
   return true;
 }
 
+function screenshotGraphClientBox(bounds) {
+  const graphCanvas = screenshotGraphCanvas();
+  const ds = app.canvas?.ds;
+  const rect = graphCanvas?.getBoundingClientRect?.();
+  if (!bounds || !rect || !ds) return null;
+  const scale = Number(ds.scale || 1);
+  const offsetX = Number(ds.offset?.[0] || 0);
+  const offsetY = Number(ds.offset?.[1] || 0);
+  if (!Number.isFinite(scale) || scale <= 0) return null;
+  return {
+    x: rect.x + (Number(bounds[0]) + offsetX) * scale,
+    y: rect.y + (Number(bounds[1]) + offsetY) * scale,
+    width: Math.max(1, Number(bounds[2]) * scale),
+    height: Math.max(1, Number(bounds[3]) * scale),
+  };
+}
+
 async function preparePlaywrightWorkflowCapture(payload) {
   const workflow = payload?.workflow;
   if (!workflow || !Array.isArray(workflow.nodes)) {
     throw new Error("Playwright capture requires a serialized ComfyUI UI workflow.");
   }
-  if (typeof app.loadGraphData !== "function") {
-    throw new Error("Current ComfyUI frontend does not expose app.loadGraphData().");
+  if (!screenshotCaptureFrontendReady()) {
+    throw new Error(
+      "ComfyUI frontend setup is not complete; app.canvas/rootGraph are unavailable for real screenshot capture."
+    );
   }
 
-  await app.loadGraphData(workflow);
-  await screenshotNextPaint(6);
+  // Let the real ComfyUI frontend configure every installed node and frontend
+  // extension. Disable only view restoration and missing-asset scans so they
+  // cannot race ComfyUI-Pi's screenshot framing on this disposable capture page.
+  await app.loadGraphData(workflow, true, false, null, {
+    deferWarnings: true,
+    skipAssetScans: true,
+    silentAssetErrors: true,
+  });
+  await screenshotNextPaint(8);
 
   const mode = String(payload?.mode || "workflow").toLowerCase();
+  const nodeCapture = mode === "node" || mode === SCREENSHOT_EXACT_NODE_MODE;
   const padding = mode === "node"
     ? Math.max(SCREENSHOT_MIN_NODE_PADDING, Number(payload?.padding_px || SCREENSHOT_MIN_NODE_PADDING))
-    : Math.max(0, Number(payload?.padding_px ?? SCREENSHOT_DEFAULT_WORKFLOW_PADDING));
+    : mode === SCREENSHOT_EXACT_NODE_MODE
+      ? 0
+      : Math.max(0, Number(payload?.padding_px ?? SCREENSHOT_DEFAULT_WORKFLOW_PADDING));
 
-  if (mode === "node") {
+  let graphNode = null;
+  let workflowBounds = null;
+  if (nodeCapture) {
     const nodeId = String(payload?.node_id || "");
-    const graphNode = screenshotFindGraphNode(nodeId);
+    graphNode = screenshotFindGraphNode(nodeId);
     if (!graphNode?.pos || !graphNode?.size) {
       throw new Error(`Workflow node ${nodeId} does not exist or has no position/size.`);
     }
+    // Exact-node capture still centers the real node comfortably in the Playwright
+    // viewport, but only the measured Vue node DOM box is written to the PNG.
+    const fitPadding = mode === SCREENSHOT_EXACT_NODE_MODE ? 80 : padding;
     screenshotFitBounds(
       [
         Number(graphNode.pos[0]),
@@ -242,22 +316,24 @@ async function preparePlaywrightWorkflowCapture(payload) {
         Number(graphNode.size[0]),
         Number(graphNode.size[1]),
       ],
-      padding,
-      1.5,
+      fitPadding,
+      mode === SCREENSHOT_EXACT_NODE_MODE ? 1.0 : 1.5,
     );
   } else {
-    const bounds = screenshotGraphBounds();
-    if (!bounds) throw new Error("The workflow has no nodes to capture.");
-    screenshotFitBounds(bounds, Math.max(40, padding), 1.0);
+    workflowBounds = screenshotGraphBounds();
+    if (!workflowBounds) throw new Error("The workflow has no nodes to capture.");
+    screenshotFitBounds(workflowBounds, Math.max(40, padding), 1.0);
   }
 
-  await screenshotNextPaint(6);
+  await screenshotNextPaint(8);
   const graphCanvas = screenshotGraphCanvas();
   const canvasRect = graphCanvas?.getBoundingClientRect?.();
   return {
     mode,
     node_id: String(payload?.node_id || ""),
+    node_type: String(graphNode?.type || payload?.node_type || ""),
     node_count: screenshotGraphNodes().length,
+    workflow_box: workflowBounds ? screenshotGraphClientBox(workflowBounds) : null,
     canvas: canvasRect ? {
       x: canvasRect.x,
       y: canvasRect.y,
@@ -266,11 +342,6 @@ async function preparePlaywrightWorkflowCapture(payload) {
     } : null,
   };
 }
-
-// Playwright runs a separate headless page against this same ComfyUI instance.
-// Expose the app-backed workflow loader/fitter because app is an ES-module import,
-// not something external automation should assume is attached to window.
-globalThis.__COMFYUI_PI_PREPARE_PLAYWRIGHT_CAPTURE__ = preparePlaywrightWorkflowCapture;
 
 function screenshotStorageSnapshot(storage) {
   const result = {};
@@ -288,16 +359,25 @@ async function completeLiveScreenshotRequest(request) {
   if (!requestId) return;
   const endpoint = `/pi-agent/screenshot/complete/${encodeURIComponent(requestId)}`;
   try {
-    const workflow = currentWorkflow();
+    const captureRequest = { ...request };
+    let workflow = request?.workflow;
+    delete captureRequest.workflow;
+
+    if (!workflow && String(request?.mode || "") === SCREENSHOT_EXACT_NODE_MODE &&
+        String(request?.node_type || "") && !String(request?.node_id || "")) {
+      workflow = screenshotInstalledNodeWorkflow(request.node_type);
+      captureRequest.node_id = "1";
+    }
+    if (!workflow) workflow = currentWorkflow();
     if (!workflow || !Array.isArray(workflow.nodes)) {
-      throw new Error("The active ComfyUI page has no serialized workflow to capture.");
+      throw new Error("No serialized ComfyUI workflow is available for the requested capture.");
     }
 
     const response = await api.fetchApi("/pi-agent/screenshot/playwright", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        request,
+        request: captureRequest,
         workflow,
         viewport: {
           width: Math.max(800, Number(window.innerWidth || 0)),
@@ -321,11 +401,13 @@ async function completeLiveScreenshotRequest(request) {
     const query = new URLSearchParams({
       width: String(response.headers.get("X-ComfyUI-Pi-Width") || 0),
       height: String(response.headers.get("X-ComfyUI-Pi-Height") || 0),
-      mode: String(response.headers.get("X-ComfyUI-Pi-Mode") || request.mode || ""),
-      node_id: String(response.headers.get("X-ComfyUI-Pi-Node-Id") || request.node_id || ""),
-      padding_px: String(response.headers.get("X-ComfyUI-Pi-Padding") || request.padding_px || 0),
+      mode: String(response.headers.get("X-ComfyUI-Pi-Mode") || captureRequest.mode || ""),
+      node_id: String(response.headers.get("X-ComfyUI-Pi-Node-Id") || captureRequest.node_id || ""),
+      node_type: String(response.headers.get("X-ComfyUI-Pi-Node-Type") || captureRequest.node_type || ""),
+      padding_px: String(response.headers.get("X-ComfyUI-Pi-Padding") || captureRequest.padding_px || 0),
       node_width_px: String(response.headers.get("X-ComfyUI-Pi-Node-Width") || 0),
       node_height_px: String(response.headers.get("X-ComfyUI-Pi-Node-Height") || 0),
+      capture_backend: String(response.headers.get("X-ComfyUI-Pi-Capture-Backend") || ""),
     });
     const completed = await api.fetchApi(`${endpoint}?${query.toString()}`, {
       method: "POST",
@@ -427,6 +509,23 @@ function closeTerminalSocket() {
   }
 }
 
+async function stopTerminalForSessionChange(sessionId) {
+  const previous = String(sessionId || "").trim();
+  closeTerminalSocket();
+  CHAT_STATE.terminalRecoveryAttempts = 0;
+  CHAT_STATE.terminal?.reset();
+  if (!previous) return;
+  try {
+    await fetchJson("/pi-agent/terminal/stop", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session_id: previous }),
+    });
+  } catch {
+    // Session switching must still rebind the browser even if the old PTY is already gone.
+  }
+}
+
 function terminalNotifyPtySize(term) {
   const ws = CHAT_STATE.terminalSocket;
   if (!term || ws?.readyState !== WebSocket.OPEN) return;
@@ -473,16 +572,68 @@ function terminalScrollbarWidth(term) {
   return Math.max(0, Number(term?.viewport?.scrollBarWidth || 0));
 }
 
+function repaintTerminal(term) {
+  if (!term) return false;
+  term._comfyPiNeedsRepaint = true;
+  const element = term.element;
+  if (!element || !element.isConnected || Number(term.rows || 0) <= 0) return false;
+  const rect = element.getBoundingClientRect?.();
+  if (!rect || rect.width < 20 || rect.height < 20) return false;
+  try {
+    if (typeof term.refresh === "function") term.refresh(0, term.rows - 1);
+    term._comfyPiNeedsRepaint = false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function scheduleTerminalRepaint(term, ui, { focus = false } = {}) {
+  if (!term) return;
+  term._comfyPiNeedsRepaint = true;
+  term._comfyPiRepaintFocus = Boolean(term._comfyPiRepaintFocus || focus);
+  if (term._comfyPiRepaintFrame) return;
+  term._comfyPiRepaintFrame = requestAnimationFrame(() => {
+    term._comfyPiRepaintFrame = null;
+    const shouldFocus = Boolean(term._comfyPiRepaintFocus);
+    term._comfyPiRepaintFocus = false;
+    repaintTerminal(term);
+    if (shouldFocus && term.element?.isConnected && !ui?.terminalPane?.hidden) term.focus();
+  });
+}
+
+function writeTerminalOutput(term, ui, data) {
+  if (!term) return;
+  term._comfyPiNeedsRepaint = true;
+  const normalized = normalizePiTerminalOutput(data);
+  try {
+    term.write(normalized, () => scheduleTerminalRepaint(term, ui));
+  } catch (error) {
+    console.warn("ComfyUI-Pi terminal write failed", error);
+  }
+  // The bundled legacy xterm renderer may not invoke write callbacks reliably after
+  // a DOM detach/reattach. A coalesced animation-frame repaint is a safe fallback;
+  // the callback schedules another repaint after parsing when it is supported.
+  scheduleTerminalRepaint(term, ui);
+}
+
 function resizeTerminalToElement(term) {
   const element = term?.element;
-  if (!term || !element) return false;
+  if (!term || !element || !element.isConnected) {
+    if (term) term._comfyPiNeedsRepaint = true;
+    return false;
+  }
 
   const rect = element.getBoundingClientRect();
-  if (rect.width < 20 || rect.height < 20) return false;
+  if (rect.width < 20 || rect.height < 20) {
+    term._comfyPiNeedsRepaint = true;
+    return false;
+  }
 
   const cell = terminalCellGeometry(term);
   if (!cell) {
     if (typeof term.fit === "function") term.fit();
+    repaintTerminal(term);
     return true;
   }
 
@@ -501,22 +652,27 @@ function resizeTerminalToElement(term) {
   if (Number(term.cols) !== cols || Number(term.rows) !== rows) {
     term.resize(cols, rows);
   }
-  if (typeof term.refresh === "function" && term.rows > 0) {
-    term.refresh(0, term.rows - 1);
-  }
+  repaintTerminal(term);
   return true;
 }
 
 function fitTerminalToHost(term, ui, { notifyPty = true, focus = false } = {}) {
-  if (!term || !ui?.terminalHost || ui.terminalPane?.hidden) return;
+  if (!term || !ui?.terminalHost || ui.terminalPane?.hidden) {
+    if (term) term._comfyPiNeedsRepaint = true;
+    return false;
+  }
   const hostRect = ui.terminalHost.getBoundingClientRect();
-  if (hostRect.width < 20 || hostRect.height < 20) return;
+  if (hostRect.width < 20 || hostRect.height < 20) {
+    term._comfyPiNeedsRepaint = true;
+    return false;
+  }
 
   // Bypass the bundled legacy fit addon's parent-computed-height path. Size the
   // actual rendered terminal element directly so xterm rows fill the flex host.
-  resizeTerminalToElement(term);
+  const resized = resizeTerminalToElement(term);
   if (notifyPty) terminalNotifyPtySize(term);
   if (focus) term.focus();
+  return resized;
 }
 
 function scheduleTerminalFit(term, ui, { notifyPty = true, focus = false } = {}) {
@@ -537,9 +693,11 @@ function scheduleTerminalFit(term, ui, { notifyPty = true, focus = false } = {})
     term._comfyPiFitFrame = requestAnimationFrame(() => {
       term._comfyPiFitFrame = null;
       fitTerminalToHost(term, ui, { notifyPty, focus: false });
+      repaintTerminal(term);
       term._comfyPiFitTimer = setTimeout(() => {
         term._comfyPiFitTimer = null;
         fitTerminalToHost(term, ui, { notifyPty, focus });
+        repaintTerminal(term);
       }, 90);
     });
   });
@@ -568,6 +726,12 @@ function detachPiInterface() {
     clearTimeout(term._comfyPiFitTimer);
     term._comfyPiFitTimer = null;
   }
+  if (term?._comfyPiRepaintFrame) {
+    try { cancelAnimationFrame(term._comfyPiRepaintFrame); } catch {}
+    term._comfyPiRepaintFrame = null;
+  }
+  if (term) term._comfyPiNeedsRepaint = true;
+  if (term) term._comfyPiRepaintFocus = false;
   try { term?._comfyPiClipboardCleanup?.(); } catch {}
   try { term?._comfyPiPointerCleanup?.(); } catch {}
 }
@@ -587,6 +751,7 @@ function attachTerminalHost(term, ui) {
   if (term.element && term.element.parentElement !== ui.terminalHost) {
     ui.terminalHost.appendChild(term.element);
   }
+  term._comfyPiNeedsRepaint = true;
 
   const copyTerminalSelection = term._comfyPiCopyTerminalSelection;
   const pasteTerminalClipboard = term._comfyPiPasteTerminalClipboard;
@@ -683,11 +848,17 @@ function terminalDimensions(ui) {
 }
 
 async function connectTerminalSocket(ui) {
-  if (!CHAT_STATE.sessionId) return;
+  const sessionId = CHAT_STATE.sessionId;
+  if (!sessionId) return;
   closeTerminalSocket();
-  const ws = new WebSocket(terminalWebSocketUrl(CHAT_STATE.sessionId));
+  const ws = new WebSocket(terminalWebSocketUrl(sessionId));
+  ws._comfyPiSessionId = sessionId;
   CHAT_STATE.terminalSocket = ws;
   ws.addEventListener("open", () => {
+    if (CHAT_STATE.terminalSocket !== ws || CHAT_STATE.sessionId !== sessionId) {
+      try { ws.close(); } catch {}
+      return;
+    }
     CHAT_STATE.terminalRecoveryAttempts = 0;
     ui.terminalStatus.textContent = "Connected to Pi terminal.";
     const term = CHAT_STATE.terminal;
@@ -697,9 +868,12 @@ async function connectTerminalSocket(ui) {
     }
   });
   ws.addEventListener("message", (event) => {
+    if (CHAT_STATE.terminalSocket !== ws || CHAT_STATE.sessionId !== sessionId) return;
     let payload;
     try { payload = JSON.parse(event.data); } catch { payload = { type: "output", data: String(event.data || "") }; }
-    if (payload.type === "output") CHAT_STATE.terminal?.write(normalizePiTerminalOutput(payload.data));
+    if (payload.type === "output") {
+      writeTerminalOutput(CHAT_STATE.terminal, ui, payload.data);
+    }
     if (payload.type === "exit") {
       const code = payload.status?.exit_code;
       const resumable = Boolean(payload.status?.resumable);
@@ -721,7 +895,11 @@ async function connectTerminalSocket(ui) {
   ws.addEventListener("close", () => {
     if (CHAT_STATE.terminalSocket === ws) CHAT_STATE.terminalSocket = null;
   });
-  ws.addEventListener("error", () => { ui.terminalStatus.textContent = "Pi terminal connection error."; });
+  ws.addEventListener("error", () => {
+    if (CHAT_STATE.terminalSocket === ws && CHAT_STATE.sessionId === sessionId) {
+      ui.terminalStatus.textContent = "Pi terminal connection error.";
+    }
+  });
 }
 
 function terminalStartPayload(ui, { resume = false } = {}) {
@@ -757,10 +935,19 @@ async function startTerminal(ui, { restart = false } = {}) {
     await ensureTerminalAssets();
     ensureTerminalInstance(ui);
 
+    // A live socket is reusable only when it belongs to the currently selected
+    // ComfyUI-Pi session. Session changes must never inherit another session's PTY.
+    if (CHAT_STATE.terminalSocket &&
+        CHAT_STATE.terminalSocket._comfyPiSessionId !== CHAT_STATE.sessionId) {
+      closeTerminalSocket();
+    }
+
     // A normal panel collapse does not close the live WebSocket anymore. If it is
-    // still open, the detached xterm has continued receiving Pi output the entire
-    // time, so reopening is just a DOM re-parent + fit operation with zero model work.
-    if (!restart && CHAT_STATE.terminalSocket?.readyState === WebSocket.OPEN) {
+    // still open for this exact session, the detached xterm has continued receiving
+    // Pi output, so reopening is just a DOM re-parent + fit operation.
+    if (!restart &&
+        CHAT_STATE.terminalSocket?.readyState === WebSocket.OPEN &&
+        CHAT_STATE.terminalSocket._comfyPiSessionId === CHAT_STATE.sessionId) {
       ui.terminalStatus.textContent = "Connected to Pi terminal.";
       scheduleTerminalFit(CHAT_STATE.terminal, ui, { notifyPty: true, focus: true });
       return;
@@ -1034,7 +1221,13 @@ function updateContextPill(ui, guard = {}) {
 
 async function loadSession(ui, sessionId) {
   const data = await fetchJson(`/pi-agent/chat/session/${encodeURIComponent(sessionId)}`);
-  rememberSessionId(data.session.session_id);
+  const nextSessionId = String(data.session?.session_id || "").trim();
+  if (!nextSessionId) throw new Error("Loaded session did not return a session id.");
+  const previous = CHAT_STATE.sessionId;
+  if (previous && previous !== nextSessionId) {
+    await stopTerminalForSessionChange(previous);
+  }
+  rememberSessionId(nextSessionId);
   ui.messages.innerHTML = "";
   const messages = Array.isArray(data.session.messages) ? data.session.messages : [];
   if (!messages.length) {
@@ -1115,7 +1308,13 @@ async function createSession(ui) {
       scoped_models: ui?.scopedModels?.value || "",
     }),
   });
-  rememberSessionId(data.session.session_id);
+  const nextSessionId = String(data.session?.session_id || "").trim();
+  if (!nextSessionId) throw new Error("New session did not return a session id.");
+  const previous = CHAT_STATE.sessionId;
+  if (previous && previous !== nextSessionId) {
+    await stopTerminalForSessionChange(previous);
+  }
+  rememberSessionId(nextSessionId);
   return data.session;
 }
 
@@ -1883,11 +2082,13 @@ function buildSidebar(el, placement = "sidebar") {
   });
   ui.deleteChat.addEventListener("click", async () => {
     if (!CHAT_STATE.sessionId || CHAT_STATE.busy) return;
-    try { await fetchJson("/pi-agent/terminal/stop", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session_id: CHAT_STATE.sessionId }) }); } catch {}
-    await fetchJson(`/pi-agent/chat/session/${encodeURIComponent(CHAT_STATE.sessionId)}`, { method: "DELETE" });
+    const deletingSessionId = CHAT_STATE.sessionId;
+    await stopTerminalForSessionChange(deletingSessionId);
+    await fetchJson(`/pi-agent/chat/session/${encodeURIComponent(deletingSessionId)}`, { method: "DELETE" });
     rememberSessionId("");
     await refreshSessions(ui);
-    ui.textarea.focus();
+    if (CHAT_STATE.view === "terminal") await startTerminal(ui);
+    else ui.textarea.focus();
   });
   ui.sessionSelect.addEventListener("change", async () => {
     const previous = CHAT_STATE.sessionId;
@@ -2035,11 +2236,18 @@ app.registerExtension({
     { path: ["Pi Agent"], commands: ["pi-agent.show-status"] }
   ],
   async setup() {
-    // The normal browser supplies the active serialized workflow. A headless
-    // Playwright capture page must not claim screenshot-broker work recursively.
+    // ComfyUI calls extension setup() at the end of frontend startup. Only now
+    // is app.canvas/rootGraph safe for loadGraphData(). The capture bridge must
+    // not be exposed earlier merely because this ES module has been evaluated.
     const isPlaywrightCapturePage =
       new URLSearchParams(window.location.search).get("comfyui_pi_playwright_capture") === "1";
-    if (!isPlaywrightCapturePage) startWorkflowScreenshotWorker();
+    if (isPlaywrightCapturePage) {
+      if (!installPlaywrightCaptureBridge()) {
+        throw new Error("ComfyUI-Pi Playwright capture page reached extension setup without a ready graph canvas.");
+      }
+    } else {
+      startWorkflowScreenshotWorker();
+    }
     const enabled = app.extensionManager?.setting?.get?.("PiAgent.UI.ShowSidebar") ?? false;
     if (!enabled) return;
     const placement = app.extensionManager?.setting?.get?.("PiAgent.UI.Placement") ?? "Left sidebar";

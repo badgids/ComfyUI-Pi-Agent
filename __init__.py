@@ -18,6 +18,16 @@ try:
         register_routes()
     except Exception as route_error:
         logging.getLogger(__name__).warning("Pi Agent routes were not registered: %s", route_error)
+    try:
+        try:
+            from .comfy_pi_agent.mcp.routes import register_mcp_routes
+        except ImportError:
+            from comfy_pi_agent.mcp.routes import register_mcp_routes
+        register_mcp_routes()
+    except Exception as mcp_route_error:
+        logging.getLogger(__name__).warning(
+            "Pi Agent MCP routes were not registered: %s", mcp_route_error
+        )
 except Exception as exc:
     logging.getLogger(__name__).exception("ComfyUI Pi Agent failed to load safely: %s", exc)
     NODE_CLASS_MAPPINGS = {}

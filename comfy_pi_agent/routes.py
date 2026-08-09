@@ -5,6 +5,7 @@ import json
 import uuid
 
 from .chat import CHAT_MANAGER
+from .discovery import find_installed_assets, search_path_inventory
 from .models import inventory_models
 from .pi_runtime import discover_pi
 from .local_llm import discover_local_servers, local_provider_presets, probe_local_server, runtime_environment
@@ -64,6 +65,24 @@ def register_routes() -> bool:
     async def pi_agent_status(request):
         status = discover_pi().to_dict()
         return web.json_response({"plugin_version": __version__, "pi": status, "models": inventory_models(50), "integrations": integration_status()})
+
+    @routes.get("/pi-agent/discovery/paths")
+    async def pi_agent_discovery_paths(request):
+        return web.json_response(search_path_inventory())
+
+    @routes.post("/pi-agent/discovery/find")
+    async def pi_agent_discovery_find(request):
+        payload = await request.json()
+        try:
+            result = find_installed_assets(
+                query=str(payload.get("query") or ""),
+                kinds=payload.get("kinds") if isinstance(payload.get("kinds"), list) else None,
+                categories=payload.get("categories") if isinstance(payload.get("categories"), list) else None,
+                limit=int(payload.get("limit") or 200),
+            )
+        except (TypeError, ValueError) as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
 
     @routes.post("/pi-agent/workflow/analyze")
     async def pi_agent_analyze(request):
@@ -158,9 +177,11 @@ def register_routes() -> bool:
             "X-ComfyUI-Pi-Height": str(metadata.get("height") or 0),
             "X-ComfyUI-Pi-Mode": str(metadata.get("mode") or ""),
             "X-ComfyUI-Pi-Node-Id": str(metadata.get("node_id") or ""),
+            "X-ComfyUI-Pi-Node-Type": str(metadata.get("node_type") or ""),
             "X-ComfyUI-Pi-Padding": str(metadata.get("padding_px") or 0),
             "X-ComfyUI-Pi-Node-Width": str(metadata.get("node_width_px") or 0),
             "X-ComfyUI-Pi-Node-Height": str(metadata.get("node_height_px") or 0),
+            "X-ComfyUI-Pi-Capture-Backend": str(metadata.get("capture_backend") or ""),
         }
         return web.Response(body=result["png"], content_type="image/png", headers=headers)
 
@@ -186,6 +207,7 @@ def register_routes() -> bool:
             "X-ComfyUI-Pi-Height": str(metadata.get("height") or 0),
             "X-ComfyUI-Pi-Mode": str(metadata.get("mode") or ""),
             "X-ComfyUI-Pi-Node-Id": str(metadata.get("node_id") or ""),
+            "X-ComfyUI-Pi-Node-Type": str(metadata.get("node_type") or ""),
             "X-ComfyUI-Pi-Padding": str(metadata.get("padding_px") or 0),
             "X-ComfyUI-Pi-Node-Width": str(metadata.get("node_width_px") or 0),
             "X-ComfyUI-Pi-Node-Height": str(metadata.get("node_height_px") or 0),
@@ -207,9 +229,11 @@ def register_routes() -> bool:
                 "height": request.query.get("height", "0"),
                 "mode": request.query.get("mode", ""),
                 "node_id": request.query.get("node_id", ""),
+                "node_type": request.query.get("node_type", ""),
                 "padding_px": request.query.get("padding_px", "0"),
                 "node_width_px": request.query.get("node_width_px", "0"),
                 "node_height_px": request.query.get("node_height_px", "0"),
+                "capture_backend": request.query.get("capture_backend", ""),
             }
             accepted = SCREENSHOT_BROKER.complete(request_id, png, metadata)
         else:

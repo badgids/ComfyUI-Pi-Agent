@@ -8,8 +8,13 @@
 ## Run tests
 
 ```bash
+python -m compileall -q comfy_pi_agent
 python -m unittest discover -s tests -v
+node --experimental-default-type=module --check web/pi_agent.js
+node --experimental-default-type=module --check web/mcp_bridge.js
 ```
+
+CI runs the Python suite on Linux, Windows, and macOS across Python 3.10–3.13. A separate frontend job syntax-checks both ComfyUI browser extensions with Node.js in ES-module mode, matching how ComfyUI loads them in the browser.
 
 ## Add a node
 
