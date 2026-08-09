@@ -470,6 +470,23 @@ function closeTerminalSocket() {
   }
 }
 
+async function stopTerminalForSessionChange(sessionId) {
+  const previous = String(sessionId || "").trim();
+  closeTerminalSocket();
+  CHAT_STATE.terminalRecoveryAttempts = 0;
+  CHAT_STATE.terminal?.reset();
+  if (!previous) return;
+  try {
+    await fetchJson("/pi-agent/terminal/stop", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session_id: previous }),
+    });
+  } catch {
+    // Session switching must still rebind the browser even if the old PTY is already gone.
+  }
+}
+
 function terminalNotifyPtySize(term) {
   const ws = CHAT_STATE.terminalSocket;
   if (!term || ws?.readyState !== WebSocket.OPEN) return;
@@ -726,11 +743,17 @@ function terminalDimensions(ui) {
 }
 
 async function connectTerminalSocket(ui) {
-  if (!CHAT_STATE.sessionId) return;
+  const sessionId = CHAT_STATE.sessionId;
+  if (!sessionId) return;
   closeTerminalSocket();
-  const ws = new WebSocket(terminalWebSocketUrl(CHAT_STATE.sessionId));
+  const ws = new WebSocket(terminalWebSocketUrl(sessionId));
+  ws._comfyPiSessionId = sessionId;
   CHAT_STATE.terminalSocket = ws;
   ws.addEventListener("open", () => {
+    if (CHAT_STATE.terminalSocket !== ws || CHAT_STATE.sessionId !== sessionId) {
+      try { ws.close(); } catch {}
+      return;
+    }
     CHAT_STATE.terminalRecoveryAttempts = 0;
     ui.terminalStatus.textContent = "Connected to Pi terminal.";
     const term = CHAT_STATE.terminal;
@@ -740,6 +763,7 @@ async function connectTerminalSocket(ui) {
     }
   });
   ws.addEventListener("message", (event) => {
+    if (CHAT_STATE.terminalSocket !== ws || CHAT_STATE.sessionId !== sessionId) return;
     let payload;
     try { payload = JSON.parse(event.data); } catch { payload = { type: "output", data: String(event.data || "") }; }
     if (payload.type === "output") CHAT_STATE.terminal?.write(normalizePiTerminalOutput(payload.data));
@@ -764,7 +788,11 @@ async function connectTerminalSocket(ui) {
   ws.addEventListener("close", () => {
     if (CHAT_STATE.terminalSocket === ws) CHAT_STATE.terminalSocket = null;
   });
-  ws.addEventListener("error", () => { ui.terminalStatus.textContent = "Pi terminal connection error."; });
+  ws.addEventListener("error", () => {
+    if (CHAT_STATE.terminalSocket === ws && CHAT_STATE.sessionId === sessionId) {
+      ui.terminalStatus.textContent = "Pi terminal connection error.";
+    }
+  });
 }
 
 function terminalStartPayload(ui, { resume = false } = {}) {
@@ -800,10 +828,19 @@ async function startTerminal(ui, { restart = false } = {}) {
     await ensureTerminalAssets();
     ensureTerminalInstance(ui);
 
+    // A live socket is reusable only when it belongs to the currently selected
+    // ComfyUI-Pi session. Session changes must never inherit another session's PTY.
+    if (CHAT_STATE.terminalSocket &&
+        CHAT_STATE.terminalSocket._comfyPiSessionId !== CHAT_STATE.sessionId) {
+      closeTerminalSocket();
+    }
+
     // A normal panel collapse does not close the live WebSocket anymore. If it is
-    // still open, the detached xterm has continued receiving Pi output the entire
-    // time, so reopening is just a DOM re-parent + fit operation with zero model work.
-    if (!restart && CHAT_STATE.terminalSocket?.readyState === WebSocket.OPEN) {
+    // still open for this exact session, the detached xterm has continued receiving
+    // Pi output, so reopening is just a DOM re-parent + fit operation.
+    if (!restart &&
+        CHAT_STATE.terminalSocket?.readyState === WebSocket.OPEN &&
+        CHAT_STATE.terminalSocket._comfyPiSessionId === CHAT_STATE.sessionId) {
       ui.terminalStatus.textContent = "Connected to Pi terminal.";
       scheduleTerminalFit(CHAT_STATE.terminal, ui, { notifyPty: true, focus: true });
       return;
@@ -1077,7 +1114,13 @@ function updateContextPill(ui, guard = {}) {
 
 async function loadSession(ui, sessionId) {
   const data = await fetchJson(`/pi-agent/chat/session/${encodeURIComponent(sessionId)}`);
-  rememberSessionId(data.session.session_id);
+  const nextSessionId = String(data.session?.session_id || "").trim();
+  if (!nextSessionId) throw new Error("Loaded session did not return a session id.");
+  const previous = CHAT_STATE.sessionId;
+  if (previous && previous !== nextSessionId) {
+    await stopTerminalForSessionChange(previous);
+  }
+  rememberSessionId(nextSessionId);
   ui.messages.innerHTML = "";
   const messages = Array.isArray(data.session.messages) ? data.session.messages : [];
   if (!messages.length) {
@@ -1158,7 +1201,13 @@ async function createSession(ui) {
       scoped_models: ui?.scopedModels?.value || "",
     }),
   });
-  rememberSessionId(data.session.session_id);
+  const nextSessionId = String(data.session?.session_id || "").trim();
+  if (!nextSessionId) throw new Error("New session did not return a session id.");
+  const previous = CHAT_STATE.sessionId;
+  if (previous && previous !== nextSessionId) {
+    await stopTerminalForSessionChange(previous);
+  }
+  rememberSessionId(nextSessionId);
   return data.session;
 }
 
@@ -1926,11 +1975,13 @@ function buildSidebar(el, placement = "sidebar") {
   });
   ui.deleteChat.addEventListener("click", async () => {
     if (!CHAT_STATE.sessionId || CHAT_STATE.busy) return;
-    try { await fetchJson("/pi-agent/terminal/stop", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session_id: CHAT_STATE.sessionId }) }); } catch {}
-    await fetchJson(`/pi-agent/chat/session/${encodeURIComponent(CHAT_STATE.sessionId)}`, { method: "DELETE" });
+    const deletingSessionId = CHAT_STATE.sessionId;
+    await stopTerminalForSessionChange(deletingSessionId);
+    await fetchJson(`/pi-agent/chat/session/${encodeURIComponent(deletingSessionId)}`, { method: "DELETE" });
     rememberSessionId("");
     await refreshSessions(ui);
-    ui.textarea.focus();
+    if (CHAT_STATE.view === "terminal") await startTerminal(ui);
+    else ui.textarea.focus();
   });
   ui.sessionSelect.addEventListener("change", async () => {
     const previous = CHAT_STATE.sessionId;

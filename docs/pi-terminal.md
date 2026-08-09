@@ -58,6 +58,8 @@ Collapsing either panel detaches only the ComfyUI-owned DOM host. It does **not*
 
 If the browser-side WebSocket drops while the panel is hidden, reopening first checks the lightweight terminal status endpoint and reconnects directly to the existing PTY. It does not run local-model readiness checks or call the terminal start path unless no live terminal exists. A reconnect after a dropped socket replays the backend terminal ring buffer before live output continues.
 
+Changing the active session with **New session**, **Load session JSON**, the saved-session selector, or **Delete session** is a terminal boundary. ComfyUI-Pi closes the old session's browser WebSocket and stops its supervised PTY before binding xterm to the newly selected session. The new socket then replays that session's backend terminal ring buffer, so the terminal refreshes immediately without reloading the ComfyUI page.
+
 ## Provider and Model controls
 
 The same simple selectors remain directly below the interaction area:

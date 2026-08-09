@@ -316,6 +316,17 @@ class TerminalArchitectureTests(unittest.TestCase):
         self.assertIn("scheduleTerminalFit(term, ui, { notifyPty: true, focus: true })", js)
         self.assertIn('CHAT_STATE.terminalSocket?.readyState === WebSocket.OPEN', js)
         self.assertIn("status.running || status.recovering", js)
+        self.assertIn("async function stopTerminalForSessionChange(sessionId)", js)
+        self.assertIn("ws._comfyPiSessionId = sessionId", js)
+        self.assertIn("CHAT_STATE.sessionId !== sessionId", js)
+        self.assertIn("CHAT_STATE.terminalSocket._comfyPiSessionId !== CHAT_STATE.sessionId", js)
+        load_session_source = js[js.index("async function loadSession"):js.index("async function refreshSessions")]
+        self.assertIn("await stopTerminalForSessionChange(previous)", load_session_source)
+        create_session_source = js[js.index("async function createSession"):js.index("function setBusy")]
+        self.assertIn("await stopTerminalForSessionChange(previous)", create_session_source)
+        delete_source = js[js.index('ui.deleteChat.addEventListener("click"'):js.index('ui.sessionSelect.addEventListener("change"')]
+        self.assertIn("await stopTerminalForSessionChange(deletingSessionId)", delete_source)
+        self.assertIn('if (CHAT_STATE.view === "terminal") await startTerminal(ui);', delete_source)
         terminal_py = (ROOT / "comfy_pi_agent" / "terminal.py").read_text(encoding="utf-8")
         self.assertIn("os.tcgetpgrp(fd)", terminal_py)
         self.assertIn("for process_group in process_groups:", terminal_py)
