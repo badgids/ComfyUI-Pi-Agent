@@ -469,7 +469,7 @@ async function executeCommand(id) {
   if (typeof app.extensionManager?.invokeCommand === "function") return await app.extensionManager.invokeCommand(String(id));
   const command = commandEntries().find((item) => String(item?.id || item?.commandId || "") === String(id));
   if (typeof command?.function === "function") return await command.function();
-  throw new Error(`Frontend command ${id!r} is unavailable.`);
+  throw new Error(`Frontend command ${String(id)} is unavailable.`);
 }
 
 async function screenshotCanvas(p) {

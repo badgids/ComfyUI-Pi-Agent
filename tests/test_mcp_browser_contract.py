@@ -28,6 +28,7 @@ class BrowserContractTests(unittest.TestCase):
         self.assertIn('name: "ComfyUI.PiAgent.MCPBridge"', source)
         self.assertIn('apply_workflow_graph_patch: applyGraphPatch', source)
         self.assertNotIn("canvas.toBlob", source)
+        self.assertNotRegex(source, r"\$\{[^}]+![rsa]\}")
 
     def test_pi_extension_routes_before_turn_and_keeps_meta_tools(self):
         source = (ROOT / "pi" / "dynamic-mcp-tools.ts").read_text(encoding="utf-8")

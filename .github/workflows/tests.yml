@@ -27,5 +27,5 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - run: node --check web/pi_agent.js
-      - run: node --check web/mcp_bridge.js
+      - run: node --experimental-default-type=module --check web/pi_agent.js
+      - run: node --experimental-default-type=module --check web/mcp_bridge.js
